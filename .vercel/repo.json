@@ -1,0 +1,11 @@
+{
+  "remoteName": "origin",
+  "projects": [
+    {
+      "id": "prj_KMNqeNTUKrOkkOVe4CCun9bTInW8",
+      "name": "ai-flood-prediction",
+      "directory": "frontend",
+      "orgId": "team_NwwVubracDAAlAoOm82dLF1Y"
+    }
+  ]
+}
