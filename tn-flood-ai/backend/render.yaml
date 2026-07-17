@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: tn-flood-ai-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    plan: standard
+    envVars:
+      - key: DATABASE_URL
+        sync: false # Requires manual setup in Render dashboard for security
+      - key: ENVIRONMENT
+        value: production

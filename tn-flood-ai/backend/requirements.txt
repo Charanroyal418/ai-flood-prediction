@@ -1,0 +1,29 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy>=2.0.30
+alembic
+python-dotenv
+geoalchemy2
+passlib[bcrypt]
+Werkzeug
+python-jose[cryptography]
+python-multipart
+requests
+APScheduler
+psycopg[binary]
+
+# Data Science Baseline
+xgboost
+scikit-learn
+joblib
+
+# GIS
+geopandas
+shapely
+
+# Advanced ML (GDNN & Knowledge Graph)
+neo4j
+torch
+torch_geometric
