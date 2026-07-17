@@ -19,14 +19,15 @@ import {
 
 const navigation = [
   { name: "Command Center", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Real-Time Monitoring", href: "/dashboard/realtime", icon: ActivitySquare },
+  { name: "AI Prediction Engine", href: "/dashboard/predictions", icon: Activity },
   { name: "Knowledge Graph", href: "/dashboard/kg", icon: Network },
-  { name: "AI Predictions", href: "/dashboard/predictions", icon: Activity },
-  { name: "Weather & Rivers", href: "/dashboard/telemetry", icon: CloudRain },
+  { name: "Weather Intelligence", href: "/dashboard/weather", icon: CloudRain },
+  { name: "River Intelligence", href: "/dashboard/river", icon: ActivitySquare },
+  { name: "Historical Analytics", href: "/dashboard/history", icon: History },
   { name: "Active Alerts", href: "/dashboard/alerts", icon: AlertTriangle },
-  { name: "Historical Floods", href: "/dashboard/history", icon: History },
-  { name: "ETL & System Health", href: "/dashboard/system", icon: Server },
-  { name: "Settings", href: "/dashboard/settings", icon: Settings },
+  { name: "District Intelligence", href: "/dashboard/district", icon: Route },
+  { name: "Model Performance", href: "/dashboard/performance", icon: ShieldAlert },
+  { name: "System Status", href: "/dashboard/system", icon: Server },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

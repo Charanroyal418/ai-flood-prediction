@@ -52,9 +52,9 @@ def load_gnn_model():
         try:
             model_path = os.path.join(os.path.dirname(__file__), '..', '..', 'ml', 'models', 'gnn_model.pth')
             # Num features matching the generated synthetic data in train_gnn.py
-            _gnn_model = TemporalFloodGNN(num_node_features=5, num_classes=4)
+            _gnn_model = TemporalFloodGNN(num_node_features=12, num_classes=5)
             if os.path.exists(model_path):
-                _gnn_model.load_state_dict(torch.load(model_path))
+                _gnn_model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
             _gnn_model.eval()
         except Exception as e:
             print(f"Failed to load GNN: {e}")
@@ -66,6 +66,8 @@ def predict_flood_risk(req: PredictionRequest, use_gnn: bool = True, db: Session
     Generate an AI prediction using either the XGBoost Baseline or the Neo4j GDNN.
     Defaults to GDNN for the AI Simulator.
     """
+    from app.ml.explain import explain_prediction
+    
     try:
         if use_gnn:
             model = load_gnn_model()
@@ -74,7 +76,7 @@ def predict_flood_risk(req: PredictionRequest, use_gnn: bool = True, db: Session
                 # Simulate a response based on rainfall
                 probability = min(100, max(5, (req.rainfall_24h_mm or req.rainfall_24h) * 0.4 + (req.slope_degrees or 0) * 2))
                 risk_level = "Severe" if probability > 80 else "High" if probability > 60 else "Moderate" if probability > 30 else "Low"
-                class_idx = {"Low": 0, "Moderate": 1, "High": 2, "Severe": 3}[risk_level]
+                class_idx = {"Very Low": 0, "Low": 1, "Moderate": 2, "High": 3, "Severe": 4}[risk_level]
                 
                 return {
                     "district": req.district_name or "Custom Point",
@@ -83,7 +85,7 @@ def predict_flood_risk(req: PredictionRequest, use_gnn: bool = True, db: Session
                     "confidence": 0.85,
                     "probability": round(probability, 1),
                     "top_reasons": ["AI Simulation Fallback", "High localized rainfall"],
-                    "recommended_actions": ["Deploy Early Warning", "Evacuate Low-lying Areas"] if class_idx >= 2 else ["Monitor Situation"]
+                    "recommended_actions": ["Deploy Early Warning", "Evacuate Low-lying Areas"] if class_idx >= 3 else ["Monitor Situation"]
                 }
             
             
@@ -96,19 +98,31 @@ def predict_flood_risk(req: PredictionRequest, use_gnn: bool = True, db: Session
             distance = req.distance_to_river_m if req.distance_to_river_m else req.distance_to_river
             soil = req.soil_moisture_index
             
-            # Assuming features are [rainfall, elevation, distance, soil, slope]
-            x[0] = torch.tensor([rainfall, elevation, distance, soil, req.slope_degrees])
+            # Features are 12 dimensional
+            # [Rainfall, River Level, Humidity, Pressure, Temperature, Elevation, Slope, Drainage Density, Historical Flood Count, Population Density, Land Cover, Temporal Features]
+            # We fill what we have and keep rest as what was fetched from the snapshot
+            x[0, 0] = rainfall
+            x[0, 5] = elevation
+            x[0, 6] = req.slope_degrees
             
             with torch.no_grad():
                 out = model(x, edge_index)
                 pred_log_probs = out[0]
                 probs = torch.exp(pred_log_probs)
                 
-                # Class mapping: 0: Low, 1: Moderate, 2: High, 3: Severe
+                # Class mapping: 0: Very Low, 1: Low, 2: Moderate, 3: High, 4: Severe
                 class_idx = probs.argmax().item()
-                risk_levels = ["Low", "Moderate", "High", "Severe"]
+                risk_levels = ["Very Low", "Low", "Moderate", "High", "Severe"]
                 risk_level = risk_levels[class_idx]
                 probability = float(probs[class_idx].item()) * 100
+                
+            features_dict = {
+                "rainfall_24h": float(rainfall),
+                "river_level": float(x[0, 1].item()),
+                "elevation": float(elevation),
+                "slope": float(req.slope_degrees)
+            }
+            top_reasons = explain_prediction(features_dict, class_idx)
                 
             return {
                 "district": req.district_name or "Custom Point",
@@ -116,8 +130,8 @@ def predict_flood_risk(req: PredictionRequest, use_gnn: bool = True, db: Session
                 "risk_level": risk_level,
                 "confidence": probability / 100.0,
                 "probability": round(probability, 1),
-                "top_reasons": ["AI Graph Propagated Hydrology", "Local topological depression", "High upstream flows"],
-                "recommended_actions": ["Deploy Early Warning", "Evacuate Low-lying Areas"] if class_idx >= 2 else ["Monitor Situation"]
+                "top_reasons": top_reasons,
+                "recommended_actions": ["Deploy Early Warning", "Evacuate Low-lying Areas"] if class_idx >= 3 else ["Monitor Situation"]
             }
         else:
             result = PredictionService.predict_district(db, req.dict())

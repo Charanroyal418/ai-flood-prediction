@@ -169,20 +169,19 @@ export default function PredictionsPage() {
               </div>
 
               <div className="mt-6 border-t border-slate-200 pt-6">
-                <p className="text-xs text-slate-500 font-bold uppercase mb-2">Feature Importance</p>
+                <p className="text-xs text-slate-500 font-bold uppercase mb-2">Explainable AI Reasoning</p>
                 <div className="space-y-2">
-                  <div className="flex justify-between items-center text-sm">
-                     <span className="text-slate-600">Rainfall Accumulation</span>
-                     <span className="text-blue-600 font-bold">45%</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                     <span className="text-slate-600">Upstream Discharge</span>
-                     <span className="text-blue-600 font-bold">30%</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                     <span className="text-slate-600">Soil Saturation</span>
-                     <span className="text-blue-600 font-bold">15%</span>
-                  </div>
+                  {result.top_reasons && result.top_reasons.map((reason: string, idx: number) => {
+                    const parts = reason.split(' contributes ');
+                    const name = parts[0];
+                    const percent = parts.length > 1 ? parts[1] : '';
+                    return (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                         <span className="text-slate-600 font-medium">{name}</span>
+                         <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">{percent || 'Significant'}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
