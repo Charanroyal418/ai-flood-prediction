@@ -33,3 +33,7 @@ venv.bak/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Large Data Files (Exceeds GitHub 100MB limit)
+*.shp
+*.pbf
