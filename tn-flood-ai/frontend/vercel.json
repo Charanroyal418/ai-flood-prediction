@@ -1,8 +1,0 @@
-{
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://floodsense-ai-backend.onrender.com/api/:path*"
-    }
-  ]
-}
