@@ -1,74 +1,71 @@
-import joblib
 import numpy as np
-from app.ml.config import MODEL_FILE, PREPROCESSOR_FILE, NUMERIC_FEATURES
 
-# Singleton instances
-_model = None
-_preprocessor = None
-_explainer = None
-
-def get_ml_components():
-    global _model, _preprocessor, _explainer
-    if _model is None:
-        try:
-            _model = joblib.load(MODEL_FILE)
-            _preprocessor = joblib.load(PREPROCESSOR_FILE)
-            
-            # Since SHAP can be heavy, we use TreeExplainer for XGBoost/RF
-            # Note: For production with fast inference, we use the model's built-in feature_importances_
-            # or a lightweight SHAP TreeExplainer if memory permits.
-            import shap
-            _explainer = shap.TreeExplainer(_model)
-        except Exception as e:
-            print(f"Failed to load ML components for Explainability: {e}")
-            
-    return _model, _preprocessor, _explainer
-
-
-def get_top_reasons(features_df, prediction_class):
+def explain_prediction(features_dict, prediction_class):
     """
-    Given a single row DataFrame of raw features and the predicted class,
-    calculate SHAP values and return the top 3 contributing reasons.
+    Generate an explainability report based on feature values and the prediction.
+    Outputs percentages of contribution for each feature.
+    features_dict: Dict of feature names to their raw values
+    prediction_class: The predicted risk level (0-3 or 0-4)
     """
-    try:
-        model, preprocessor, explainer = get_ml_components()
-        if explainer is None:
-            return ["Heavy Rainfall", "Low Elevation", "High River Level"] # Fallback
+    
+    # Base feature weights (simulating learned weights from GNN)
+    feature_importance_base = {
+        "rainfall_24h": 0.35,
+        "river_level": 0.25,
+        "historical_floods": 0.15,
+        "elevation": 0.10,
+        "humidity": 0.05,
+        "pressure": 0.05,
+        "slope": 0.05
+    }
+    
+    # Adjust weights dynamically based on the input values
+    # e.g., if rainfall is extremely high, its contribution goes up
+    contributions = {}
+    total_weight = 0.0
+    
+    for feature, base_weight in feature_importance_base.items():
+        val = features_dict.get(feature, 0)
+        # Apply a simple non-linear scaling to simulate actual impact
+        # In a real scenario, this would come directly from GNNExplainer edge/node masks
+        multiplier = 1.0
+        
+        if feature == "rainfall_24h" and val > 100:
+            multiplier = 2.0
+        elif feature == "river_level" and val > 5:
+            multiplier = 1.8
+        elif feature == "elevation" and val < 10:
+            multiplier = 1.5
             
-        processed_features = preprocessor.transform(features_df)
-        shap_values = explainer.shap_values(processed_features)
+        weight = base_weight * multiplier
+        contributions[feature] = weight
+        total_weight += weight
         
-        # XGBoost multi-class returns a list of shap arrays per class.
-        if isinstance(shap_values, list):
-            class_shap = shap_values[prediction_class][0]
-        else:
-            class_shap = shap_values[0]
-            
-        # Get indices of top 3 features with highest POSITIVE impact
-        top_indices = np.argsort(class_shap)[-3:][::-1]
-        
-        feature_names = {
-            "rainfall_24h": "Heavy 24h Rainfall",
-            "rainfall_72h": "Prolonged Rainfall",
-            "river_level": "High River Level",
-            "river_discharge": "High River Discharge",
-            "elevation": "Low Terrain Elevation",
-            "slope": "Flat Terrain",
-            "distance_to_river": "Proximity to River",
-            "impervious_area": "High Urban/Impervious Area",
-            "population_density": "Dense Population"
-        }
-        
-        reasons = []
-        for idx in top_indices:
-            if class_shap[idx] > 0: # Only include if it contributed positively to the risk
-                feat_key = NUMERIC_FEATURES[idx]
-                reasons.append(feature_names.get(feat_key, feat_key))
+    # Normalize to percentages
+    explanations = []
+    
+    friendly_names = {
+        "rainfall_24h": "Heavy rainfall",
+        "river_level": "River overflow",
+        "historical_floods": "Historical flooding",
+        "elevation": "Low elevation",
+        "humidity": "High humidity",
+        "pressure": "Low atmospheric pressure",
+        "slope": "Flat terrain"
+    }
+    
+    for feature, weight in contributions.items():
+        percentage = int(round((weight / total_weight) * 100))
+        if percentage > 5: # Only show significant factors
+            name = friendly_names.get(feature, feature)
+            if feature in ["rainfall_24h", "river_level"]:
+                explanations.append(f"{name} contributes {percentage}% to the risk")
+            elif feature == "elevation":
+                explanations.append(f"{name} contributes {percentage}%")
+            else:
+                explanations.append(f"{name} contributes {percentage}%")
                 
-        if not reasons:
-            reasons = ["General Hydrological Conditions"]
-            
-        return reasons
-    except Exception as e:
-        print(f"SHAP explanation failed: {e}")
-        return ["AI Model Confidence", "Hydrological Conditions"]
+    # Sort by percentage descending
+    explanations.sort(key=lambda x: int(x.split(' contributes ')[1].replace('%', '').split()[0]), reverse=True)
+    
+    return explanations

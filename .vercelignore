@@ -1,0 +1,10 @@
+raw/
+datasets/
+backend/
+ml/
+etl/
+docs/
+scripts/
+.venv/
+node_modules/
+.git/

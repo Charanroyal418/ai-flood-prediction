@@ -123,7 +123,7 @@ export default function CommandCenterPage() {
           <div className="grid grid-cols-2 gap-4 flex-1">
              <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
                 <p className="text-xs font-bold text-indigo-400 uppercase">Avg Rainfall</p>
-                <p className="text-lg font-bold text-indigo-700">45.2 mm</p>
+                <p className="text-lg font-bold text-indigo-700">{metrics.avg_rainfall_24h_mm} mm</p>
              </div>
              <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100">
                 <p className="text-xs font-bold text-amber-400 uppercase">River Alerts</p>
