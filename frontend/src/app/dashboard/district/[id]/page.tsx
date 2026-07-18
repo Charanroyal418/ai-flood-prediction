@@ -30,7 +30,7 @@ export default function DistrictDrilldown() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'district_predictions', filter: `district_id=eq.${id}` },
-        (payload) => {
+        (payload: any) => {
           console.log('Realtime update received:', payload);
           // Invalidate and refetch automatically
           queryClient.invalidateQueries({ queryKey: ["district", id] });
