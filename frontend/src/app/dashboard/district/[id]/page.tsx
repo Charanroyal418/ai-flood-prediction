@@ -1,8 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import api from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { ArrowLeft, Waves, Droplets, MapPin, Activity, AlertTriangle, Info, Wind } from "lucide-react";
 import dynamicImport from "next/dynamic";
 const ReactECharts = dynamicImport(() => import("echarts-for-react"), { ssr: false });
@@ -11,6 +13,7 @@ export default function DistrictDrilldown() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["district", id],
@@ -18,8 +21,27 @@ export default function DistrictDrilldown() {
       const res = await api.get(`/district/${id}`);
       return res.data;
     },
-    refetchInterval: 15000,
   });
+
+  // Supabase Realtime Subscription
+  useEffect(() => {
+    const channel = supabase
+      .channel('district_predictions_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'district_predictions', filter: `district_id=eq.${id}` },
+        (payload) => {
+          console.log('Realtime update received:', payload);
+          // Invalidate and refetch automatically
+          queryClient.invalidateQueries({ queryKey: ["district", id] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
 
   if (isLoading || !data) {
     return (
