@@ -1,7 +1,6 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
-  darkMode: ["class"],
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -11,9 +10,7 @@ const config: Config = {
     container: {
       center: true,
       padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
+      screens: { "2xl": "1600px" },
     },
     extend: {
       colors: {
@@ -22,51 +19,92 @@ const config: Config = {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        surface: "hsl(var(--surface))",
         primary: {
-          DEFAULT: "hsl(221, 79%, 48%)", // #1A56DB
-          foreground: "hsl(210, 40%, 98%)",
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+          light: "hsl(var(--primary-light))",
         },
         secondary: {
-          DEFAULT: "hsl(210, 40%, 96.1%)",
-          foreground: "hsl(222.2, 47.4%, 11.2%)",
-        },
-        destructive: {
-          DEFAULT: "hsl(0, 72%, 51%)", // #E02424
-          foreground: "hsl(210, 40%, 98%)",
-        },
-        warning: {
-          DEFAULT: "hsl(49, 96%, 53%)", // #FACC15
-          foreground: "hsl(20, 14.3%, 4.1%)",
-        },
-        success: {
-          DEFAULT: "hsl(156, 61%, 48%)", // #31C48D
-          foreground: "hsl(210, 40%, 98%)",
-        },
-        muted: {
-          DEFAULT: "hsl(210, 40%, 96.1%)",
-          foreground: "hsl(215.4, 16.3%, 46.9%)",
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
         },
         accent: {
-          DEFAULT: "hsl(210, 40%, 96.1%)",
-          foreground: "hsl(222.2, 47.4%, 11.2%)",
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
         },
-        popover: {
-          DEFAULT: "hsl(0, 0%, 100%)",
-          foreground: "hsl(222.2, 84%, 4.9%)",
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        danger: {
+          DEFAULT: "hsl(var(--danger))",
+          foreground: "hsl(var(--danger-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
         },
         card: {
-          DEFAULT: "hsl(0, 0%, 100%)",
-          foreground: "hsl(222.2, 84%, 4.9%)",
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
         },
       },
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        md: "calc(var(--radius) - 4px)",
+        sm: "calc(var(--radius) - 8px)",
+        xl: "calc(var(--radius) + 4px)",
+        "2xl": "calc(var(--radius) + 8px)",
       },
       fontFamily: {
-        sans: ['var(--font-inter)'],
-        heading: ['var(--font-outfit)'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        heading: ['Outfit', 'Inter', 'sans-serif'],
+      },
+      boxShadow: {
+        'sm': '0 1px 3px rgba(100,90,200,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        'md': '0 4px 12px rgba(100,90,200,0.08), 0 2px 4px rgba(0,0,0,0.04)',
+        'lg': '0 8px 24px rgba(100,90,200,0.1), 0 4px 8px rgba(0,0,0,0.04)',
+        'xl': '0 16px 48px rgba(100,90,200,0.12), 0 8px 16px rgba(0,0,0,0.06)',
+        'glass': '0 4px 24px -2px rgba(100,90,200,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
+        'glass-hover': '0 12px 40px -4px rgba(100,90,200,0.14), inset 0 1px 0 rgba(255,255,255,0.9)',
+      },
+      animation: {
+        'float': 'float 3s ease-in-out infinite',
+        'pulse-slow': 'pulse 3s ease-in-out infinite',
+        'shimmer': 'shimmer 1.5s infinite',
+        'fade-in': 'fadeIn 0.4s ease-out',
+        'slide-up': 'slideUp 0.4s ease-out',
+      },
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+        'gradient-pastel': 'linear-gradient(135deg, #FAFBFF 0%, #F5F3FF 50%, #EFF6FF 100%)',
+      },
+      keyframes: {
+        float: {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-6px)' },
+        },
+        fadeIn: {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+        slideUp: {
+          from: { opacity: '0', transform: 'translateY(12px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
+        },
       },
     },
   },

@@ -1,4 +1,7 @@
 import DashboardLayout from '@/components/layout/DashboardLayout';
+import QueryProvider from "@/components/QueryProvider";
+
+export const dynamic = "force-dynamic";
 
 export default function DashboardRootLayout({
   children,
@@ -6,8 +9,10 @@ export default function DashboardRootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <DashboardLayout>
-      {children}
-    </DashboardLayout>
+    <QueryProvider>
+      <DashboardLayout>
+        {children}
+      </DashboardLayout>
+    </QueryProvider>
   );
 }

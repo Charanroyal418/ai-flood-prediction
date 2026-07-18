@@ -4,6 +4,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 
+import app.db.base # Ensure all models are registered
+
 from app.core.config import settings
 from app.api.api import api_router
 from app.core.exceptions import http_exception_handler, validation_exception_handler

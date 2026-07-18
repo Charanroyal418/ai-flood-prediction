@@ -2,7 +2,7 @@
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import api from '@/lib/api';
 
 export function RainfallTrendChart() {
   const { data: trendData, isLoading } = useQuery({
@@ -10,7 +10,7 @@ export function RainfallTrendChart() {
     queryFn: async () => {
       // Fetching mock trend for MVP if real historical endpoint isn't fully populated
       try {
-        const res = await axios.get('http://localhost:8000/api/v1/ml/trends');
+        const res = await api.get('/ml/trends');
         return res.data;
       } catch {
         return [

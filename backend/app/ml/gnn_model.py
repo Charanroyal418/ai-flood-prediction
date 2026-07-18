@@ -23,25 +23,40 @@ class TemporalFloodGNN(torch.nn.Module):
         self.gat1 = GATConv(num_node_features, 64, heads=4, dropout=0.2)
         self.gat2 = GATConv(64 * 4, 32, heads=1, concat=False, dropout=0.2)
         
-        # 2. Temporal/Regression Head
-        # In a full Temporal Graph Network, we would use a GRU here.
-        # For the MVP prediction step, we project to classes (Low, Moderate, High, Severe)
+        # 2. Temporal/Regression Head (GRU)
+        # Process the sequence of spatial embeddings to capture temporal flood patterns
+        self.gru = torch.nn.GRU(input_size=32, hidden_size=32, batch_first=True)
         self.classifier = torch.nn.Linear(32, num_classes)
 
     def forward(self, x, edge_index, batch_index=None):
         """
-        x: Node feature matrix (Rainfall, Elevation, Humidity, etc.) [num_nodes, num_node_features]
+        x: Node feature matrix sequence [num_nodes, seq_len, num_features]
         edge_index: Graph connectivity (Neo4j relationships) [2, num_edges]
         """
-        # Spatial Message Passing
-        x = F.dropout(x, p=0.2, training=self.training)
-        x = F.elu(self.gat1(x, edge_index))
+        num_nodes, seq_len, num_features = x.size()
         
-        x = F.dropout(x, p=0.2, training=self.training)
-        x = F.elu(self.gat2(x, edge_index))
+        # Spatial Message Passing per time step
+        out_seq = []
+        for t in range(seq_len):
+            x_t = x[:, t, :] # Shape: [num_nodes, num_features]
+            x_t = F.dropout(x_t, p=0.2, training=self.training)
+            x_t = F.elu(self.gat1(x_t, edge_index))
+            
+            x_t = F.dropout(x_t, p=0.2, training=self.training)
+            x_t = F.elu(self.gat2(x_t, edge_index)) # Shape: [num_nodes, 32]
+            out_seq.append(x_t)
+            
+        # Stack temporal outputs to [num_nodes, seq_len, 32]
+        out_seq = torch.stack(out_seq, dim=1)
+        
+        # Temporal processing
+        gru_out, _ = self.gru(out_seq) # gru_out: [num_nodes, seq_len, 32]
+        
+        # Take the output of the last time step for prediction
+        last_out = gru_out[:, -1, :] # [num_nodes, 32]
         
         # Node-level flood risk classification
-        out = self.classifier(x)
+        out = self.classifier(last_out)
         
         # Return log_softmax for CrossEntropyLoss
         return F.log_softmax(out, dim=1)

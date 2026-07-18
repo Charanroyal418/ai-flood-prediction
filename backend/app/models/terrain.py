@@ -1,23 +1,18 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime
-from geoalchemy2 import Geometry
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Uuid, JSON
 from app.db.base_class import Base
 
 class DemTile(Base):
     __tablename__ = "dem_tiles"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tile_name = Column(String, unique=True, nullable=False)
-    geom = Column(Geometry('POLYGON', srid=4326), nullable=False)
-    file_path = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
+    elevation = Column(Integer, nullable=True)
+    geom_json = Column(JSON, nullable=True)
 
 class Landcover(Base):
     __tablename__ = "landcover"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    class_name = Column(String, nullable=False)
-    geom = Column(Geometry('MULTIPOLYGON', srid=4326), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
+    type = Column(String, nullable=True)
+    geom_json = Column(JSON, nullable=True)

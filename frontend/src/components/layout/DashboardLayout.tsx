@@ -1,129 +1,298 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
-  Activity,
-  AlertTriangle,
-  CloudRain,
-  Settings,
-  ShieldAlert,
+  Brain,
   Network,
+  CloudRain,
+  Waves,
+  MapPin,
   History,
-  Route,
-  Server,
-  ActivitySquare
+  Bell,
+  Activity,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  ShieldCheck,
+  Zap,
+  Circle,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import api from "@/lib/api";
 
-const navigation = [
-  { name: "Command Center", href: "/dashboard", icon: LayoutDashboard },
-  { name: "AI Prediction Engine", href: "/dashboard/predictions", icon: Activity },
-  { name: "Knowledge Graph", href: "/dashboard/kg", icon: Network },
-  { name: "Weather Intelligence", href: "/dashboard/weather", icon: CloudRain },
-  { name: "River Intelligence", href: "/dashboard/river", icon: ActivitySquare },
-  { name: "Historical Analytics", href: "/dashboard/history", icon: History },
-  { name: "Active Alerts", href: "/dashboard/alerts", icon: AlertTriangle },
-  { name: "District Intelligence", href: "/dashboard/district", icon: Route },
-  { name: "Model Performance", href: "/dashboard/performance", icon: ShieldAlert },
-  { name: "System Status", href: "/dashboard/system", icon: Server },
+const navSections = [
+  {
+    label: "Intelligence",
+    items: [
+      { name: "Command Center", href: "/dashboard", icon: LayoutDashboard, description: "Live overview" },
+      { name: "AI Prediction Engine", href: "/dashboard/predictions", icon: Brain, description: "GDNN inference" },
+      { name: "Knowledge Graph", href: "/dashboard/kg", icon: Network, description: "Graph intelligence" },
+    ],
+  },
+  {
+    label: "Telemetry",
+    items: [
+      { name: "Weather Intelligence", href: "/dashboard/weather", icon: CloudRain, description: "Live weather" },
+      { name: "River Intelligence", href: "/dashboard/river", icon: Waves, description: "River levels" },
+      { name: "District Analytics", href: "/dashboard/district", icon: MapPin, description: "Per district" },
+    ],
+  },
+  {
+    label: "Analysis",
+    items: [
+      { name: "Historical Intelligence", href: "/dashboard/history", icon: History, description: "Trend analysis" },
+      { name: "Alert Center", href: "/dashboard/alerts", icon: Bell, description: "Active alerts", badge: true },
+      { name: "System Health", href: "/dashboard/system", icon: Activity, description: "Platform status" },
+    ],
+  },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  const { data: liveData } = useQuery({
+    queryKey: ["dashboardLive"],
+    queryFn: async () => {
+      const res = await api.get("/dashboard/live");
+      return res.data;
+    },
+    refetchInterval: 10000,
+    staleTime: 5000,
+  });
+
+  const alertCount = liveData?.metrics?.active_alerts_count ?? 0;
+
+  if (!mounted) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      {/* Premium Glass Sidebar */}
-      <div className="hidden w-72 md:block flex-shrink-0 z-20">
-        <div className="h-full glass border-r border-slate-200/60 flex flex-col relative overflow-hidden">
-          {/* Subtle gradient orb for sidebar background */}
-          <div className="absolute top-0 left-0 w-full h-64 bg-blue-100 rounded-full blur-3xl -translate-y-1/2 pointer-events-none"></div>
-          
-          <div className="flex h-20 flex-shrink-0 items-center px-6 border-b border-slate-200/60 relative z-10">
-            <ShieldAlert className="h-8 w-8 text-blue-600 mr-3" />
-            <span className="text-2xl font-heading font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-blue-900 to-slate-700">
-              FloodSense <span className="text-blue-600">AI</span>
-            </span>
+    <div className="flex h-screen overflow-hidden bg-[#FAFBFF]">
+      {/* Sidebar */}
+      <motion.nav
+        animate={{ width: collapsed ? 72 : 272 }}
+        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+        className="hidden md:flex flex-col h-full bg-white/90 backdrop-blur-xl border-r border-purple-100/60 z-20 relative overflow-hidden"
+        style={{ flexShrink: 0 }}
+      >
+        {/* Subtle gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-purple-50/30 via-transparent to-blue-50/20 pointer-events-none" />
+        
+        {/* Logo */}
+        <div className="h-16 flex items-center px-4 border-b border-purple-50 relative z-10 shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-md flex-shrink-0">
+            <ShieldCheck className="w-5 h-5 text-white" />
           </div>
-          
-          <nav className="mt-6 flex-1 space-y-2 px-4 relative z-10 overflow-y-auto">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`group flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-300 ${
-                    isActive
-                      ? "bg-blue-50 text-blue-700 shadow-sm border border-blue-100"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  <item.icon
-                    className={`mr-3 h-5 w-5 flex-shrink-0 transition-transform duration-300 group-hover:scale-110 ${
-                      isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
-                    }`}
-                    aria-hidden="true"
-                  />
-                  {item.name}
-                  {isActive && (
-                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.8)] animate-pulse"></div>
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.2 }}
+                className="ml-3 overflow-hidden"
+              >
+                <p className="text-sm font-heading font-bold text-slate-800 leading-tight whitespace-nowrap">FloodSense AI</p>
+                <p className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Tamil Nadu · GDNN v2</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-          {/* System Status in Sidebar Bottom */}
-          <div className="p-4 border-t border-slate-200/60 relative z-10">
-            <div className="glass-card rounded-xl p-4 flex items-center justify-between border border-slate-200/50 bg-white/60">
-              <span className="text-sm text-slate-600 font-medium">System Status</span>
-              <div className="flex items-center space-x-2">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                </span>
-                <span className="text-xs font-bold text-emerald-600">Live</span>
+        {/* Live status pill */}
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="mx-4 mt-4 px-3 py-2 rounded-xl bg-green-50 border border-green-100 flex items-center gap-2 relative z-10"
+            >
+              <div className="relative flex-shrink-0">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <div className="absolute inset-0 w-2 h-2 rounded-full bg-green-400 animate-ping opacity-75" />
               </div>
+              <span className="text-[11px] font-semibold text-green-700">Live · All Systems Online</span>
+              <Zap className="w-3 h-3 text-green-500 ml-auto" />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Navigation */}
+        <div className="flex-1 py-4 px-3 space-y-1 overflow-y-auto no-scrollbar relative z-10">
+          {navSections.map((section) => (
+            <div key={section.label} className="mb-4">
+              <AnimatePresence>
+                {!collapsed && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="px-3 mb-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest"
+                  >
+                    {section.label}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+
+              {section.items.map((item) => {
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    title={collapsed ? item.name : undefined}
+                    className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl mb-0.5 transition-all duration-200 ${
+                      isActive
+                        ? "bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-100"
+                        : "hover:bg-slate-50 border border-transparent"
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeNavIndicator"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-gradient-to-b from-violet-500 to-indigo-600 rounded-r-full"
+                        transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                      />
+                    )}
+
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+                      isActive 
+                        ? "bg-gradient-to-br from-violet-500 to-indigo-600 shadow-md" 
+                        : "bg-slate-100 group-hover:bg-slate-200"
+                    }`}>
+                      <item.icon className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-500"}`} />
+                    </div>
+
+                    <AnimatePresence>
+                      {!collapsed && (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="flex-1 min-w-0 overflow-hidden"
+                        >
+                          <p className={`text-[13px] font-semibold leading-tight whitespace-nowrap ${isActive ? "text-violet-700" : "text-slate-700"}`}>
+                            {item.name}
+                          </p>
+                          <p className="text-[10px] text-slate-400 whitespace-nowrap">{item.description}</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Badge for alerts */}
+                    {item.badge && alertCount > 0 && !collapsed && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="flex-shrink-0 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"
+                      >
+                        {alertCount > 9 ? "9+" : alertCount}
+                      </motion.div>
+                    )}
+                    {item.badge && alertCount > 0 && collapsed && (
+                      <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
+                    )}
+                  </Link>
+                );
+              })}
             </div>
+          ))}
+        </div>
+
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-white border border-purple-100 shadow-md flex items-center justify-center hover:bg-violet-50 transition-colors z-30"
+        >
+          {collapsed ? (
+            <ChevronRight className="w-3 h-3 text-slate-500" />
+          ) : (
+            <ChevronLeft className="w-3 h-3 text-slate-500" />
+          )}
+        </button>
+
+        {/* User footer */}
+        <div className={`p-3 border-t border-purple-50/80 relative z-10 ${collapsed ? "flex justify-center" : ""}`}>
+          <div className={`flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer ${collapsed ? "justify-center" : ""}`}>
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              TN
+            </div>
+            <AnimatePresence>
+              {!collapsed && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <p className="text-xs font-semibold text-slate-700 whitespace-nowrap">Tamil Nadu SDMA</p>
+                  <p className="text-[10px] text-slate-400 whitespace-nowrap">State Command</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
-      </div>
+      </motion.nav>
 
-      {/* Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-hidden relative">
-        {/* Main background aesthetic elements */}
-        <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-blue-50 rounded-full blur-[120px] pointer-events-none transform translate-x-1/4 -translate-y-1/4"></div>
-        <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-emerald-50 rounded-full blur-[120px] pointer-events-none transform -translate-x-1/4 translate-y-1/4"></div>
-        
-        {/* Top Header - Glassmorphic */}
-        <header className="flex h-20 flex-shrink-0 items-center justify-between glass border-b border-slate-200/60 px-8 z-10">
-          <div className="flex-1 flex justify-between items-center">
-            <div className="flex items-center">
-               {/* Could place breadcrumbs or page title here */}
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top bar */}
+        <header className="h-14 bg-white/80 backdrop-blur-xl border-b border-purple-50 flex items-center px-6 gap-4 flex-shrink-0 z-10">
+          <div className="flex-1 flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <Circle className="w-2 h-2 fill-green-500 text-green-500" />
+              <span className="font-medium">Backend Connected</span>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3 px-4 py-2 glass-card rounded-full border border-slate-200/50 bg-white/60">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                  TN
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-900">State Admin</span>
-                  <span className="text-[10px] text-slate-500 font-medium">Command Center</span>
-                </div>
-              </div>
+            <div className="h-4 w-px bg-slate-200" />
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <span>Last update:</span>
+              <span className="font-semibold text-slate-700">{new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-100 text-xs font-semibold text-violet-700">
+              GDNN v2 · Active
+            </div>
+            <div className="px-3 py-1.5 rounded-lg bg-green-50 border border-green-100 text-xs font-semibold text-green-700">
+              Tamil Nadu · Live
             </div>
           </div>
         </header>
 
-        {/* Scrollable Content */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 z-10 custom-scrollbar">
-          <div className="max-w-7xl mx-auto">
-            {children}
-          </div>
+        <main className="flex-1 overflow-y-auto no-scrollbar">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="p-6 max-w-[1800px] mx-auto"
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
         </main>
+      </div>
+
+      {/* Mobile nav */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-xl border-t border-purple-50 z-50 flex items-center justify-around px-4">
+        {navSections.flatMap(s => s.items).slice(0, 5).map((item) => {
+          const isActive = pathname === item.href;
+          return (
+            <Link key={item.name} href={item.href} className="p-2 flex flex-col items-center gap-1">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isActive ? "bg-gradient-to-br from-violet-500 to-indigo-600" : "bg-slate-100"}`}>
+                <item.icon className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-500"}`} />
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,15 +1,14 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text
-from geoalchemy2 import Geometry
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Float, DateTime, ForeignKey, Integer, Uuid, JSON
 from app.db.base_class import Base
 
 class Report(Base):
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
-    location = Column(Geometry('POINT', srid=4326), nullable=True)
-    issue_type = Column(String, nullable=False) # Waterlogging, RoadBlock
-    description = Column(Text, nullable=True)
-    image_url = Column(String, nullable=True)
+    __tablename__ = "report"
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=True)
+    description = Column(String, nullable=False)
+    water_depth = Column(Float, nullable=True)
+    location_json = Column(JSON, nullable=True)
     reported_at = Column(DateTime, default=datetime.utcnow, index=True)

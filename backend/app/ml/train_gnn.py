@@ -23,7 +23,7 @@ def train_gnn():
     print("Initializing Dynamic Graph Neural Network (GDNN)...")
     data = generate_synthetic_graph_data()
     
-    num_node_features = data.x.size(1)
+    num_node_features = data.x.size(2)
     num_classes = 5
     
     model = TemporalFloodGNN(num_node_features=num_node_features, num_classes=num_classes)

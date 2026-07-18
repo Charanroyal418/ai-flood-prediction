@@ -1,178 +1,254 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
-import { Network, ServerOff } from "lucide-react";
-import { useMemo, useState } from "react";
+import api from "@/lib/api";
+import ReactFlow, {
+  Node, Edge, Background, Controls, MiniMap,
+  useNodesState, useEdgesState,
+  NodeTypes, Handle, Position, MarkerType,
+} from "reactflow";
+import "reactflow/dist/style.css";
+import { Network, MapPin, Waves, Shield, CloudRain, RefreshCw, Activity, ArrowRight } from "lucide-react";
 
-export default function KnowledgeGraphPage() {
-  const [selectedNode, setSelectedNode] = useState<any>(null);
+const TYPE_STYLES: Record<string, { bg: string; border: string; text: string; icon: any; emoji: string }> = {
+  district:        { bg: "#f5f3ff", border: "#a78bfa", text: "#6d28d9", icon: MapPin,   emoji: "🏙" },
+  river:           { bg: "#eff6ff", border: "#60a5fa", text: "#1d4ed8", icon: Waves,    emoji: "🌊" },
+  reservoir:       { bg: "#e0f2fe", border: "#38bdf8", text: "#0369a1", icon: Shield,   emoji: "💧" },
+  weather_station: { bg: "#fdf4ff", border: "#e879f9", text: "#86198f", icon: CloudRain, emoji: "🌤" },
+};
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["knowledgeGraph"],
-    queryFn: async () => {
-      const res = await axios.get("http://localhost:8000/api/v1/kg/graph");
-      return res.data;
-    },
-  });
+const RISK_COLORS: Record<string, string> = {
+  Critical: "#ef4444",
+  High: "#f97316",
+  Moderate: "#f59e0b",
+  Safe: "#3b82f6",
+};
 
-  // Calculate static layout positions to avoid physics simulation overhead
-  const { nodes, links } = useMemo(() => {
-    if (!data || !data.nodes) return { nodes: [], links: [] };
-    
-    const width = 800;
-    const height = 600;
-    const cx = width / 2;
-    const cy = height / 2;
-    
-    const rivers = data.nodes.filter((n: any) => n.type === "River");
-    const districts = data.nodes.filter((n: any) => n.type === "District");
-    
-    const positionedNodes = data.nodes.map((node: any) => {
-      let angle = 0;
-      let r = 0;
-      
-      if (node.type === "River") {
-        const idx = rivers.findIndex((n: any) => n.id === node.id);
-        angle = (idx / Math.max(1, rivers.length)) * 2 * Math.PI;
-        r = 120; // Inner circle
-      } else {
-        const idx = districts.findIndex((n: any) => n.id === node.id);
-        angle = (idx / Math.max(1, districts.length)) * 2 * Math.PI;
-        r = 280; // Outer circle
-      }
-      
-      return {
-        ...node,
-        x: cx + r * Math.cos(angle),
-        y: cy + r * Math.sin(angle)
-      };
-    });
-
-    const positionedLinks = data.links.map((link: any) => {
-      const sourceNode = positionedNodes.find((n: any) => n.id === link.source);
-      const targetNode = positionedNodes.find((n: any) => n.id === link.target);
-      return {
-        ...link,
-        sourceNode,
-        targetNode
-      };
-    }).filter((l: any) => l.sourceNode && l.targetNode);
-
-    return { nodes: positionedNodes, links: positionedLinks };
-  }, [data]);
+// Custom Node for ReactFlow
+function KGNode({ data }: { data: any }) {
+  const style = TYPE_STYLES[data.type] || TYPE_STYLES.district;
+  const riskColor = data.risk_score > 70 ? RISK_COLORS.Critical : data.risk_score > 50 ? RISK_COLORS.High : data.risk_score > 30 ? RISK_COLORS.Moderate : RISK_COLORS.Safe;
+  const isPulsing = data.isPropagating || data.risk_score > 60;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-heading font-bold text-slate-900 mb-1">Knowledge Graph Viewer</h1>
-        <p className="text-slate-500 font-medium">Explore topological relationships between rivers, dams, and districts.</p>
-      </div>
-
-      <div className="glass-card rounded-xl bg-white/80 border border-slate-200/60 shadow-sm relative overflow-hidden flex flex-col md:flex-row min-h-[600px]">
-        {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 backdrop-blur-sm z-10">
-            <Network className="w-16 h-16 text-blue-500 mb-4 animate-pulse opacity-50" />
-            <p className="text-slate-500 text-lg font-bold animate-pulse">Connecting to Graph Database...</p>
-          </div>
-        )}
-
-        {isError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 backdrop-blur-sm z-10">
-            <ServerOff className="w-16 h-16 text-rose-500 mb-4 opacity-50" />
-            <p className="text-rose-600 text-lg font-bold">Failed to connect to Knowledge Graph</p>
-          </div>
-        )}
-
-        {/* SVG Graph Area */}
-        <div className="flex-1 relative overflow-auto bg-slate-50">
-          <svg width={800} height={600} className="mx-auto" style={{ minWidth: 800, minHeight: 600 }}>
-            {/* Draw Links */}
-            {links.map((link: any, i: number) => (
-              <g key={`link-${i}`}>
-                <line 
-                  x1={link.sourceNode.x} 
-                  y1={link.sourceNode.y} 
-                  x2={link.targetNode.x} 
-                  y2={link.targetNode.y} 
-                  stroke={selectedNode && (selectedNode.id === link.source || selectedNode.id === link.target) ? "#3b82f6" : "#cbd5e1"} 
-                  strokeWidth={selectedNode && (selectedNode.id === link.source || selectedNode.id === link.target) ? 3 : 1}
-                  className="transition-all duration-300"
-                />
-              </g>
-            ))}
-
-            {/* Draw Nodes */}
-            {nodes.map((node: any) => (
-              <g 
-                key={node.id} 
-                transform={`translate(${node.x}, ${node.y})`}
-                onClick={() => setSelectedNode(node)}
-                className="cursor-pointer transition-transform duration-300 hover:scale-110"
-              >
-                <circle 
-                  r={node.type === "River" ? 25 : 35} 
-                  fill={node.type === "River" ? "#eff6ff" : "#f0fdf4"} 
-                  stroke={node.type === "River" ? "#3b82f6" : "#22c55e"} 
-                  strokeWidth={selectedNode?.id === node.id ? 4 : 2}
-                  className="transition-all duration-300 shadow-xl"
-                />
-                <text 
-                  textAnchor="middle" 
-                  dy={node.type === "River" ? 40 : 55}
-                  className="text-xs font-bold fill-slate-700 select-none"
-                >
-                  {node.name}
-                </text>
-                <text 
-                  textAnchor="middle" 
-                  dy={4}
-                  className="text-[10px] font-bold fill-slate-500 select-none"
-                >
-                  {node.type}
-                </text>
-              </g>
-            ))}
-          </svg>
-        </div>
-
-        {/* Info Panel */}
-        <div className="w-full md:w-80 bg-white border-l border-slate-200 p-6 flex flex-col">
-          <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
-            <Network className="w-5 h-5 mr-2 text-blue-500" />
-            Node Inspector
-          </h2>
-          
-          {selectedNode ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <p className="text-xs font-bold text-slate-400 uppercase">Entity Name</p>
-                <p className="text-xl font-bold text-slate-800">{selectedNode.name}</p>
-                <span className={`inline-block mt-2 px-2 py-1 rounded text-xs font-bold ${selectedNode.type === 'River' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                  {selectedNode.type}
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-sm font-bold text-slate-700 border-b pb-2">Properties</h3>
-                {Object.entries(selectedNode).map(([key, value]) => {
-                  if (['id', 'name', 'type', 'x', 'y', 'val', 'group'].includes(key)) return null;
-                  return (
-                    <div key={key} className="flex justify-between items-center text-sm">
-                      <span className="text-slate-500 capitalize">{key.replace('_', ' ')}</span>
-                      <span className="font-bold text-slate-800">{typeof value === 'number' ? value.toLocaleString(undefined, {maximumFractionDigits: 2}) : String(value)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-center">
-              <Network className="w-12 h-12 mb-3 opacity-20" />
-              <p className="text-sm">Click on a node in the graph to view its telemetry and topological properties.</p>
-            </div>
+    <div className="group flex flex-col items-center" style={{ minWidth: 90 }}>
+      <Handle type="target" position={Position.Top} className="opacity-0 transition-opacity" />
+      <motion.div
+        animate={isPulsing ? { scale: [1, 1.05, 1], boxShadow: `0 0 15px ${riskColor}80` } : {}}
+        transition={isPulsing ? { duration: 1.5, repeat: Infinity } : {}}
+        className="rounded-2xl border-2 px-3 py-2 cursor-pointer transition-colors duration-1000 bg-white"
+        style={{
+          borderColor: riskColor,
+          backgroundColor: data.risk_score > 50 ? `${riskColor}10` : '#ffffff',
+        }}
+      >
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-base">{style.emoji}</span>
+          {data.risk_score > 0 && (
+            <div className="w-2 h-2 rounded-full transition-colors duration-1000" style={{ background: riskColor }} />
           )}
         </div>
+        <p className="text-[11px] font-bold leading-tight" style={{ color: style.text }}>
+          {data.label}
+        </p>
+        <p className="text-[9px] capitalize mt-0.5 font-mono" style={{ color: style.text, opacity: 0.7 }}>
+          {data.type.replace("_", " ")}
+        </p>
+        {data.risk_score > 0 && (
+          <div className="mt-1.5 w-full bg-slate-100 rounded-full h-1 overflow-hidden">
+            <motion.div
+              className="h-full"
+              initial={{ width: 0 }}
+              animate={{ width: `${data.risk_score}%`, backgroundColor: riskColor }}
+              transition={{ duration: 1 }}
+            />
+          </div>
+        )}
+      </motion.div>
+      <Handle type="source" position={Position.Bottom} className="opacity-0 transition-opacity" />
+    </div>
+  );
+}
+
+const nodeTypes: NodeTypes = { kgNode: KGNode };
+
+export default function KnowledgeGraph() {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["kg", "graph"],
+    queryFn: async () => (await api.get("/kg/graph")).data,
+  });
+
+  useEffect(() => {
+    if (data) {
+      // Build Layout
+      const typePositions: Record<string, { x: number; y: number }> = {
+        weather_station: { x: 0, y: 0 },
+        reservoir: { x: 600, y: 0 },
+        river: { x: 300, y: 250 },
+        district: { x: 150, y: 520 },
+      };
+
+      const typeCount: Record<string, number> = {};
+      const newNodes = data.nodes.map((n: any) => {
+        const typePos = typePositions[n.type] || { x: 200, y: 400 };
+        const count = typeCount[n.type] || 0;
+        typeCount[n.type] = count + 1;
+
+        return {
+          id: n.id,
+          type: "kgNode",
+          position: {
+            x: typePos.x + (count * 150) - (n.type === "district" ? 300 : 0),
+            y: typePos.y + (count % 2 === 0 ? 0 : 40),
+          },
+          data: { ...n, isPropagating: false },
+        };
+      });
+
+      const newEdges = data.edges.map((e: any) => ({
+        id: `${e.source}-${e.target}`,
+        source: e.source,
+        target: e.target,
+        animated: e.animated || true,
+        label: e.type,
+        labelStyle: { fill: "#64748b", fontWeight: 700, fontSize: 10 },
+        labelBgStyle: { fill: "#f8fafc", fillOpacity: 0.8 },
+        style: { stroke: "#cbd5e1", strokeWidth: 2, transition: 'stroke 1s, stroke-width 1s' },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#cbd5e1" },
+      }));
+
+      setNodes(newNodes);
+      setEdges(newEdges);
+    }
+  }, [data, setNodes, setEdges]);
+
+  // Simulation Logic: Rainfall spike propagates through the graph
+  const triggerPropagation = () => {
+    if (isSimulating) return;
+    setIsSimulating(true);
+
+    // Step 1: Weather Stations spike
+    setTimeout(() => {
+      setNodes((nds) => nds.map((n) => n.data.type === "weather_station" ? { ...n, data: { ...n.data, risk_score: 85, isPropagating: true } } : n));
+      setEdges((eds) => eds.map((e) => e.source.startsWith("w_") ? { ...e, style: { stroke: RISK_COLORS.Critical, strokeWidth: 4 } } : e));
+    }, 1000);
+
+    // Step 2: Rivers swell
+    setTimeout(() => {
+      setNodes((nds) => nds.map((n) => n.data.type === "river" ? { ...n, data: { ...n.data, risk_score: 75, isPropagating: true } } : n));
+      setEdges((eds) => eds.map((e) => e.source.startsWith("r_") ? { ...e, style: { stroke: RISK_COLORS.High, strokeWidth: 4 } } : e));
+    }, 2500);
+
+    // Step 3: Districts flood
+    setTimeout(() => {
+      setNodes((nds) => nds.map((n) => n.data.type === "district" ? { ...n, data: { ...n.data, risk_score: 82, isPropagating: true } } : n));
+    }, 4000);
+
+    // Reset
+    setTimeout(() => {
+      setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, risk_score: Math.max(10, n.data.risk_score - 40), isPropagating: false } })));
+      setEdges((eds) => eds.map((e) => ({ ...e, style: { stroke: "#cbd5e1", strokeWidth: 2 } })));
+      setIsSimulating(false);
+    }, 8000);
+  };
+
+  const onNodeClick = useCallback((_: any, node: Node) => {
+    setSelectedNode(node.data);
+  }, []);
+
+  if (isLoading || !nodes.length) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 h-[calc(100vh-6rem)] pb-6 flex flex-col">
+      <div className="flex justify-between items-end flex-shrink-0">
+        <div>
+          <h1 className="text-3xl font-heading font-bold text-slate-800">Dynamic Knowledge Graph</h1>
+          <p className="text-sm text-slate-500 mt-1">Real-time semantic topology and risk propagation</p>
+        </div>
+        <button
+          onClick={triggerPropagation}
+          disabled={isSimulating}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-violet-600 transition-colors disabled:opacity-50"
+        >
+          {isSimulating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+          {isSimulating ? "Propagating Risk..." : "Simulate Rainfall Spike"}
+        </button>
+      </div>
+
+      <div className="flex-1 glass-card overflow-hidden relative border border-slate-200 shadow-xl rounded-2xl flex">
+        {/* ReactFlow Canvas */}
+        <div className="flex-1 h-full bg-[#f8fafc]">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={onNodeClick}
+            nodeTypes={nodeTypes}
+            fitView
+            minZoom={0.5}
+            maxZoom={2}
+          >
+            <Background color="#cbd5e1" gap={20} size={2} />
+            <Controls className="bg-white border-slate-200 shadow-md" />
+            <MiniMap className="border border-slate-200 rounded-xl" />
+          </ReactFlow>
+        </div>
+
+        {/* Selected Node Details Sidebar */}
+        <AnimatePresence>
+          {selectedNode && (
+            <motion.div
+              initial={{ x: 300, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 300, opacity: 0 }}
+              className="w-80 bg-white/95 backdrop-blur-md border-l border-slate-200 p-6 flex flex-col h-full shadow-2xl z-10"
+            >
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">
+                    {selectedNode.type.replace("_", " ")} NODE
+                  </span>
+                  <h3 className="text-xl font-heading font-bold text-slate-800 mt-1">{selectedNode.label}</h3>
+                </div>
+                <button onClick={() => setSelectedNode(null)} className="p-1 hover:bg-slate-100 rounded-full">
+                  <ArrowRight className="w-4 h-4 text-slate-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <p className="text-xs text-slate-500 mb-1 font-semibold">Inferred Risk Score</p>
+                  <div className="flex items-end gap-2">
+                    <span className="text-3xl font-bold font-mono text-slate-800">{selectedNode.risk_score.toFixed(0)}</span>
+                    <span className="text-xs text-slate-400 mb-1.5">/ 100</span>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 mb-2">Node Influence</h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    This node acts as a primary feature vector in the GDNN model. 
+                    Changes in its state dynamically propagate attention weights to connected {selectedNode.type === 'river' ? 'districts' : 'downstream entities'}.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
