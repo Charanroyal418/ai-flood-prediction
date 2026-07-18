@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { supabase } from "@/lib/supabase";
+import { useFloodData } from "@/context/FloodDataContext";
 import {
   Brain, Droplets, AlertTriangle, Shield, Activity, ArrowRight,
   TrendingUp, MapPin, Clock, Zap, Network, BarChart3, ChevronRight,
-  CloudRain, Waves, RefreshCw, Circle,
+  CloudRain, Waves, RefreshCw, Circle, Wifi, WifiOff,
 } from "lucide-react";
 import dynamicImport from "next/dynamic";
 
@@ -186,18 +188,84 @@ function PipelineStatus() {
 }
 
 export default function CommandCenter() {
+  const queryClient = useQueryClient();
+
+  // ─── Primary: WebSocket real-time data ───────────────────────────
+  const {
+    districts: wsDistricts,
+    alerts: wsAlerts,
+    modelMeta,
+    lastUpdated,
+    dashboardStatus,
+    criticalCount,
+    highCount,
+    triggerPipeline,
+  } = useFloodData();
+
+  // ─── Fallback: REST API for initial load ─────────────────────────
   const { data, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
       const res = await api.get("/dashboard/live");
       return res.data;
     },
-    refetchInterval: 8000,
+    // Only poll when WS is not connected
+    refetchInterval: dashboardStatus === "connected" ? false : 30_000,
   });
 
-  const metrics = data?.metrics;
-  const topDistricts = data?.top_risk_districts || [];
-  const alerts = data?.alerts || [];
+  // Supabase Realtime subscription (kept for redundancy)
+  useEffect(() => {
+    const channel1 = supabase
+      .channel('dashboard_predictions')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prediction_history' }, () => {
+        if (dashboardStatus !== "connected") {
+          queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
+        }
+      })
+      .subscribe();
+
+    const channel2 = supabase
+      .channel('dashboard_alerts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alerts' }, () => {
+        if (dashboardStatus !== "connected") {
+          queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel1);
+      supabase.removeChannel(channel2);
+    };
+  }, [dashboardStatus]);
+
+  // ─── Data source: prefer WebSocket, fall back to REST ────────────
+  // If WS has pushed data, use it; otherwise use REST
+  const hasWsData = wsDistricts.length > 0;
+  const metrics = hasWsData
+    ? {
+        avg_risk_score: wsDistricts.reduce((s, d) => s + d.risk_score, 0) / (wsDistricts.length || 1),
+        active_alerts_count: wsAlerts.length,
+        critical_districts: criticalCount,
+        high_risk_districts: highCount,
+        avg_rainfall_24h_mm: wsDistricts.reduce((s, d) => s + (d.rainfall_mm || 0), 0) / (wsDistricts.length || 1),
+        gdnn_inference_ms: modelMeta?.inference_time_ms ?? 0,
+        model_confidence: wsDistricts.reduce((s, d) => s + (d.confidence || 0), 0) / (wsDistricts.length || 1),
+        kg_nodes: modelMeta?.node_count ?? 0,
+      }
+    : data?.metrics;
+
+  const topDistricts = hasWsData
+    ? [...wsDistricts]
+        .sort((a, b) => b.risk_score - a.risk_score)
+        .slice(0, 5)
+        .map(d => ({ name: d.district_name, risk_score: Math.round(d.risk_score), risk_level: d.risk_level, risk_color: d.risk_color }))
+    : (data?.top_risk_districts || []);
+
+  const alerts = hasWsData
+    ? wsAlerts.slice(0, 3).map(a => ({ ...a, district: `District #${a.district_id}` }))
+    : (data?.alerts || []);
+
   const events = data?.events || [];
 
   const [tick, setTick] = useState(0);
@@ -205,6 +273,31 @@ export default function CommandCenter() {
     const t = setInterval(() => setTick(p => p + 1), 5000);
     return () => clearInterval(t);
   }, []);
+
+  const [simulating, setSimulating] = useState(false);
+  const handleSimulate = async () => {
+    setSimulating(true);
+    try {
+      // Try WebSocket trigger first (faster)
+      if (dashboardStatus === "connected") {
+        triggerPipeline(true);
+        setTimeout(() => setSimulating(false), 3000);
+      } else {
+        await api.post("/dashboard/simulate-storm");
+        queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
+        setSimulating(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setSimulating(false);
+    }
+  };
+
+  // Live indicator: show WS status
+  const isLive = dashboardStatus === "connected";
+  const liveTime = lastUpdated
+    ? new Date(lastUpdated).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : (dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—");
 
   return (
     <div className="space-y-6">
@@ -214,12 +307,32 @@ export default function CommandCenter() {
           <h1 className="text-2xl font-heading font-bold text-slate-800">Command Center</h1>
           <p className="text-sm text-slate-500 mt-1">Tamil Nadu Flood Intelligence · Real-time GDNN monitoring</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <div className="relative w-2 h-2">
-            <div className="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-75" />
-            <div className="relative w-2 h-2 rounded-full bg-green-500" />
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleSimulate}
+            disabled={simulating}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 shadow-md flex items-center gap-1.5 ${
+              simulating ? "opacity-60 cursor-wait" : ""
+            }`}
+          >
+            <Zap className={`w-3.5 h-3.5 ${simulating ? "animate-bounce" : ""}`} />
+            {simulating ? "Simulating..." : "Simulate Storm"}
+          </button>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <div className="relative w-2 h-2">
+              {isLive ? (
+                <>
+                  <div className="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-75" />
+                  <div className="relative w-2 h-2 rounded-full bg-green-500" />
+                </>
+              ) : (
+                <div className="relative w-2 h-2 rounded-full bg-yellow-400" />
+              )}
+            </div>
+            <span className="font-medium">
+              {isLive ? "Live WS" : "Polling"} · {liveTime}
+            </span>
           </div>
-          <span className="font-medium">Live · {dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString("en-IN", {hour: "2-digit", minute: "2-digit", second: "2-digit"}) : "—"}</span>
         </div>
       </div>
 
@@ -261,7 +374,10 @@ export default function CommandCenter() {
               </div>
             </div>
             <div className="h-[400px] rounded-xl overflow-hidden">
-              <FloodMap districts={data?.districts} />
+              <FloodMap districts={hasWsData
+                ? wsDistricts.map(d => ({ name: d.district_name, risk_score: d.risk_score, risk_level: d.risk_level, risk_color: d.risk_color, lat: 0, lon: 0 }))
+                : data?.districts
+              } />
             </div>
           </div>
         </div>
@@ -372,9 +488,9 @@ export default function CommandCenter() {
           <PipelineStatus />
           <div className="mt-5 grid grid-cols-3 gap-3">
             {[
-              { label: "Model", value: "GDNN v2.1" },
+              { label: "Model", value: modelMeta?.inference_mode ?? (metrics?.inference_mode || "GDNN v2.1") },
               { label: "Confidence", value: `${((metrics?.model_confidence ?? 0.924) * 100).toFixed(1)}%` },
-              { label: "KG Nodes", value: metrics?.kg_nodes ?? 312 },
+              { label: "KG Nodes", value: modelMeta?.node_count ?? metrics?.kg_nodes ?? 312 },
             ].map(({ label, value }) => (
               <div key={label} className="text-center p-3 rounded-xl bg-violet-50/60 border border-violet-100">
                 <p className="text-[10px] text-violet-500 font-semibold uppercase tracking-wide">{label}</p>

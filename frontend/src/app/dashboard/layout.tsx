@@ -1,5 +1,6 @@
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import QueryProvider from "@/components/QueryProvider";
+import { FloodDataProvider } from "@/context/FloodDataContext";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +11,11 @@ export default function DashboardRootLayout({
 }) {
   return (
     <QueryProvider>
-      <DashboardLayout>
-        {children}
-      </DashboardLayout>
+      <FloodDataProvider>
+        <DashboardLayout>
+          {children}
+        </DashboardLayout>
+      </FloodDataProvider>
     </QueryProvider>
   );
 }

@@ -10,7 +10,7 @@ class District(Base):
     population = Column(Float, nullable=True)
 
     # Relationships
-    predictions = relationship("DistrictPrediction", back_populates="district")
+    predictions = relationship("PredictionHistory", back_populates="district")
     alerts = relationship("Alert", back_populates="district")
     weather = relationship("Weather", back_populates="district")
     rainfall = relationship("Rainfall", back_populates="district")

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.models.alert import Alert
-from app.models.prediction import DistrictPrediction
+from app.models.history import PredictionHistory
 from app.models.river import RiverLevel
 from app.models.weather import Rainfall
 from datetime import datetime, timedelta, timezone
@@ -16,15 +16,15 @@ class AlertEngine:
         recent_threshold = now - timedelta(hours=2)
         
         # 1. AI Predictions
-        recent_predictions = db.query(DistrictPrediction).filter(DistrictPrediction.predicted_at >= recent_threshold).all()
+        recent_predictions = db.query(PredictionHistory).filter(PredictionHistory.created_at >= recent_threshold).all()
         for pred in recent_predictions:
-            if pred.risk_score >= 76: # High or Severe
+            if pred.current_risk_score >= 76: # High or Severe
                 AlertEngine._create_alert_if_needed(
                     db,
                     district_id=pred.district_id,
-                    level="Critical" if pred.risk_score >= 91 else "Warning",
-                    severity="Severe" if pred.risk_score >= 91 else "High",
-                    reason=f"AI predicted flood risk score: {pred.risk_score:.1f}. Reasons: {json.dumps(pred.explanation)}"
+                    level="Critical" if pred.current_risk_score >= 91 else "Warning",
+                    severity="Severe" if pred.current_risk_score >= 91 else "High",
+                    reason=f"AI predicted flood risk score: {pred.current_risk_score:.1f}. Reasons: {json.dumps(pred.shap_values)}"
                 )
                 
         # 2. River Levels

@@ -33,9 +33,9 @@ def run_migrations():
         print(upg_result.stderr)
         
     if upg_result.returncode == 0:
-        print("✅ SUCCESS: Database successfully migrated!")
+        print("[SUCCESS] Database successfully migrated!")
     else:
-        print("❌ Migration application failed.")
+        print("[ERROR] Migration application failed.")
 
 if __name__ == "__main__":
     run_migrations()
