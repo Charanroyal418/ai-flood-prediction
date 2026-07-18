@@ -37,14 +37,23 @@ class TemporalFloodGNN(torch.nn.Module):
         
         # Spatial Message Passing per time step
         out_seq = []
+        attentions = []
         for t in range(seq_len):
             x_t = x[:, t, :] # Shape: [num_nodes, num_features]
             x_t = F.dropout(x_t, p=0.2, training=self.training)
-            x_t = F.elu(self.gat1(x_t, edge_index))
+            
+            # GAT 1
+            x_t, _ = self.gat1(x_t, edge_index, return_attention_weights=True)
+            x_t = F.elu(x_t)
             
             x_t = F.dropout(x_t, p=0.2, training=self.training)
-            x_t = F.elu(self.gat2(x_t, edge_index)) # Shape: [num_nodes, 32]
+            
+            # GAT 2
+            x_t, (attn_edge_idx, attn_alpha) = self.gat2(x_t, edge_index, return_attention_weights=True)
+            x_t = F.elu(x_t) # Shape: [num_nodes, 32]
+            
             out_seq.append(x_t)
+            attentions.append((attn_edge_idx, attn_alpha))
             
         # Stack temporal outputs to [num_nodes, seq_len, 32]
         out_seq = torch.stack(out_seq, dim=1)
@@ -58,8 +67,13 @@ class TemporalFloodGNN(torch.nn.Module):
         # Node-level flood risk classification
         out = self.classifier(last_out)
         
-        # Return log_softmax for CrossEntropyLoss
-        return F.log_softmax(out, dim=1)
+        log_probs = F.log_softmax(out, dim=1)
+        
+        if self.training:
+            return log_probs
+            
+        # For inference, return the full computational graph data
+        return log_probs, last_out, attentions
 
 def train_gnn_epoch(model, optimizer, data):
     """
@@ -69,6 +83,8 @@ def train_gnn_epoch(model, optimizer, data):
     optimizer.zero_grad()
     
     out = model(data.x, data.edge_index)
+    if isinstance(out, tuple):
+        out = out[0]
     
     # Calculate loss only on nodes we have ground truth for
     loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])
