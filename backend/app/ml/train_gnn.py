@@ -38,6 +38,9 @@ def train_gnn():
     # Evaluation
     model.eval()
     out = model(data.x, data.edge_index)
+    if isinstance(out, tuple):
+        out = out[0]
+    
     pred = out.argmax(dim=1)
     
     y_true = data.y[data.test_mask].numpy()

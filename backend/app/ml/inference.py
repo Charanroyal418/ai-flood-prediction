@@ -141,7 +141,7 @@ class GNNInferenceEngine:
         H: torch.Tensor,
         edge_index: torch.Tensor,
         node_ids: List[str],
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         Run flood risk inference for all graph nodes.
         
@@ -151,7 +151,10 @@ class GNNInferenceEngine:
             node_ids: Ordered list of node IDs (e.g., "d-1", "rv-1")
             
         Returns:
-            List of per-node result dicts with risk_score, risk_level, shap_values
+            Dict containing:
+                - "nodes": List of per-node result dicts
+                - "embeddings": Node embeddings array [num_nodes, emb_dim]
+                - "attentions": List of GAT attention tuples [(edge_index, alpha), ...]
         """
         if self._model_loaded and not self._fallback_mode:
             return self._gnn_predict(H, edge_index, node_ids)
@@ -163,11 +166,18 @@ class GNNInferenceEngine:
         H: torch.Tensor,
         edge_index: torch.Tensor,
         node_ids: List[str],
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """Run forward pass through trained GAT+GRU model."""
         try:
             with torch.no_grad():
-                log_probs = self._model(H, edge_index)  # [num_nodes, num_classes]
+                out = self._model(H, edge_index)
+                if isinstance(out, tuple):
+                    log_probs, embeddings, attentions = out
+                else:
+                    log_probs = out
+                    embeddings = torch.zeros((len(node_ids), 32))
+                    attentions = []
+
                 probs = torch.exp(log_probs)              # Actual probabilities
                 pred_classes = probs.argmax(dim=1)        # Class with max probability
                 confidence = probs.max(dim=1).values      # Confidence per node
@@ -183,7 +193,7 @@ class GNNInferenceEngine:
 
                 label, color = RISK_CLASS_MAP[cls]
 
-                # SHAP values from attention weights (node features at last time step)
+                # Extract SHAP based on feature gradients or input feature values weighted by first layer GAT
                 shap = self._compute_shap(H[i, -1, :].tolist(), risk_score)
 
                 results.append({
@@ -200,7 +210,11 @@ class GNNInferenceEngine:
                     "inference_mode": "GNN",
                 })
 
-            return results
+            return {
+                "nodes": results,
+                "embeddings": embeddings.cpu().numpy(),
+                "attentions": attentions
+            }
 
         except Exception as e:
             logger.error(f"[GNN] Forward pass failed: {e}. Switching to fallback.")
@@ -210,7 +224,7 @@ class GNNInferenceEngine:
         self,
         H: torch.Tensor,
         node_ids: List[str],
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         Physics-based fallback prediction using the same 12 features.
         
@@ -285,7 +299,11 @@ class GNNInferenceEngine:
                 "inference_mode": "Physics",
             })
 
-        return results
+        return {
+            "nodes": results,
+            "embeddings": np.random.randn(len(node_ids), 32), # Mock embeddings
+            "attentions": []
+        }
 
     def _compute_shap(self, features: List[float], risk_score: float) -> List[Dict]:
         """

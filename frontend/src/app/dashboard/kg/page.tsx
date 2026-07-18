@@ -15,17 +15,20 @@ import {
   ArrowRight, Clock, Play, Pause, TrendingUp, Info, X, Map, BarChart2
 } from "lucide-react";
 
-// Category definitions and styles
+// Category definitions and styles — all 12 node types
 const TYPE_CONFIG: Record<string, { bg: string; border: string; text: string; emoji: string; label: string }> = {
   district:        { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700", emoji: "🏙", label: "District" },
+  population:      { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-700", emoji: "👥", label: "Population" },
   river:           { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700", emoji: "🌊", label: "River" },
+  catchment:       { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-700", emoji: "🗺", label: "Catchment" },
   reservoir:       { bg: "bg-cyan-50", border: "border-cyan-200", text: "text-cyan-700", emoji: "💧", label: "Reservoir" },
+  dam:             { bg: "bg-indigo-50", border: "border-indigo-200", text: "text-indigo-700", emoji: "🏗", label: "Dam" },
   weather_station: { bg: "bg-fuchsia-50", border: "border-fuchsia-200", text: "text-fuchsia-700", emoji: "🌤", label: "Weather Stn" },
   rain_gauge:      { bg: "bg-pink-50", border: "border-pink-200", text: "text-pink-700", emoji: "☔", label: "Rain Gauge" },
-  relief_camp:     { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", emoji: "⛺", label: "Relief Camp" },
-  soil_moisture:   { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-700", emoji: "🌱", label: "Soil Sat" },
+  sensor:          { bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700", emoji: "📡", label: "Sensor" },
+  drainage_basin:  { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-700", emoji: "🌿", label: "Drainage" },
   elevation_zone:  { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", emoji: "⛰", label: "Elevation" },
-  road_network:    { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-700", emoji: "🛣", label: "Roadway" },
+  flood_event:     { bg: "bg-red-50", border: "border-red-300", text: "text-red-700", emoji: "🌧", label: "Flood Event" },
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -73,12 +76,16 @@ function KGNode({ data }: { data: any }) {
         {/* Small live telemetry snippet */}
         <p className="text-[8px] text-slate-500 font-medium font-mono leading-none truncate">
           {data.type === "district" ? `Rain: ${data.data?.rainfall_24h ?? 0}mm` :
+           data.type === "population" ? `Pop: ${((data.data?.population_count ?? 0)/1e6).toFixed(2)}M` :
            data.type === "river" ? `Level: ${data.data?.current_level_m ?? 0}m` :
+           data.type === "catchment" ? `Area: ${data.data?.area_km2 ?? 0}km²` :
            data.type === "reservoir" ? `Fill: ${data.data?.fill_pct ?? 0}%` :
+           data.type === "dam" ? `Integrity: ${data.data?.structural_integrity ?? 100}%` :
            data.type === "weather_station" ? `Rain: ${data.data?.rainfall_mm ?? 0}mm` :
-           data.type === "soil_moisture" ? `Sat: ${data.data?.saturation_pct ?? 0}%` :
-           data.type === "road_network" ? `Block: ${data.data?.blockage_pct ?? 0}%` :
-           data.type === "relief_camp" ? `Occ: ${data.data?.occupancy_pct ?? 0}%` : "Telemetry Live"}
+           data.type === "sensor" ? `Status: Live` :
+           data.type === "drainage_basin" ? `Drainage Basin` :
+           data.type === "flood_event" ? `Recorded: ${data.data?.recorded_at ?? "—"}` :
+           "Telemetry Live"}
         </p>
 
         {/* Mini progress bar */}
@@ -125,15 +132,18 @@ export default function DynamicKnowledgeGraph() {
 
   // Category layout columns to place entities logically in a left-to-right flow
   const categoryColumns: Record<string, number> = {
+    sensor: 0,
     weather_station: 0,
     rain_gauge: 0,
-    soil_moisture: 0,
-    elevation_zone: 0,
-    reservoir: 1,
+    drainage_basin: 1,
+    catchment: 1,
+    elevation_zone: 1,
+    reservoir: 2,
+    dam: 2,
     river: 2,
     district: 3,
-    relief_camp: 4,
-    road_network: 4
+    population: 4,
+    flood_event: 4,
   };
 
   const getRiskFromHistory = (node: any, idx: number) => {
@@ -289,25 +299,32 @@ export default function DynamicKnowledgeGraph() {
     );
   }
 
-  // Calculate Explainability reasons dynamically when node is clicked
+  // Build explainability breakdown from real SHAP values returned by the GNN
   const getExplainabilityBreakdown = (node: any) => {
+    // Use actual SHAP values from backend if available
+    if (node.shap_values && node.shap_values.length > 0) {
+      return node.shap_values.map((s: any) => ({
+        label: s.feature,
+        change: `${s.contribution >= 0 ? "+" : ""}${s.contribution.toFixed(1)}%`,
+        isPositive: s.contribution >= 0
+      }));
+    }
+    // Fallback: derive from node telemetry when SHAP not available
     if (node.type !== "district") {
       return [
-        { label: "Base Status", value: "Primary telemetry link active." },
+        { label: "Base Status", value: `${node.type} node, primary telemetry active.` },
         { label: "Confidence", value: `${(node.confidence * 100).toFixed(0)}% sensor alignment.` }
       ];
     }
     const rain = node.data?.rainfall_24h ?? 0;
     const saturation = node.data?.soil_saturation_pct ?? 0;
     const elevation = node.data?.elevation_m ?? 50;
-    
     const factors = [];
-    if (rain > 0) factors.push({ label: "Heavy Rainfall", change: `+${(rain * 0.4).toFixed(0)}%` });
-    if (saturation > 40) factors.push({ label: "Soil Saturation", change: `+${(saturation * 0.15).toFixed(0)}%` });
-    if (elevation < 15) factors.push({ label: "Low Elevation Basin", change: "+15%" });
-    factors.push({ label: "Upstream Inflow Influence", change: `+${(node.risk_score * 0.25).toFixed(0)}%` });
-    factors.push({ label: "GAT Structural Path", change: `+${(node.importance * 20).toFixed(0)}%` });
-    
+    if (rain > 0) factors.push({ label: "Heavy Rainfall", change: `+${(rain * 0.4).toFixed(0)}%`, isPositive: true });
+    if (saturation > 40) factors.push({ label: "Soil Saturation", change: `+${(saturation * 0.15).toFixed(0)}%`, isPositive: true });
+    if (elevation < 15) factors.push({ label: "Low Elevation Basin", change: "+15%", isPositive: true });
+    factors.push({ label: "Upstream Inflow", change: `+${(node.risk_score * 0.25).toFixed(0)}%`, isPositive: true });
+    factors.push({ label: "GAT Attention Weight", change: `+${((node.importance ?? 0.5) * 20).toFixed(0)}%`, isPositive: true });
     return factors;
   };
 
@@ -500,7 +517,7 @@ export default function DynamicKnowledgeGraph() {
               )}
             </div>
             <p className="text-[9px] text-slate-400 font-medium leading-normal text-center font-heading">
-              Coordinates project learned 128D node aggregates into 2D. Districts cluster by flood threat similarity.
+              Coordinates project learned 32D GRU node aggregates into 2D via PCA. Districts cluster by flood threat similarity.
             </p>
           </div>
 
@@ -533,14 +550,23 @@ export default function DynamicKnowledgeGraph() {
               <div>
                 <p className="text-[9px] font-bold text-slate-400 uppercase mb-1 font-mono">Highest Attention Paths</p>
                 <div className="space-y-1.5 leading-relaxed bg-slate-50 border border-slate-100 p-2.5 rounded-xl font-medium text-slate-600">
-                  <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                    <span className="truncate">Nilgiris → Bhavani River → Erode → Thanjavur</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                    <span className="truncate">Chennai AWS → Chennai City → ECR Corridor</span>
-                  </div>
+                  {(data.explainability.highest_attention_paths ?? []).length > 0
+                    ? (data.explainability.highest_attention_paths as string[][]).map((path: string[], i: number) => {
+                        const pathLabels = path.map((pid: string) => {
+                          const nd = data.nodes.find((n: any) => n.id === pid);
+                          return nd?.label ?? pid;
+                        });
+                        const dot = i === 0 ? "bg-red-500" : "bg-amber-500";
+                        return (
+                          <div key={i} className="flex items-center gap-1">
+                            <span className={`w-1.5 h-1.5 rounded-full ${dot} shrink-0`} />
+                            <span className="truncate text-[9px]">{pathLabels.join(" → ")}</span>
+                          </div>
+                        );
+                      })
+                    : (
+                      <p className="text-[9px] text-slate-400">Run GNN inference to compute attention paths.</p>
+                    )}
                 </div>
               </div>
             </div>
@@ -600,7 +626,10 @@ export default function DynamicKnowledgeGraph() {
                   {getExplainabilityBreakdown(selectedNode).map((factor: any, idx: number) => (
                     <div key={idx} className="flex justify-between items-center bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg text-xs">
                       <span className="font-semibold text-slate-700">{factor.label}</span>
-                      <span className="font-bold text-red-500 font-mono">{factor.change || factor.value}</span>
+                      <span className={`font-bold font-mono text-[10px] ${
+                        factor.isPositive === false ? "text-green-500" :
+                        parseFloat(factor.change ?? factor.value ?? "0") < 0 ? "text-green-500" : "text-red-500"
+                      }`}>{factor.change || factor.value}</span>
                     </div>
                   ))}
                 </div>
