@@ -144,7 +144,7 @@ def upgrade() -> None:
     op.create_table('report',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('district_id', sa.Integer(), nullable=True),
-    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.Column('user_id', sa.Uuid(), nullable=True),
     sa.Column('description', sa.String(), nullable=False),
     sa.Column('water_depth', sa.Float(), nullable=True),
     sa.Column('location_json', sa.JSON(), nullable=True),

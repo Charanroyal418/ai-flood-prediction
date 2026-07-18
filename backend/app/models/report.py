@@ -7,7 +7,7 @@ class Report(Base):
     __tablename__ = "report"
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
-    user_id = Column(Integer, ForeignKey("user.id"), nullable=True)
+    user_id = Column(Uuid, ForeignKey("user.id"), nullable=True)
     description = Column(String, nullable=False)
     water_depth = Column(Float, nullable=True)
     location_json = Column(JSON, nullable=True)
