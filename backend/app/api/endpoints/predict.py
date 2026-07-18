@@ -101,9 +101,9 @@ def predict_flood_risk(req: PredictionRequest, use_gnn: bool = True, db: Session
             # Features are 12 dimensional
             # [Rainfall, River Level, Humidity, Pressure, Temperature, Elevation, Slope, Drainage Density, Historical Flood Count, Population Density, Land Cover, Temporal Features]
             # We fill what we have and keep rest as what was fetched from the snapshot
-            x[0, 0] = rainfall
-            x[0, 5] = elevation
-            x[0, 6] = req.slope_degrees
+            x[0, -1, 0] = rainfall
+            x[0, -1, 5] = elevation
+            x[0, -1, 6] = req.slope_degrees
             
             with torch.no_grad():
                 out = model(x, edge_index)
@@ -118,7 +118,7 @@ def predict_flood_risk(req: PredictionRequest, use_gnn: bool = True, db: Session
                 
             features_dict = {
                 "rainfall_24h": float(rainfall),
-                "river_level": float(x[0, 1].item()),
+                "river_level": float(x[0, -1, 1].item()),
                 "elevation": float(elevation),
                 "slope": float(req.slope_degrees)
             }

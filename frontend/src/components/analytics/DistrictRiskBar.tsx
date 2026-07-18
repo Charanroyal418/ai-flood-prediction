@@ -2,14 +2,14 @@
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import api from '@/lib/api';
 
 export function DistrictRiskBar() {
   const { data: riskData, isLoading } = useQuery({
     queryKey: ['districtRisks'],
     queryFn: async () => {
       try {
-        const res = await axios.get('http://localhost:8000/api/v1/predict/active-risks');
+        const res = await api.get('/predict/active-risks');
         return res.data;
       } catch {
         return [

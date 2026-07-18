@@ -1,20 +1,21 @@
 import uuid
-from sqlalchemy import Column, String, Integer, ForeignKey, Boolean
-from geoalchemy2 import Geometry
-from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime
+from sqlalchemy import Column, String, Integer, ForeignKey, DateTime, Uuid, JSON
 from app.db.base_class import Base
 
 class Shelter(Base):
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    district_id = Column(Integer, ForeignKey("district.id"), nullable=False)
+    __tablename__ = "shelters"
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
     name = Column(String, nullable=False)
-    location = Column(Geometry('POINT', srid=4326), nullable=True)
-    capacity = Column(Integer, default=0)
-    current_occupancy = Column(Integer, default=0)
+    capacity = Column(Integer, nullable=True)
+    geom_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Hospital(Base):
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    district_id = Column(Integer, ForeignKey("district.id"), nullable=False)
+    __tablename__ = "hospitals"
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
     name = Column(String, nullable=False)
-    location = Column(Geometry('POINT', srid=4326), nullable=True)
-    has_emergency = Column(Boolean, default=True)
+    geom_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

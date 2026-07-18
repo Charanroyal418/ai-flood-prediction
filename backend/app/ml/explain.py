@@ -69,3 +69,9 @@ def explain_prediction(features_dict, prediction_class):
     explanations.sort(key=lambda x: int(x.split(' contributes ')[1].replace('%', '').split()[0]), reverse=True)
     
     return explanations
+
+def get_ml_components():
+    return None, None, None
+
+def get_top_reasons(df, pred_class):
+    return explain_prediction(df.iloc[0].to_dict(), pred_class)

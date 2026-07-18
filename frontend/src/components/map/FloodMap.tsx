@@ -1,139 +1,214 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Popup, CircleMarker, GeoJSON } from "react-leaflet";
-import type { Map as LeafletMap } from "leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl, LayersControl, LayerGroup, GeoJSON } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
-
 import L from "leaflet";
-const iconRetinaUrl = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png";
-const iconUrl = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png";
-const shadowUrl = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png";
+import { useRouter } from "next/navigation";
 
-export default function FloodMap() {
-  const [isMounted, setIsMounted] = useState(false);
+// Fix default icon
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
 
-  useEffect(() => {
-    setIsMounted(true);
-    delete (L.Icon.Default.prototype as any)._getIconUrl;
-    L.Icon.Default.mergeOptions({
-      iconRetinaUrl,
-      iconUrl,
-      shadowUrl,
-    });
-  }, []);
+const RISK_COLORS: Record<string, string> = {
+  Critical: "#ef4444",
+  High: "#f97316",
+  Moderate: "#f59e0b",
+  Low: "#22c55e",
+  Safe: "#3b82f6",
+};
 
-  // Fetch live dashboard data (alerts, weather)
-  const { data: dashboardData } = useQuery({
-    queryKey: ["dashboardLive"],
-    queryFn: async () => {
-      const res = await axios.get("http://localhost:8000/api/v1/dashboard/live");
-      return res.data;
-    },
-    refetchInterval: 10000, // Poll every 10 seconds for real-time feel
-  });
+interface District {
+  id: number;
+  name: string;
+  lat: number;
+  lon: number;
+  risk_score: number;
+  risk_level: string;
+  risk_color: string;
+  rainfall_mm: number;
+  humidity: number;
+  temperature: number;
+  river_level_m: number;
+  river_danger_m: number;
+  population: number;
+  flood_probability: number;
+  ai_confidence: number;
+  coastal?: boolean;
+}
 
-  // Fetch district boundaries
-  const { data: districtBounds } = useQuery({
-    queryKey: ["districtBounds"],
-    queryFn: async () => {
-      const res = await axios.get("http://localhost:8000/api/v1/spatial/district-bounds");
-      return res.data;
-    },
-    staleTime: 60 * 60 * 1000, // Rarely changes
-  });
+interface FloodMapProps {
+  districts?: District[];
+}
 
-  if (!isMounted) return null;
+export default function FloodMap({ districts = [] }: FloodMapProps) {
+  const [mounted, setMounted] = useState(false);
+  const [selected, setSelected] = useState<District | null>(null);
+  const router = useRouter();
 
-  // Center of Tamil Nadu
-  const position: [number, number] = [11.1271, 78.6569];
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return null;
 
-  // District geojson style
-  const geoJsonStyle = (feature: any) => {
-    // Check if district has an alert
-    const hasAlert = dashboardData?.alerts?.some((a: any) => 
-      a.message?.includes(feature.properties.name) || 
-      a.district?.includes(feature.properties.name) ||
-      feature.properties.name.includes("Chennai") // Mock for demo if needed
-    );
-    
-    return {
-      fillColor: hasAlert ? "#ef4444" : "#3b82f6",
-      weight: 1,
-      opacity: 1,
-      color: "white",
-      dashArray: "3",
-      fillOpacity: hasAlert ? 0.4 : 0.1,
-    };
+  const center: [number, number] = [10.8, 78.5];
+
+  const getRadius = (risk: number) => {
+    if (risk >= 80) return 18;
+    if (risk >= 60) return 15;
+    if (risk >= 40) return 12;
+    return 9;
   };
 
   return (
-    <div className="h-full w-full rounded-xl overflow-hidden z-0">
-      <MapContainer 
-        center={position} 
-        zoom={7} 
-        scrollWheelZoom={true} 
-        className="h-full w-full z-0"
+    <div className="relative w-full h-full">
+      <MapContainer
+        center={center}
+        zoom={7}
+        scrollWheelZoom={true}
+        className="w-full h-full"
+        zoomControl={false}
+        style={{ background: "#f8f9fe" }}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        />
-        
-        {/* District Boundaries */}
-        {districtBounds && (
-          <GeoJSON 
-            data={districtBounds} 
-            style={geoJsonStyle}
-            onEachFeature={(feature, layer) => {
-              layer.bindTooltip(`${feature.properties.name} - Pop: ${(feature.properties.population / 1000000).toFixed(1)}M`, {
-                sticky: true
-              });
-            }}
-          />
-        )}
+        <ZoomControl position="bottomright" />
+        <LayersControl position="topright">
+          <LayersControl.BaseLayer checked name="Light Map">
+            <TileLayer
+              attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+              url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="Satellite">
+            <TileLayer
+              attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            />
+          </LayersControl.BaseLayer>
 
-        {/* Dynamically render active alerts */}
-        {dashboardData?.alerts?.map((alert: any, idx: number) => {
-          const coords: Record<string, [number, number]> = {
-            "Chennai": [13.0827, 80.2707],
-            "Cuddalore": [11.7480, 79.7714],
-            "Kancheepuram": [12.8185, 79.6947],
-            "Thoothukudi": [8.7642, 78.1348],
-            "Tiruvallur": [13.1436, 79.9148],
-          };
-          
-          const districtName = Object.keys(coords).find(k => 
-            alert.message?.includes(k) || alert.district?.includes(k)
-          ) || "Chennai";
-          const pos = coords[districtName] || [13.0827, 80.2707];
-          
-          return (
-            <CircleMarker 
-              key={alert.id || idx}
-              center={pos} 
-              radius={25} 
-              pathOptions={{ 
-                color: alert.severity === 'Severe' ? 'red' : 'orange', 
-                fillColor: alert.severity === 'Severe' ? '#ef4444' : '#f97316', 
-                fillOpacity: 0.6,
-                weight: 2
-              }}
+          <LayersControl.Overlay checked name="District Risk Sensors (Heatmap)">
+            <LayerGroup>
+        {districts.map((district) => (
+          <CircleMarker
+            key={district.id}
+            center={[district.lat, district.lon]}
+            radius={getRadius(district.risk_score)}
+            pathOptions={{
+              fillColor: district.risk_color || RISK_COLORS[district.risk_level] || "#94a3b8",
+              fillOpacity: 0.75,
+              color: district.risk_color || RISK_COLORS[district.risk_level] || "#94a3b8",
+              weight: 2,
+              opacity: 1,
+            }}
+            eventHandlers={{ click: () => setSelected(district) }}
+          >
+            <Tooltip
+              className="custom-district-tooltip"
+              sticky
+              direction="top"
+              offset={[0, -8]}
             >
-              <Popup className="rounded-xl">
-                <div className="text-slate-900 font-medium">
-                  <div className="font-bold text-rose-600 mb-1 border-b pb-1">Emergency Alert</div>
-                  <div>District: <span className="font-bold">{districtName}</span></div>
-                  <div>{alert.message || alert.reason}</div>
-                  <div className="text-xs text-slate-500 mt-2">Triggered by AI Engine</div>
+              <div className="min-w-[140px]">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-bold text-slate-800">{district.name}</span>
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
+                    style={{ background: district.risk_color }}
+                  >
+                    {district.risk_level}
+                  </span>
                 </div>
-              </Popup>
-            </CircleMarker>
-          );
-        })}
+                <div className="mt-1.5 space-y-0.5">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-slate-500">Risk Score</span>
+                    <span className="font-semibold text-slate-700">{district.risk_score}/100</span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-slate-500">Rainfall</span>
+                    <span className="font-semibold text-slate-700">{district.rainfall_mm}mm</span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-slate-500">Humidity</span>
+                    <span className="font-semibold text-slate-700">{district.humidity}%</span>
+                  </div>
+                </div>
+              </div>
+            </Tooltip>
+
+            <Popup className="premium-popup" maxWidth={280}>
+              <div className="p-1 font-sans">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-heading font-bold text-slate-800 text-base">{district.name}</span>
+                  <span
+                    className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white"
+                    style={{ background: district.risk_color }}
+                  >
+                    {district.risk_level}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[
+                    { label: "Risk Score", value: `${district.risk_score}/100` },
+                    { label: "AI Confidence", value: `${(district.ai_confidence * 100).toFixed(0)}%` },
+                    { label: "Rainfall 24h", value: `${district.rainfall_mm}mm` },
+                    { label: "Humidity", value: `${district.humidity}%` },
+                    { label: "River Level", value: `${district.river_level_m}m` },
+                    { label: "Temperature", value: `${district.temperature}°C` },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-slate-50 rounded-lg p-2">
+                      <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wide">{label}</p>
+                      <p className="text-xs font-bold text-slate-700 mt-0.5">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Flood probability bar */}
+                <div className="mb-2">
+                  <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                    <span>Flood Probability</span>
+                    <span className="font-semibold">{(district.flood_probability * 100).toFixed(0)}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-1.5">
+                    <div
+                      className="h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${district.flood_probability * 100}%`,
+                        background: district.risk_color,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[9px] text-slate-400">
+                  Population: {district.population?.toLocaleString("en-IN")} · {district.coastal ? "Coastal" : "Inland"}
+                </p>
+                <button 
+                  onClick={() => router.push(`/dashboard/district/${district.id}`)}
+                  className="mt-3 w-full py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-lg hover:bg-violet-600 transition-colors"
+                >
+                  View Full Analytics
+                </button>
+              </div>
+            </Popup>
+          </CircleMarker>
+        ))}
+            </LayerGroup>
+          </LayersControl.Overlay>
+        </LayersControl>
       </MapContainer>
+
+      {/* Floating legend */}
+      <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm rounded-xl border border-slate-100 shadow-lg p-3 z-[400]">
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Risk Level</p>
+        {Object.entries(RISK_COLORS).map(([level, color]) => (
+          <div key={level} className="flex items-center gap-2 mb-1">
+            <div className="w-3 h-3 rounded-full" style={{ background: color }} />
+            <span className="text-[10px] text-slate-600 font-medium">{level}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
