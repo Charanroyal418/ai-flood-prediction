@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import {
-  Brain, Cpu, Clock, Zap, Target, Database, Target as TargetIcon,
+  Brain, Cpu, Clock, Zap, Target, Database,
   Activity, CheckCircle, RefreshCw, GitBranch, Terminal, MapPin, 
-  Layers, Filter, Server, Target as Network, Eye, AlertTriangle, Play, Pause, ChevronRight, Droplets
+  Layers, Filter, Server, Eye, AlertTriangle, Play, Pause, ChevronRight, Droplets
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -282,7 +282,7 @@ export default function PredictionEnginePage() {
               <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100 rounded-full blur-3xl pointer-events-none" />
               
               <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 mb-6 text-slate-800">
-                <TargetIcon className="w-4 h-4 text-blue-500" /> Live Model Output
+                <Target className="w-4 h-4 text-blue-500" /> Live Model Output
               </h2>
 
               {d ? (
