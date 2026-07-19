@@ -89,20 +89,26 @@ class KnowledgeGraphBuilder:
     def update_graph_from_db(self, db: Session):
         districts = db.query(District).all()
 
-        # --- Batch all queries up front to avoid N+1 ---
-        weather_map = {w.district_id: w for w in db.query(Weather).all()}
-        rainfall_map = {r.district_id: r for r in db.query(Rainfall).all()}
+        # --- Batch all queries up front to avoid N+1 and full table scans ---
+        latest_weathers = db.query(Weather).order_by(Weather.recorded_at.desc()).limit(100).all()
+        weather_map = {}
+        for w in latest_weathers:
+            if w.district_id not in weather_map:
+                weather_map[w.district_id] = w
+                
+        latest_rainfalls = db.query(Rainfall).order_by(Rainfall.recorded_at.desc()).limit(100).all()
+        rainfall_map = {}
+        for r in latest_rainfalls:
+            if r.district_id not in rainfall_map:
+                rainfall_map[r.district_id] = r
+                
         dem_map = {t.district_id: t for t in db.query(DemTile).all()}
 
-        # Latest prediction per district using a subquery to avoid sorting per district
-        from sqlalchemy import func
-        max_pred_ids = (
-            db.query(func.max(PredictionHistory.id))
-            .group_by(PredictionHistory.district_id)
-            .subquery()
-        )
-        preds = db.query(PredictionHistory).filter(PredictionHistory.id.in_(max_pred_ids)).all()
-        pred_map = {p.district_id: p for p in preds}
+        latest_preds = db.query(PredictionHistory).order_by(PredictionHistory.id.desc()).limit(100).all()
+        pred_map = {}
+        for p in latest_preds:
+            if p.district_id not in pred_map:
+                pred_map[p.district_id] = p
 
         for d in districts:
             node_id = f"d-{d.id}"

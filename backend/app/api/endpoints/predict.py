@@ -288,17 +288,19 @@ def get_inference_cycle(db: Session = Depends(get_db)):
 
     # ── Map Real District Predictions & SHAP ──
     from app.ml.explain import explain_prediction
+    from app.models.weather import Rainfall
     districts = []
     for d in db_districts[:20]: # Process real districts
         # Reconstruct real feature dict
-        latest_weather = db.query(Weather).filter(Weather.district_id == d.id).order_by(Weather.timestamp.desc()).first()
-        rainfall_24h = latest_weather.precipitation if latest_weather else 0.0
+        latest_weather = db.query(Weather).filter(Weather.district_id == d.id).order_by(Weather.recorded_at.desc()).first()
+        latest_rainfall = db.query(Rainfall).filter(Rainfall.district_id == d.id).order_by(Rainfall.recorded_at.desc()).first()
+        rainfall_24h = latest_rainfall.mm_24h if latest_rainfall else 0.0
         
         feature_dict = {
             "rainfall_24h": rainfall_24h,
             "river_level": 0.0, # Mapped from DB if available
             "historical_floods": 0.0,
-            "elevation": d.area_sq_km / 100.0, # dummy proxy for elevation for now
+            "elevation": 50.0, # dummy proxy for elevation for now
             "humidity": latest_weather.humidity if latest_weather else 50.0,
             "pressure": latest_weather.pressure if latest_weather else 1010.0,
             "slope": 5.0
