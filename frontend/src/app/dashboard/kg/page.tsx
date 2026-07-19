@@ -123,11 +123,23 @@ export default function DynamicKnowledgeGraph() {
     { label: "24h", key: "24h" }
   ];
 
-  // Fetch complete graph payload from backend
-  const { data, isLoading, refetch } = useQuery({
+  // Fetch complete graph payload from backend (with timeout for Render cold start)
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["kgGraphData"],
-    queryFn: async () => (await api.get("/kg/graph")).data,
-    refetchInterval: 30000, // Sync every 30 seconds
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+      try {
+        const res = await api.get("/kg/graph", { signal: controller.signal });
+        return res.data;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    },
+    refetchInterval: 5 * 60 * 1000, // match backend 5-min cache
+    staleTime: 4 * 60 * 1000,       // data is fresh for 4 minutes
+    retry: 2,
+    retryDelay: (attempt) => Math.min(3000 * (attempt + 1), 10000),
   });
 
   // Category layout columns to place entities logically in a left-to-right flow
@@ -288,12 +300,43 @@ export default function DynamicKnowledgeGraph() {
     setIsSimulating(false);
   };
 
+  if (isError) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
+            <X className="w-7 h-7 text-red-500" />
+          </div>
+          <h2 className="text-lg font-heading font-bold text-slate-800">Knowledge Graph Unavailable</h2>
+          <p className="text-sm text-slate-500">
+            {(error as any)?.code === "ERR_CANCELED"
+              ? "The request timed out. The backend server on Render's free tier may still be waking up from a cold start."
+              : "Failed to load the Knowledge Graph data. The backend may be starting up or experiencing issues."}
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold shadow-md shadow-violet-200 transition-all"
+          >
+            <RefreshCw className="w-4 h-4" /> Try Again
+          </button>
+          <p className="text-[11px] text-slate-400">Render free-tier services spin down after inactivity. The first request may take 60–90 seconds.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading || !nodes.length) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
-          <p className="text-sm font-semibold text-slate-500 font-heading">Loading Dynamic Knowledge Graph...</p>
+        <div className="flex flex-col items-center gap-4 max-w-sm text-center">
+          <div className="w-14 h-14 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-slate-600 font-heading">Loading Dynamic Knowledge Graph...</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            The backend is running GNN inference. If the server was idle, this cold start can take <strong>60–90 seconds</strong> on Render&apos;s free tier.
+          </p>
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
+            <Clock className="w-3.5 h-3.5 animate-pulse" /> Waiting for response...
+          </div>
         </div>
       </div>
     );

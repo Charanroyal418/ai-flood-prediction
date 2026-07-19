@@ -8,8 +8,14 @@ from app.api import deps
 from app.kg.builder import kg_builder
 from app.ml.inference import gnn_engine
 import torch
+import time
 
 router = APIRouter()
+
+# 30-second in-process response cache to avoid re-running the full GNN pipeline
+# on every frontend poll (default refetch is 30s, so this effectively caches one cycle).
+_kg_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+_KG_CACHE_TTL = 300  # 5 minutes – avoids re-running GNN on every poll (free-tier friendly)
 
 def get_2d_projections(embeddings: np.ndarray) -> np.ndarray:
     """Projects 32D embeddings to 2D using pure numpy eigenvalue decomposition PCA."""
@@ -28,7 +34,13 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     Computes a true Dynamic Knowledge Graph Intelligence state.
     Uses TemporalFloodGNN (PyTorch Geometric) for node risks, GAT attention edge weights,
     embeddings, and dynamic graph structural metrics.
+    Cached for 30 seconds to prevent redundant computation on each poll.
     """
+    global _kg_cache
+    now = time.time()
+    if _kg_cache["payload"] is not None and (now - _kg_cache["ts"]) < _KG_CACHE_TTL:
+        return _kg_cache["payload"]
+
     start_time = datetime.now()
     
     H, edge_index = kg_builder.fetch_graph_snapshot(db, seq_len=3)
