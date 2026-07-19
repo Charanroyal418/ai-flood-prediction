@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
@@ -10,7 +10,7 @@ import {
   ArrowDown, ArrowUp, Clock, RefreshCw, Zap, Eye, X,
   ChevronRight, Play, Layers, GitBranch, TrendingUp,
   TrendingDown, Server, Wifi, HardDrive, Timer,
-  Droplets, Mountain, Gauge, Radio, MapPin, Info, Microchip, Target, ArrowRight, Terminal
+  Droplets, Mountain, Gauge, Radio, MapPin, Info, Microchip, Target, Terminal
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import ReactFlow, { Background, Controls, MarkerType } from "reactflow";
@@ -22,7 +22,8 @@ interface StageData {
   status: string;
   execution_ms: number;
   shape?: string;
-  [key: string]: any;
+  nodes?: number;
+  edges?: number;
 }
 
 interface DistrictResult {
@@ -43,49 +44,41 @@ interface DistrictResult {
 }
 
 interface InferenceCycle {
+  status?: string;
   cycle_id: number;
   timestamp: string;
   total_latency_ms: number;
   stages: Record<string, StageData>;
   districts: DistrictResult[];
+  graph_data?: {
+    nodes: any[];
+    edges: any[];
+  };
   model_status: any;
   logs: { ts: string; message: string }[];
 }
 
 // ── Pipeline Stage Config ────────────────────────────────────────────────────
 
-const GDNN_STAGES = [
-  { id: "telemetry_fetch", label: "Open-Meteo API", icon: CloudRain },
-  { id: "river_fetch", label: "River Telemetry", icon: Waves },
-  { id: "reservoir_fetch", label: "Reservoir Intel", icon: Droplets },
-  { id: "terrain_fetch", label: "Terrain DEM", icon: Mountain },
-  { id: "feature_prep", label: "Feature Engine", icon: Filter },
-  { id: "kg_snapshot", label: "Knowledge Graph", icon: Network },
-  { id: "node_embedding", label: "Node Embeddings", icon: Layers },
-  { id: "gnn_inference", label: "GDNN Forward Pass", icon: Brain },
-];
-
 const GDNN_FLOW = [
-  { id: "input_features", label: "Input Features", icon: Database },
-  { id: "graph_construction", label: "Graph Construction", icon: Network },
+  { id: "input_features", label: "Open-Meteo", icon: CloudRain },
+  { id: "graph_construction", label: "Knowledge Graph", icon: Network },
   { id: "node_embeddings", label: "Node Embeddings", icon: Layers },
-  { id: "temporal_encoder", label: "Temporal Encoder (GRU)", icon: Clock },
-  { id: "gat_layer_1", label: "Graph Attention Layer 1", icon: Eye },
-  { id: "gat_layer_2", label: "Graph Attention Layer 2", icon: Eye },
-  { id: "spatial_agg", label: "Spatial Aggregation", icon: MapPin },
-  { id: "temporal_agg", label: "Temporal Aggregation", icon: RefreshCw },
+  { id: "gat_layer_1", label: "GAT Layer 1", icon: Eye },
+  { id: "gat_layer_2", label: "GAT Layer 2", icon: Eye },
+  { id: "temporal_encoder", label: "Temporal GRU", icon: Clock },
+  { id: "spatial_agg", label: "Spatial Agg", icon: MapPin },
+  { id: "temporal_agg", label: "Temporal Agg", icon: RefreshCw },
   { id: "pooling", label: "Global Pooling", icon: Filter },
-  { id: "classification_head", label: "Classification Head", icon: Brain },
-  { id: "explainability", label: "Explainability (SHAP)", icon: Activity },
+  { id: "classification_head", label: "Classification", icon: Brain },
+  { id: "explainability", label: "SHAP Explain", icon: Activity },
 ];
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PredictionEnginePage() {
-  const [activeStage, setActiveStage] = useState(-1);
   const [flowStage, setFlowStage] = useState(-1);
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictResult | null>(null);
   
@@ -104,38 +97,23 @@ export default function PredictionEnginePage() {
 
   // Orchestrate the sequential lighting up of stages when new data arrives
   useEffect(() => {
-    if (data) {
-      // Reset animations
-      setActiveStage(-1);
+    if (data && data.status !== "waiting_for_telemetry") {
       setFlowStage(-1);
       setCountdown(30);
 
-      // Sequence 1: Data Preparation Pipeline
-      const prepInterval = setInterval(() => {
-        setActiveStage(prev => {
-          if (prev >= GDNN_STAGES.length - 1) {
-            clearInterval(prepInterval);
+      // Deep Learning Flow Sequence
+      const flowInterval = setInterval(() => {
+        setFlowStage(prev => {
+          if (prev >= GDNN_FLOW.length - 1) {
+            clearInterval(flowInterval);
             return prev;
           }
           return prev + 1;
         });
-      }, 200); // Fast sequence for prep
-
-      // Sequence 2: Deep Learning Flow (starts after prep)
-      setTimeout(() => {
-        const flowInterval = setInterval(() => {
-          setFlowStage(prev => {
-            if (prev >= GDNN_FLOW.length - 1) {
-              clearInterval(flowInterval);
-              return prev;
-            }
-            return prev + 1;
-          });
-        }, 150);
-      }, GDNN_STAGES.length * 200 + 500);
+      }, 250);
 
       return () => {
-        clearInterval(prepInterval);
+        clearInterval(flowInterval);
       };
     }
   }, [dataUpdatedAt, data]);
@@ -148,55 +126,87 @@ export default function PredictionEnginePage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Build Real Graph Nodes
+  const { reactFlowNodes, reactFlowEdges } = useMemo(() => {
+    if (!data || !data.graph_data) return { reactFlowNodes: [], reactFlowEdges: [] };
+    
+    // Process backend nodes into ReactFlow format
+    const nodes = data.graph_data.nodes.map((n, i) => {
+      // Procedural layout for the circular visual graph
+      const radius = n.type === 'district' ? 80 : 150;
+      const angle = (i / data.graph_data!.nodes.length) * 2 * Math.PI;
+      const x = 200 + radius * Math.cos(angle);
+      const y = 200 + radius * Math.sin(angle);
+      
+      let colorClass = "bg-slate-100 border-slate-300 text-slate-700";
+      if (n.type === 'district') colorClass = "bg-violet-100 border-violet-400 text-violet-800 shadow-[0_0_10px_rgba(139,92,246,0.3)]";
+      if (n.type === 'river' || n.type === 'rain_gauge') colorClass = "bg-blue-100 border-blue-400 text-blue-800";
+      
+      return {
+        id: n.id,
+        position: { x, y },
+        data: { label: n.label },
+        className: `${colorClass} text-[9px] font-bold py-1.5 px-3 rounded-xl whitespace-nowrap`,
+      };
+    });
+
+    const edges = data.graph_data.edges.map((e, i) => {
+      // Map attention weights to thickness and color
+      const attention = e.attention || 0.5;
+      const strokeWidth = Math.max(1, attention * 5);
+      
+      let strokeColor = "#94a3b8"; // low attention (blue-ish slate)
+      if (attention > 0.8) strokeColor = "#ef4444"; // critical (red)
+      else if (attention > 0.6) strokeColor = "#f97316"; // high (orange)
+      else if (attention > 0.4) strokeColor = "#f59e0b"; // medium (yellow)
+
+      return {
+        id: `e-${e.source}-${e.target}-${i}`,
+        source: e.source,
+        target: e.target,
+        animated: true,
+        style: { stroke: strokeColor, strokeWidth },
+      };
+    });
+
+    return { reactFlowNodes: nodes, reactFlowEdges: edges };
+  }, [data]);
+
   if (isLoading && !data) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Brain className="w-10 h-10 text-violet-500 animate-pulse" />
-          <p className="text-sm font-semibold text-slate-600 font-heading">Initializing Prediction Engine...</p>
+          <p className="text-sm font-semibold text-slate-600 font-heading">Connecting to GDNN Core...</p>
         </div>
       </div>
     );
   }
 
-  if (isError || !data) {
+  if (isError || (data && data.status === "waiting_for_telemetry")) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
         <div className="bg-white border border-slate-200 p-10 flex flex-col items-center text-center max-w-lg rounded-3xl shadow-xl">
-          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
-            <AlertTriangle className="w-8 h-8" />
+          <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-4">
+            <Radio className="w-8 h-8 animate-pulse" />
           </div>
-          <h2 className="text-xl font-bold text-slate-800 font-heading mb-2">Backend Unavailable</h2>
+          <h2 className="text-xl font-bold text-slate-800 font-heading mb-2">Waiting for Live Inference</h2>
           <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-            The inference engine could not reach the backend. The GDNN process might be offline.
+            The AI Prediction Engine is waiting for the first batch of telemetry data to build the Knowledge Graph and begin the Graph Dynamic Neural Network sequence.
           </p>
           <button 
             onClick={() => refetch()}
             className="px-6 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-2"
           >
-            <RefreshCw className="w-4 h-4" /> Retry
+            <RefreshCw className="w-4 h-4" /> Force Polling
           </button>
         </div>
       </div>
     );
   }
 
-  const status = data.model_status;
-  const districts = data.districts || [];
-  
-  // ReactFlow Mock Data for Animated KG
-  const initialNodes = [
-    { id: '1', position: { x: 150, y: 50 }, data: { label: 'Weather Stn 1' }, className: 'bg-blue-100 border-blue-300 text-[9px] font-bold py-1 px-2 rounded-lg' },
-    { id: '2', position: { x: 50, y: 150 }, data: { label: 'Reservoir A' }, className: 'bg-cyan-100 border-cyan-300 text-[9px] font-bold py-1 px-2 rounded-lg' },
-    { id: '3', position: { x: 250, y: 150 }, data: { label: 'River Gauge' }, className: 'bg-indigo-100 border-indigo-300 text-[9px] font-bold py-1 px-2 rounded-lg' },
-    { id: '4', position: { x: 150, y: 250 }, data: { label: 'Chennai District' }, className: 'bg-red-100 border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.5)] text-[10px] font-bold py-1.5 px-3 rounded-xl text-red-900' },
-  ];
-  const initialEdges = [
-    { id: 'e1-4', source: '1', target: '4', animated: true, style: { stroke: '#818cf8', strokeWidth: 2 } },
-    { id: 'e2-4', source: '2', target: '4', animated: true, style: { stroke: '#06b6d4', strokeWidth: 3 } },
-    { id: 'e3-4', source: '3', target: '4', animated: true, style: { stroke: '#6366f1', strokeWidth: 2 } },
-  ];
-
+  const status = data?.model_status;
+  const districts = data?.districts || [];
 
   return (
     <div className="max-w-[1600px] mx-auto p-4 lg:p-6 space-y-4 pb-20">
@@ -217,7 +227,7 @@ export default function PredictionEnginePage() {
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{status.model_name} • {status.model_version}</span>
               </div>
               <span className="text-slate-300">|</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Cycle #{data.cycle_id}</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Cycle #{data?.cycle_id}</span>
             </div>
           </div>
         </div>
@@ -238,136 +248,100 @@ export default function PredictionEnginePage() {
         </div>
       </div>
 
-      {/* ROW 2: INGESTION, GRAPH, STATS */}
-      <div className="grid grid-cols-12 gap-4">
-        
-        {/* Telemetry Ingestion */}
-        <div className="col-span-12 xl:col-span-3 bg-white/70 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 flex flex-col h-[320px] shadow-sm">
-          <h3 className="text-xs font-heading font-bold text-slate-800 flex items-center gap-2 mb-4">
-            <Database className="w-4 h-4 text-blue-500" /> Live Telemetry
-          </h3>
-          <div className="flex-1 overflow-hidden relative">
-            <div className="absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-white to-transparent z-10"></div>
-            <div className="absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-white to-transparent z-10"></div>
-            <div className="space-y-2 overflow-y-auto h-full pr-2 font-mono scrollbar-hide">
-              {data.logs.slice(0, 15).map((log, i) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
-                  key={i} className="flex items-start gap-2 text-[10px]"
-                >
-                  <span className="text-blue-500 font-bold shrink-0">{log.ts}</span>
-                  <span className="text-slate-600 leading-tight">{log.message}</span>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </div>
+      {/* ROW 2: HORIZONTAL ANIMATED PIPELINE */}
+      <div className="bg-white/70 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 shadow-sm overflow-hidden">
+        <h3 className="text-xs font-heading font-bold text-slate-800 flex items-center gap-2 mb-6">
+          <GitBranch className="w-4 h-4 text-indigo-500" /> Live Execution Pipeline
+        </h3>
+        <div className="flex items-center overflow-x-auto pb-4 scrollbar-hide w-full justify-between min-w-max px-4">
+          {GDNN_FLOW.map((step, i) => {
+            const isActive = i === flowStage;
+            const isCompleted = i < flowStage;
+            const Icon = step.icon;
+            const backendStage = data?.stages[step.id];
 
-        {/* Dynamic Knowledge Graph */}
-        <div className="col-span-12 xl:col-span-6 bg-slate-50/50 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-1 relative overflow-hidden h-[320px] shadow-sm">
-          <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-200/60 flex items-center gap-2 shadow-sm">
-            <Network className="w-3.5 h-3.5 text-violet-600" />
-            <span className="text-[10px] font-bold text-slate-700 uppercase tracking-widest font-heading">Graph Attention Dynamics</span>
-          </div>
-          <ReactFlow nodes={initialNodes} edges={initialEdges} fitView attributionPosition="bottom-right">
-            <Background color="#cbd5e1" gap={16} size={1} />
-          </ReactFlow>
-        </div>
-
-        {/* Model Stats */}
-        <div className="col-span-12 xl:col-span-3 bg-white/70 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 flex flex-col h-[320px] justify-between shadow-sm">
-          <div>
-            <h3 className="text-xs font-heading font-bold text-slate-800 flex items-center gap-2 mb-4">
-              <Activity className="w-4 h-4 text-green-500" /> Runtime Statistics
-            </h3>
-            <div className="space-y-3">
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex justify-between items-center">
-                <span className="text-[10px] font-bold text-slate-500">Nodes Processed</span>
-                <span className="text-xs font-bold text-slate-800 font-mono">{data.stages.graph_construction?.nodes || 0}</span>
-              </div>
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex justify-between items-center">
-                <span className="text-[10px] font-bold text-slate-500">Active Edges</span>
-                <span className="text-xs font-bold text-slate-800 font-mono">{data.stages.graph_construction?.edges || 0}</span>
-              </div>
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex justify-between items-center">
-                <span className="text-[10px] font-bold text-slate-500">Total Inferences</span>
-                <span className="text-xs font-bold text-slate-800 font-mono">{status.total_inference_count.toLocaleString()}</span>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <div className="flex justify-between items-end">
-              <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Architecture</p>
-                <p className="text-[11px] font-bold text-violet-600">{status.architecture}</p>
-              </div>
-              <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center">
-                <Layers className="w-4 h-4 text-violet-600" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ROW 3: PIPELINE, DISTRICTS, EXPLAINABILITY */}
-      <div className="grid grid-cols-12 gap-4">
-        
-        {/* GDNN Execution Pipeline */}
-        <div className="col-span-12 xl:col-span-3 bg-white/70 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 h-[500px] flex flex-col shadow-sm">
-          <h3 className="text-xs font-heading font-bold text-slate-800 flex items-center gap-2 mb-4 shrink-0">
-            <Microchip className="w-4 h-4 text-indigo-500" /> GDNN Execution Flow
-          </h3>
-          <div className="flex-1 overflow-y-auto pr-2 scrollbar-hide relative">
-            <div className="absolute left-[15px] top-4 bottom-4 w-0.5 bg-slate-100 -z-10"></div>
-            <div className="space-y-0 pb-4">
-              {GDNN_FLOW.map((step, i) => {
-                const isActive = i === flowStage;
-                const isCompleted = i < flowStage;
-                const Icon = step.icon;
-                const backendStage = data.stages[step.id];
-
-                return (
-                  <div key={step.id} className="relative pl-10 py-3 group">
-                    <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors duration-300 ${
-                      isActive ? "bg-violet-100 border-violet-500 shadow-[0_0_15px_rgba(139,92,246,0.3)]" : 
-                      isCompleted ? "bg-slate-800 border-slate-800" : "bg-white border-slate-200"
-                    }`}>
-                      {isCompleted ? <CheckCircle className="w-3.5 h-3.5 text-white" /> : 
-                       <Icon className={`w-3.5 h-3.5 ${isActive ? "text-violet-600" : "text-slate-400"}`} />}
-                    </div>
-                    
-                    <div className="flex flex-col">
-                      <span className={`text-[11px] font-bold transition-colors ${isActive ? "text-violet-700" : isCompleted ? "text-slate-700" : "text-slate-400"}`}>
-                        {step.label}
-                      </span>
-                      
-                      <AnimatePresence>
+            return (
+              <div key={step.id} className="flex items-center shrink-0">
+                <div className="flex flex-col items-center gap-3 w-28 relative group">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-300 border-2 z-10 ${
+                    isActive ? "bg-violet-600 border-violet-500 text-white shadow-[0_0_20px_rgba(139,92,246,0.6)] scale-110" : 
+                    isCompleted ? "bg-slate-800 border-slate-800 text-white scale-100" : "bg-slate-50 border-slate-200 text-slate-400 scale-100"
+                  }`}>
+                    {isCompleted ? <CheckCircle className="w-5 h-5 text-white" /> : 
+                     <Icon className={`w-5 h-5 ${isActive ? "animate-pulse" : ""}`} />}
+                  </div>
+                  
+                  <div className="text-center flex flex-col items-center">
+                    <span className={`text-[10px] font-bold transition-colors ${isActive ? "text-violet-700" : isCompleted ? "text-slate-800" : "text-slate-400"}`}>
+                      {step.label}
+                    </span>
+                    <div className="h-4 mt-1">
+                      <AnimatePresence mode="wait">
                         {(isActive || isCompleted) && backendStage && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="flex items-center gap-3 mt-1.5 overflow-hidden">
-                            <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+                          <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center">
+                            <span className="text-[9px] font-mono font-bold text-green-500">
                               {backendStage.execution_ms}ms
                             </span>
-                            {backendStage.shape && (
-                              <span className="text-[9px] font-mono font-bold bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100">
-                                {backendStage.shape}
-                              </span>
-                            )}
                           </motion.div>
                         )}
                       </AnimatePresence>
                     </div>
                   </div>
-                );
-              })}
+
+                  {/* Tensor Shape Tooltip */}
+                  {(isActive || isCompleted) && backendStage?.shape && (
+                    <div className="absolute -bottom-8 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-[9px] font-mono font-bold px-2 py-1 rounded shadow-lg whitespace-nowrap z-20">
+                      Tensor: {backendStage.shape}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Arrow Connector */}
+                {i < GDNN_FLOW.length - 1 && (
+                  <div className="w-8 mx-1 flex items-center relative -top-6">
+                    <div className={`h-[2px] w-full transition-colors duration-500 ${isCompleted ? 'bg-violet-500' : 'bg-slate-200'}`}></div>
+                    <ChevronRight className={`absolute -right-2 w-4 h-4 transition-colors duration-500 ${isCompleted ? 'text-violet-500' : 'text-slate-300'}`} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ROW 3: KNOWLEDGE GRAPH & DISTRICTS */}
+      <div className="grid grid-cols-12 gap-4">
+        
+        {/* Dynamic Knowledge Graph (Centerpiece) */}
+        <div className="col-span-12 xl:col-span-8 bg-slate-50/80 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-1 relative overflow-hidden h-[500px] shadow-inner">
+          <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-200 flex items-center gap-3 shadow-sm">
+            <Network className="w-4 h-4 text-violet-600" />
+            <div>
+              <p className="text-[10px] font-bold text-slate-800 uppercase tracking-widest font-heading">Live Graph Attention</p>
+              <p className="text-[9px] text-slate-500 font-mono">Nodes: {data?.stages.graph_construction?.nodes || 0} | Edges: {data?.stages.graph_construction?.edges || 0}</p>
             </div>
           </div>
+          
+          <ReactFlow nodes={reactFlowNodes} edges={reactFlowEdges} fitView attributionPosition="bottom-right" minZoom={0.5} maxZoom={2}>
+            <Background color="#cbd5e1" gap={16} size={1} />
+            <Controls className="bg-white border-slate-200 shadow-md" />
+          </ReactFlow>
+
+          {flowStage > -1 && flowStage < 3 && (
+            <div className="absolute inset-0 flex items-center justify-center z-20 bg-slate-50/40 backdrop-blur-sm transition-opacity">
+              <div className="bg-white px-6 py-3 rounded-2xl shadow-xl flex items-center gap-4">
+                <div className="w-5 h-5 border-2 border-slate-200 border-t-violet-600 rounded-full animate-spin"></div>
+                <span className="text-xs font-bold text-slate-700 font-mono tracking-widest uppercase">Propagating Messages...</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Live District Predictions */}
-        <div className="col-span-12 xl:col-span-5 bg-white/70 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 h-[500px] flex flex-col shadow-sm">
+        <div className="col-span-12 xl:col-span-4 bg-white/70 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 h-[500px] flex flex-col shadow-sm">
           <div className="flex items-center justify-between mb-4 shrink-0">
             <h3 className="text-xs font-heading font-bold text-slate-800 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-orange-500" /> Live District Predictions
+              <AlertTriangle className="w-4 h-4 text-orange-500" /> Live Risk Assessment
             </h3>
             <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-lg font-mono">Sorted by Risk</span>
           </div>
@@ -384,8 +358,8 @@ export default function PredictionEnginePage() {
                     onClick={() => setSelectedDistrict(d)}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer ${
                       selectedDistrict?.district_id === d.district_id 
-                      ? "bg-violet-50/50 border-violet-300 shadow-[0_4px_20px_-4px_rgba(139,92,246,0.15)]" 
-                      : "bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50/50"
+                      ? "bg-violet-50/80 border-violet-400 shadow-[0_4px_20px_-4px_rgba(139,92,246,0.2)]" 
+                      : "bg-white border-slate-100 hover:border-violet-200 hover:bg-slate-50/50 hover:shadow-sm"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -406,22 +380,22 @@ export default function PredictionEnginePage() {
                     </div>
                     
                     <div className="grid grid-cols-4 gap-2">
-                      <div className="bg-slate-50 rounded-lg p-1.5 text-center">
+                      <div className="bg-slate-50/80 border border-slate-100 rounded-lg p-1.5 text-center">
                         <p className="text-[8px] text-slate-400 font-bold uppercase mb-0.5">Rain 24h</p>
                         <p className="text-[10px] font-bold text-slate-700 font-mono">{d.rainfall_24h}mm</p>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-1.5 text-center">
-                        <p className="text-[8px] text-slate-400 font-bold uppercase mb-0.5">River Lvl</p>
+                      <div className="bg-slate-50/80 border border-slate-100 rounded-lg p-1.5 text-center">
+                        <p className="text-[8px] text-slate-400 font-bold uppercase mb-0.5">River</p>
                         <p className="text-[10px] font-bold text-slate-700 font-mono">+{d.river_influence}m</p>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-1.5 text-center">
-                        <p className="text-[8px] text-slate-400 font-bold uppercase mb-0.5">KG Impact</p>
-                        <p className="text-[10px] font-bold text-violet-600 font-mono">{d.kg_contribution}%</p>
+                      <div className="bg-slate-50/80 border border-slate-100 rounded-lg p-1.5 text-center">
+                        <p className="text-[8px] text-slate-400 font-bold uppercase mb-0.5">KG Attn</p>
+                        <p className="text-[10px] font-bold text-violet-600 font-mono">{d.attention_score}</p>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-1.5 text-center flex items-center justify-center">
+                      <div className="bg-slate-50/80 border border-slate-100 rounded-lg p-1.5 text-center flex items-center justify-center">
                         {d.trend === "up" ? <TrendingUp className="w-4 h-4 text-red-500" /> : 
                          d.trend === "down" ? <TrendingDown className="w-4 h-4 text-green-500" /> : 
-                         <ArrowRight className="w-4 h-4 text-slate-400" />}
+                         <ChevronRight className="w-4 h-4 text-slate-400" />}
                       </div>
                     </div>
                   </motion.div>
@@ -430,16 +404,20 @@ export default function PredictionEnginePage() {
             </AnimatePresence>
 
             {flowStage < GDNN_FLOW.length - 2 && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 space-y-3 z-20 bg-white/50 backdrop-blur-[2px] rounded-2xl">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 space-y-3 z-20 bg-white/60 backdrop-blur-[2px] rounded-2xl">
                 <div className="w-8 h-8 border-2 border-slate-200 border-t-violet-500 rounded-full animate-spin"></div>
-                <p className="text-[10px] font-bold uppercase tracking-widest font-mono">Running Inference Pass...</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest font-mono">Waiting for Classification...</p>
               </div>
             )}
           </div>
         </div>
+      </div>
 
+      {/* ROW 4: EXPLAINABILITY, LOGS & TEMPORAL */}
+      <div className="grid grid-cols-12 gap-4">
+        
         {/* Explainability Panel */}
-        <div className="col-span-12 xl:col-span-4 bg-gradient-to-b from-white to-slate-50/50 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 h-[500px] flex flex-col shadow-sm">
+        <div className="col-span-12 xl:col-span-4 bg-gradient-to-b from-white to-slate-50/50 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 h-[320px] flex flex-col shadow-sm">
           <h3 className="text-xs font-heading font-bold text-slate-800 flex items-center gap-2 mb-4 shrink-0">
             <Eye className="w-4 h-4 text-pink-500" /> AI Explainability
           </h3>
@@ -450,20 +428,17 @@ export default function PredictionEnginePage() {
               <p className="text-xs font-medium text-slate-500">Select a district to view<br/>SHAP values and attention paths.</p>
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto pr-1 space-y-5 scrollbar-hide animate-in fade-in slide-in-from-bottom-4 duration-500">
-              
-              {/* Header */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-5 scrollbar-hide animate-in fade-in duration-300">
               <div className="flex items-start justify-between">
                 <div>
                   <h4 className="text-sm font-bold text-slate-800 font-heading">{selectedDistrict.district}</h4>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Diagnostic Report</p>
                 </div>
-                <div className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-white" style={{ background: selectedDistrict.risk_color }}>
+                <div className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-white shadow-sm" style={{ background: selectedDistrict.risk_color }}>
                   {selectedDistrict.risk_level}
                 </div>
               </div>
 
-              {/* SHAP Chart (Bar visualizer) */}
               <div>
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Activity className="w-3 h-3"/> Feature Importance (SHAP)</p>
                 <div className="space-y-2.5">
@@ -493,21 +468,8 @@ export default function PredictionEnginePage() {
                 </div>
               </div>
 
-              {/* Top Reasons */}
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><AlertTriangle className="w-3 h-3"/> Core Drivers</p>
-                <ul className="space-y-1.5">
-                  {selectedDistrict.top_reasons.map((r, i) => (
-                    <li key={i} className="text-[11px] font-medium text-slate-700 bg-white border border-slate-100 p-2 rounded-xl shadow-sm flex items-start gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1 shrink-0"></span> {r}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Attention Paths */}
-              <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Network className="w-3 h-3"/> Graph Attention Flows</p>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Network className="w-3 h-3"/> Top Attention Paths</p>
                 <div className="bg-slate-800 rounded-xl p-3 space-y-2">
                   {selectedDistrict.attention_paths.map((p, i) => (
                     <div key={i} className="text-[10px] font-mono text-violet-200 font-medium break-all leading-tight">
@@ -516,23 +478,18 @@ export default function PredictionEnginePage() {
                   ))}
                 </div>
               </div>
-
             </div>
           )}
         </div>
-      </div>
 
-      {/* ROW 4: CHARTS & TEMPORAL */}
-      <div className="grid grid-cols-12 gap-4">
-        
         {/* Terminal Live Logs */}
-        <div className="col-span-12 xl:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-5 h-[240px] flex flex-col shadow-xl">
+        <div className="col-span-12 xl:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-5 h-[320px] flex flex-col shadow-xl">
           <h3 className="text-xs font-heading font-bold text-slate-100 flex items-center gap-2 mb-4 shrink-0">
             <Terminal className="w-4 h-4 text-green-400" /> Live Execution Logs
           </h3>
           <div className="flex-1 overflow-y-auto space-y-2 font-mono text-[10px] scrollbar-hide">
             <AnimatePresence>
-              {data.logs.map((log, i) => (
+              {data?.logs.map((log, i) => (
                 <motion.div 
                   key={i} 
                   initial={{ opacity: 0, x: -5 }} 
@@ -547,47 +504,44 @@ export default function PredictionEnginePage() {
           </div>
         </div>
 
-        {/* Latency Chart */}
-        <div className="col-span-12 xl:col-span-4 bg-white/70 backdrop-blur-xl border border-slate-200/60 rounded-3xl p-5 h-[240px] flex flex-col shadow-sm">
-          <h3 className="text-xs font-heading font-bold text-slate-800 flex items-center gap-2 mb-4">
-            <TrendingUp className="w-4 h-4 text-violet-500" /> Pipeline Latency Trend
-          </h3>
-          <div className="flex-1 w-full relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={[{ time: 'T-5', ms: 140 }, { time: 'T-4', ms: 135 }, { time: 'T-3', ms: 155 }, { time: 'T-2', ms: 142 }, { time: 'T-1', ms: 138 }, { time: 'Now', ms: data.total_latency_ms }]}>
-                <defs>
-                  <linearGradient id="colorMs" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#94a3b8' }} />
-                <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '11px' }} />
-                <Area type="monotone" dataKey="ms" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorMs)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-        
-        {/* Temporal Reasoning */}
-        <div className="col-span-12 xl:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-5 h-[240px] flex flex-col justify-between text-white shadow-xl relative overflow-hidden">
-           <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/20 rounded-full blur-3xl pointer-events-none"></div>
+        {/* Temporal Reasoning Scrubber */}
+        <div className="col-span-12 xl:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-5 h-[320px] flex flex-col justify-between text-white shadow-xl relative overflow-hidden">
+           <div className="absolute top-0 right-0 w-40 h-40 bg-violet-600/20 rounded-full blur-3xl pointer-events-none"></div>
            <div>
             <h3 className="text-xs font-heading font-bold text-white flex items-center gap-2 mb-2 relative z-10">
-              <Clock className="w-4 h-4 text-violet-400" /> Temporal Reasoning
+              <Clock className="w-4 h-4 text-violet-400" /> Temporal GRU Reasoning
             </h3>
-            <p className="text-[10px] text-slate-400 mb-6 relative z-10">GDNN is currently generating forward-looking states using the temporal GRU block.</p>
+            <p className="text-[10px] text-slate-400 mb-6 relative z-10">GDNN is evaluating a 14-day sequence tensor to capture historical flood momentum across spatial nodes.</p>
            </div>
            
-           <div className="relative z-10 space-y-4">
+           <div className="relative z-10 space-y-6">
              <div className="flex justify-between text-[10px] font-bold text-slate-300 font-mono">
-               <span>T-24h</span>
-               <span className="text-violet-400">Current (T0)</span>
-               <span>T+24h</span>
+               <span>T-14 Days</span>
+               <span className="text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded">Current (T0)</span>
+               <span>T+24 Hrs</span>
              </div>
-             <input type="range" min="-24" max="24" defaultValue="0" className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
-             <button className="w-full py-2 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors backdrop-blur-sm border border-white/5">
+             
+             <div className="relative pt-2 pb-2">
+                <input type="range" min="-14" max="1" defaultValue="0" className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-violet-500 relative z-10" />
+                <div className="absolute inset-0 top-1/2 -translate-y-1/2 w-full flex justify-between px-1 pointer-events-none">
+                    {[...Array(16)].map((_, i) => (
+                        <div key={i} className="w-[1px] h-2 bg-slate-600"></div>
+                    ))}
+                </div>
+             </div>
+             
+             <div className="grid grid-cols-2 gap-3">
+                 <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                     <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest mb-1">Embedding Norm</p>
+                     <p className="text-xs font-mono font-bold text-indigo-300">12.4082</p>
+                 </div>
+                 <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                     <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest mb-1">Sequence Shape</p>
+                     <p className="text-xs font-mono font-bold text-indigo-300">{data?.stages.temporal_encoder?.shape || "[38, 14, 32]"}</p>
+                 </div>
+             </div>
+             
+             <button className="w-full py-2.5 bg-violet-600 hover:bg-violet-700 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-colors shadow-lg">
                Replay Sequence
              </button>
            </div>
