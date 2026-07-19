@@ -224,7 +224,7 @@ export default function PredictionEnginePage() {
             <div className="flex items-center gap-3 mt-1">
               <div className="flex items-center gap-1.5">
                 <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{status.model_name} • {status.model_version}</span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{status?.model_name} • {status?.model_version}</span>
               </div>
               <span className="text-slate-300">|</span>
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Cycle #{data?.cycle_id}</span>
@@ -235,11 +235,11 @@ export default function PredictionEnginePage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="bg-white border border-slate-200/60 px-4 py-2 rounded-xl flex flex-col items-end shadow-sm">
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Hardware</span>
-            <span className="text-xs font-bold text-slate-700 font-mono flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-slate-400"/> {status.compute_device}</span>
+            <span className="text-xs font-bold text-slate-700 font-mono flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-slate-400"/> {status?.compute_device}</span>
           </div>
           <div className="bg-white border border-slate-200/60 px-4 py-2 rounded-xl flex flex-col items-end shadow-sm">
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Pipeline Latency</span>
-            <span className="text-xs font-bold text-violet-600 font-mono flex items-center gap-1.5"><Zap className="w-3.5 h-3.5"/> {status.pipeline_latency_ms}ms</span>
+            <span className="text-xs font-bold text-violet-600 font-mono flex items-center gap-1.5"><Zap className="w-3.5 h-3.5"/> {status?.pipeline_latency_ms}ms</span>
           </div>
           <div className="bg-slate-900 px-4 py-2 rounded-xl flex flex-col items-end border border-slate-800 shadow-lg">
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Next Inference</span>
@@ -258,7 +258,7 @@ export default function PredictionEnginePage() {
             const isActive = i === flowStage;
             const isCompleted = i < flowStage;
             const Icon = step.icon;
-            const backendStage = data?.stages[step.id];
+            const backendStage = data?.stages?.[step.id];
 
             return (
               <div key={step.id} className="flex items-center shrink-0">
@@ -318,7 +318,7 @@ export default function PredictionEnginePage() {
             <Network className="w-4 h-4 text-violet-600" />
             <div>
               <p className="text-[10px] font-bold text-slate-800 uppercase tracking-widest font-heading">Live Graph Attention</p>
-              <p className="text-[9px] text-slate-500 font-mono">Nodes: {data?.stages.graph_construction?.nodes || 0} | Edges: {data?.stages.graph_construction?.edges || 0}</p>
+              <p className="text-[9px] text-slate-500 font-mono">Nodes: {data?.stages?.graph_construction?.nodes || 0} | Edges: {data?.stages?.graph_construction?.edges || 0}</p>
             </div>
           </div>
           
@@ -537,7 +537,7 @@ export default function PredictionEnginePage() {
                  </div>
                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
                      <p className="text-[9px] text-slate-400 uppercase font-bold tracking-widest mb-1">Sequence Shape</p>
-                     <p className="text-xs font-mono font-bold text-indigo-300">{data?.stages.temporal_encoder?.shape || "[38, 14, 32]"}</p>
+                     <p className="text-xs font-mono font-bold text-indigo-300">{data?.stages?.temporal_encoder?.shape || "[38, 14, 32]"}</p>
                  </div>
              </div>
              
