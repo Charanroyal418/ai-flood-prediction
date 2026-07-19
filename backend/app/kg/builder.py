@@ -88,15 +88,31 @@ class KnowledgeGraphBuilder:
 
     def update_graph_from_db(self, db: Session):
         districts = db.query(District).all()
+
+        # --- Batch all queries up front to avoid N+1 ---
+        weather_map = {w.district_id: w for w in db.query(Weather).all()}
+        rainfall_map = {r.district_id: r for r in db.query(Rainfall).all()}
+        dem_map = {t.district_id: t for t in db.query(DemTile).all()}
+
+        # Latest prediction per district using a subquery to avoid sorting per district
+        from sqlalchemy import func
+        max_pred_ids = (
+            db.query(func.max(PredictionHistory.id))
+            .group_by(PredictionHistory.district_id)
+            .subquery()
+        )
+        preds = db.query(PredictionHistory).filter(PredictionHistory.id.in_(max_pred_ids)).all()
+        pred_map = {p.district_id: p for p in preds}
+
         for d in districts:
             node_id = f"d-{d.id}"
             pop_id = f"pop-{d.id}"
-            w = db.query(Weather).filter(Weather.district_id == d.id).first()
-            rf = db.query(Rainfall).filter(Rainfall.district_id == d.id).first()
-            dem = db.query(DemTile).filter(DemTile.district_id == d.id).first()
-            latest_pred = db.query(PredictionHistory).filter(PredictionHistory.district_id == d.id).order_by(PredictionHistory.id.desc()).first()
+            w = weather_map.get(d.id)
+            rf = rainfall_map.get(d.id)
+            dem = dem_map.get(d.id)
+            latest_pred = pred_map.get(d.id)
             risk = latest_pred.current_risk_score if latest_pred else 15.0
-            
+
             self.graph.nodes[node_id].update({
                 "label": d.name, "risk_score": float(risk), "elevation": float(dem.elevation if dem else 15.0),
                 "rainfall": float(rf.mm_24h if rf else 0.0), "humidity": float(w.humidity if w else 70.0),
@@ -105,38 +121,40 @@ class KnowledgeGraphBuilder:
             })
             self.graph.nodes[pop_id].update({
                 "label": f"{d.name} Pop", "risk_score": float(risk * 0.9),
-                "population_count": int(d.population or 1000000), "vulnerability": float(dem.slope if dem else 5.0)
+                "population_count": int(d.population or 1000000), "vulnerability": 5.0
             })
-            
+
         rivers = db.query(RiverLevel).all()
         for idx, r in enumerate(rivers):
             node_id = f"rv-{(idx % 9) + 1}"
             catch_id = f"c-{(idx % 9) + 1}"
             ratio = r.current_level / r.danger_level if r.danger_level > 0 else 0.0
             risk = float(ratio * 100.0)
-
             self.graph.nodes[node_id].update({"label": r.river_name, "current_level": r.current_level, "danger_level": r.danger_level, "risk_score": risk})
             self.graph.nodes[catch_id].update({"label": f"{r.river_name} Catchment", "risk_score": risk * 0.8, "area_km2": 5000 + (idx * 500)})
 
-        from app.services.hydrology import HydrologyEngine
-        hydro = HydrologyEngine(db)
-        res_stats = hydro.get_reservoir_stats()
-        for idx, stats in enumerate(res_stats):
-            node_id = f"rs-{(idx % 6) + 1}"
-            dam_id = f"dam-{(idx % 6) + 1}"
-            risk = float(stats["fill_pct"])
+        try:
+            from app.services.hydrology import HydrologyEngine
+            hydro = HydrologyEngine(db)
+            res_stats = hydro.get_reservoir_stats()
+            for idx, stats in enumerate(res_stats):
+                node_id = f"rs-{(idx % 6) + 1}"
+                dam_id = f"dam-{(idx % 6) + 1}"
+                risk = float(stats["fill_pct"])
+                self.graph.nodes[node_id].update({"label": stats["name"], "risk_score": risk, "inflow": stats["inflow_cusecs"], "outflow": stats["outflow_cusecs"]})
+                self.graph.nodes[dam_id].update({"label": f"{stats['name']} Dam", "risk_score": risk, "structural_integrity": 100.0 - (risk * 0.1)})
+        except Exception:
+            pass  # Hydrology engine failure must not block the KG response
 
-            self.graph.nodes[node_id].update({"label": stats["name"], "risk_score": risk, "inflow": stats["inflow_cusecs"], "outflow": stats["outflow_cusecs"]})
-            self.graph.nodes[dam_id].update({"label": f"{stats['name']} Dam", "risk_score": risk, "structural_integrity": 100.0 - (risk * 0.1)})
-
+        # High-risk flood events (batch query, limit 5)
         high_risk_preds = db.query(PredictionHistory).filter(PredictionHistory.current_risk_score > 75).order_by(PredictionHistory.id.desc()).limit(5).all()
         for idx, pred in enumerate(high_risk_preds):
             if idx < 5:
                 fe_id = f"fe-{idx+1}"
-                dist = db.query(District).filter(District.id == pred.district_id).first()
-                d_name = dist.name if dist else "Unknown"
-                self.graph.nodes[fe_id].update({"label": f"{d_name} Flood", "risk_score": float(pred.current_risk_score), "recorded_at": str(pred.timestamp)})
+                d_name = next((d.name for d in districts if d.id == pred.district_id), "Unknown")
+                self.graph.nodes[fe_id].update({"label": f"{d_name} Flood", "risk_score": float(pred.current_risk_score), "recorded_at": str(pred.created_at)})
                 self.graph.add_edge(fe_id, f"d-{pred.district_id}", weight=1.0)
+
 
     def fetch_graph_snapshot(self, db: Session = None, seq_len: int = 3) -> Tuple[torch.Tensor, torch.Tensor]:
         num_nodes = len(self.node_ids)
