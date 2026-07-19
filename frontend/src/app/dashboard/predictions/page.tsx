@@ -10,7 +10,7 @@ import {
   ArrowDown, ArrowUp, Clock, RefreshCw, Zap, Eye, X,
   ChevronRight, Play, Layers, GitBranch, TrendingUp,
   TrendingDown, Server, Wifi, HardDrive, Timer,
-  Droplets, Mountain, Gauge, Radio, MapPin, Info, Microchip, Target, ArrowRight
+  Droplets, Mountain, Gauge, Radio, MapPin, Info, Microchip, Target, ArrowRight, Terminal
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import ReactFlow, { Background, Controls, MarkerType } from "reactflow";
@@ -528,7 +528,7 @@ export default function PredictionEnginePage() {
         {/* Terminal Live Logs */}
         <div className="col-span-12 xl:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-5 h-[240px] flex flex-col shadow-xl">
           <h3 className="text-xs font-heading font-bold text-slate-100 flex items-center gap-2 mb-4 shrink-0">
-            <Terminals className="w-4 h-4 text-green-400" /> Live Execution Logs
+            <Terminal className="w-4 h-4 text-green-400" /> Live Execution Logs
           </h3>
           <div className="flex-1 overflow-y-auto space-y-2 font-mono text-[10px] scrollbar-hide">
             <AnimatePresence>
