@@ -374,8 +374,18 @@ export default function CommandCenter() {
               </div>
             </div>
             <div className="h-[400px] rounded-xl overflow-hidden">
-              <FloodMap districts={hasWsData
-                ? wsDistricts.map(d => ({ name: d.district_name, risk_score: d.risk_score, risk_level: d.risk_level, risk_color: d.risk_color, lat: 0, lon: 0 }))
+              <FloodMap districts={hasWsData && data?.districts
+                ? wsDistricts.map(d => {
+                    const base = data.districts.find((x: any) => x.id === d.district_id) || {};
+                    return {
+                      ...base,
+                      id: d.district_id,
+                      name: d.district_name,
+                      risk_score: d.risk_score,
+                      risk_level: d.risk_level,
+                      risk_color: d.risk_color,
+                    };
+                  })
                 : data?.districts
               } />
             </div>
