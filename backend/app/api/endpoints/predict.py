@@ -170,6 +170,9 @@ def get_inference_cycle(db: Session = Depends(get_db)):
     t = time.time()
     from app.models.district import District
     from app.models.weather import Weather
+    from app.models.history import PredictionHistory
+    from app.models.alert import Alert
+    from app.models.river import RiverLevel
     
     db_districts = db.query(District).all()
     # If no data is available yet, we must fail gracefully to trigger the UI's "Waiting" state
