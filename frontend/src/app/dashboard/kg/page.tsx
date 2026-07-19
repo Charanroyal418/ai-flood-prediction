@@ -346,11 +346,14 @@ export default function DynamicKnowledgeGraph() {
   const getExplainabilityBreakdown = (node: any) => {
     // Use actual SHAP values from backend if available
     if (node.shap_values && node.shap_values.length > 0) {
-      return node.shap_values.map((s: any) => ({
-        label: s.feature,
-        change: `${s.contribution >= 0 ? "+" : ""}${s.contribution.toFixed(1)}%`,
-        isPositive: s.contribution >= 0
-      }));
+      return node.shap_values.map((s: any) => {
+        const contrib = s.contribution ?? s.contribution_pct ?? 0;
+        return {
+          label: s.feature || s.label || "Unknown Feature",
+          change: `${contrib >= 0 ? "+" : ""}${Number(contrib).toFixed(1)}%`,
+          isPositive: contrib >= 0
+        };
+      });
     }
     // Fallback: derive from node telemetry when SHAP not available
     if (node.type !== "district") {
