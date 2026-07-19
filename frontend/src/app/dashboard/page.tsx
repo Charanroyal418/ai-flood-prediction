@@ -444,7 +444,7 @@ export default function CommandCenter() {
               <div className="space-y-2">
                 {alerts.slice(0, 3).map((alert: any, i: number) => (
                   <motion.div
-                    key={alert.id}
+                    key={alert.id || alert.district_id || `alert-${i}`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: i * 0.1 }}
