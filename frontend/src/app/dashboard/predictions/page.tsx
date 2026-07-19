@@ -1005,7 +1005,7 @@ export default function GDNNInferenceEngine() {
                         label: `${selectedDistrict.risk_level} Flood Probability`,
                         impact: `${selectedDistrict.risk_score}%`,
                       });
-                      return chain.map((step, i) => (
+                      return chain.map((step: any, i: number) => (
                         <div key={i}>
                           <motion.div
                             initial={{ opacity: 0, x: -10 }}
