@@ -170,10 +170,10 @@ export default function DynamicKnowledgeGraph() {
     const colCounts: Record<number, number> = {};
     
     // Create a map of nodeId -> communityIndex for color coding
-    const communityMap = new Map<string, number>();
+    const communityMap: Record<string, number> = {};
     if (data?.communities) {
       data.communities.forEach((comm: string[], i: number) => {
-        comm.forEach(id => communityMap.set(id, i));
+        comm.forEach(id => { communityMap[id] = i; });
       });
     }
     
@@ -189,7 +189,7 @@ export default function DynamicKnowledgeGraph() {
       else if (currentRisk >= 50) status = "Warning";
       else if (currentRisk >= 25) status = "Watch";
       
-      const commIdx = communityMap.get(n.id);
+      const commIdx = communityMap[n.id];
       const communityColor = commIdx !== undefined ? COMMUNITY_COLORS[commIdx % COMMUNITY_COLORS.length] : undefined;
       
       return {
