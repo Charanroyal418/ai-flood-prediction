@@ -214,7 +214,8 @@ class RealtimeOrchestrator:
                 return summary
 
             # Build a quick lookup: node_id -> result
-            result_map = {r["node_id"]: r for r in inference_results}
+            nodes_data = inference_results.get("nodes", inference_results) if isinstance(inference_results, dict) else inference_results
+            result_map = {r["node_id"]: r for r in nodes_data}
 
             # ─── STEP 6: Persist District Predictions ─────────────────────
             logger.info("[Pipeline] Step 6: Persisting Predictions")
@@ -311,7 +312,7 @@ class RealtimeOrchestrator:
             # ─── STEP 7: Knowledge Graph Events ───────────────────────────
             logger.info("[Pipeline] Step 7: Knowledge Graph Events")
             try:
-                self._record_kg_events(inference_results, node_ids)
+                self._record_kg_events(nodes_data, node_ids)
                 summary["steps_completed"].append("kg_events")
             except Exception as e:
                 logger.warning(f"[Pipeline] KG events failed: {e}")
