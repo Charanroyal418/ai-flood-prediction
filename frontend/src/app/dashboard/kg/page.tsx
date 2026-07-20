@@ -116,7 +116,6 @@ export default function DynamicKnowledgeGraph() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [timeIndex, setTimeIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [hoveredProjection, setHoveredProjection] = useState<any>(null);
   const playInterval = useRef<any>(null);
 
   const TIME_WINDOWS = [
