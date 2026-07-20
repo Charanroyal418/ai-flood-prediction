@@ -12,8 +12,9 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import {
   Network, MapPin, Waves, Shield, CloudRain, RefreshCw, Activity,
-  ArrowRight, Clock, Play, Pause, TrendingUp, Info, X, Map, BarChart2
+  ArrowRight, Clock, Play, Pause, TrendingUp, Info, X, Map, BarChart2, Eye, EyeOff
 } from "lucide-react";
+import * as d3 from "d3-force";
 
 // Category definitions and styles — all 12 node types
 const TYPE_CONFIG: Record<string, { bg: string; border: string; text: string; emoji: string; label: string }> = {
@@ -55,11 +56,15 @@ function KGNode({ data }: { data: any }) {
       <motion.div
         animate={isTarget ? { scale: [1, 1.08, 1], boxShadow: `0 0 20px ${statusColor}a0` } : {}}
         transition={isTarget ? { duration: 1.2, repeat: Infinity } : {}}
-        className={`rounded-2xl border bg-white p-3.5 shadow-sm transition-all duration-300 w-full hover:shadow-md ${cfg.border}`}
+        className={`rounded-2xl bg-white p-3.5 shadow-sm transition-all duration-300 w-full hover:shadow-md ${cfg.border}`}
         style={{
+          borderStyle: 'solid',
+          borderWidth: data.risk_score >= 75 ? 3 : data.risk_score >= 50 ? 2 : 1,
+          borderColor: data.risk_score >= 75 ? statusColor : undefined,
           borderLeftWidth: 5,
           borderLeftColor: statusColor,
           backgroundColor: data.communityColor ? `${data.communityColor}20` : 'white',
+          transform: `scale(${1 + (data.risk_score / 100) * 0.15})`
         }}
       >
         <div className="flex items-start justify-between mb-1.5">
@@ -116,6 +121,7 @@ export default function DynamicKnowledgeGraph() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [timeIndex, setTimeIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [showAllEdges, setShowAllEdges] = useState(false);
   const playInterval = useRef<any>(null);
 
   const TIME_WINDOWS = [
@@ -167,8 +173,6 @@ export default function DynamicKnowledgeGraph() {
   };
 
   const updateGraphLayout = useCallback((rawNodes: any[], rawEdges: any[], timeIdx: number) => {
-    const colCounts: Record<number, number> = {};
-    
     // Create a map of nodeId -> communityIndex for color coding
     const communityMap: Record<string, number> = {};
     if (data?.communities) {
@@ -176,14 +180,9 @@ export default function DynamicKnowledgeGraph() {
         comm.forEach(id => { communityMap[id] = i; });
       });
     }
-    
+
     const newNodes = rawNodes.map((n: any) => {
-      const col = categoryColumns[n.type] ?? 0;
-      const count = colCounts[col] ?? 0;
-      colCounts[col] = count + 1;
-      
       const currentRisk = getRiskFromHistory(n, timeIdx);
-      
       let status = "Safe";
       if (currentRisk >= 75) status = "Critical";
       else if (currentRisk >= 50) status = "Warning";
@@ -195,16 +194,15 @@ export default function DynamicKnowledgeGraph() {
       return {
         id: n.id,
         type: "kgNode",
-        position: {
-          x: col * 260 + 50,
-          y: count * 130 + (col % 2 === 0 ? 0 : 60) + 30,
-        },
+        x: 0, // for d3
+        y: 0, // for d3
         data: {
           ...n,
           risk_score: currentRisk,
           status,
           propActive: false,
-          communityColor
+          communityColor,
+          communityIdx: commIdx ?? 0
         },
       };
     });
@@ -229,10 +227,65 @@ export default function DynamicKnowledgeGraph() {
           opacity: 0.8,
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: statusColor },
+        // metadata for thresholding
+        dynamicInfluence,
+        attention: e.attention
       };
     });
 
-    setNodes(newNodes);
+    // Run static D3 force simulation
+    const simulation = d3.forceSimulation(newNodes)
+      .force("charge", d3.forceManyBody().strength(-800))
+      .force("center", d3.forceCenter(0, 0))
+      .force("x", d3.forceX((d: any) => {
+        const idx = d.data.communityIdx;
+        const angle = (idx / 8) * Math.PI * 2;
+        return Math.cos(angle) * 600;
+      }).strength(0.3))
+      .force("y", d3.forceY((d: any) => {
+        const idx = d.data.communityIdx;
+        const angle = (idx / 8) * Math.PI * 2;
+        return Math.sin(angle) * 600;
+      }).strength(0.3))
+      .force("link", d3.forceLink(newEdges).id((d: any) => d.id).distance(150).strength(0.1))
+      .stop();
+
+    // Fast-forward simulation
+    simulation.tick(300);
+
+    const finalNodes = newNodes.map((n: any) => ({
+      id: n.id,
+      type: n.type,
+      position: { x: n.x, y: n.y },
+      data: n.data
+    }));
+
+    // Generate community label nodes
+    const communityLabelNodes: any[] = [];
+    if (data?.communities) {
+      data.communities.forEach((_: any, i: number) => {
+        const angle = (i / 8) * Math.PI * 2;
+        const r = 800; // place labels further out
+        communityLabelNodes.push({
+          id: `community-label-${i}`,
+          type: "default",
+          position: { x: Math.cos(angle) * r, y: Math.sin(angle) * r },
+          data: { label: `Cluster ${i + 1}` },
+          style: {
+            background: COMMUNITY_COLORS[i % COMMUNITY_COLORS.length] + '20',
+            color: COMMUNITY_COLORS[i % COMMUNITY_COLORS.length],
+            border: `2px solid ${COMMUNITY_COLORS[i % COMMUNITY_COLORS.length]}`,
+            borderRadius: '20px',
+            fontWeight: 'bold',
+            padding: '10px 20px',
+            fontSize: '16px',
+            pointerEvents: 'none'
+          }
+        });
+      });
+    }
+
+    setNodes([...finalNodes, ...communityLabelNodes]);
     setEdges(newEdges);
   }, [setNodes, setEdges, data?.communities]);
 
@@ -430,13 +483,23 @@ export default function DynamicKnowledgeGraph() {
           
           <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-2 rounded-lg border border-slate-200 shadow-sm pointer-events-none">
              <p className="text-xs font-bold text-slate-800">Spatial Flow Graph</p>
-             <p className="text-[10px] text-slate-500">Nodes are color-coded by Basin Community</p>
+             <p className="text-[10px] text-slate-500">Nodes are clustered by Basin Community</p>
+          </div>
+
+          <div className="absolute top-4 right-4 z-10 flex gap-2">
+            <button
+              onClick={() => setShowAllEdges(!showAllEdges)}
+              className="flex items-center gap-1.5 bg-white/90 backdrop-blur px-3 py-2 rounded-lg border border-slate-200 shadow-sm text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              {showAllEdges ? <EyeOff className="w-3.5 h-3.5 text-slate-500" /> : <Eye className="w-3.5 h-3.5 text-violet-500" />}
+              {showAllEdges ? "Hide Minor Edges" : "Show All Edges"}
+            </button>
           </div>
 
           <div className="flex-1 min-h-0 bg-slate-50 relative">
             <ReactFlow
               nodes={nodes}
-              edges={edges}
+              edges={edges.filter(e => showAllEdges || e.dynamicInfluence > 15 || e.attention > 0.3)}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}

@@ -168,7 +168,7 @@ def get_inference_cycle(db: Session = Depends(get_db)):
     
     from app.models.district import District
     from app.models.weather import Weather
-    from app.models.history import PredictionHistory
+    from app.models.history import PredictionHistory, ModelInference
     from app.models.alert import Alert
     from app.models.river import RiverLevel
     
@@ -221,7 +221,7 @@ def get_inference_cycle(db: Session = Depends(get_db)):
     
     # 6. Feature Engineering
     t = time.time()
-    create_stage("feature_engineering", "success", 15.6, shape=f"[{num_districts}, {num_features}]", in_size="Raw Features", out_size="Scaled Features")
+    create_stage("feature_engineering", "success", 15.6, shape=f"[{len(db_districts)}, {num_features}]", in_size="Raw Features", out_size="Scaled Features")
     log("Engineered composite features (Soil Moisture Index, Population Density).")
 
     # 7. Knowledge Graph Update

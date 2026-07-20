@@ -7,7 +7,7 @@ import api from "@/lib/api";
 import {
   Brain, Cpu, Zap, Target,
   CheckCircle, RefreshCw, GitBranch, Terminal, MapPin, 
-  Eye, ChevronRight, ChevronDown, ChevronUp, Search, BarChart2
+  Eye, ChevronRight, ChevronDown, ChevronUp, Search, BarChart2, AlertTriangle
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ export default function PredictionEnginePage() {
   const [showLogs, setShowLogs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading, dataUpdatedAt } = useQuery<InferenceCycle>({
+  const { data, isLoading, isError, error, dataUpdatedAt } = useQuery<InferenceCycle>({
     queryKey: ["inference-cycle"],
     queryFn: async () => {
       const res = await api.get("/predict/inference-cycle");
@@ -115,6 +115,18 @@ export default function PredictionEnginePage() {
         <div className="flex flex-col items-center gap-4">
           <Brain className="w-12 h-12 text-blue-500 animate-pulse" />
           <p className="text-sm font-semibold text-slate-400 font-mono">INITIALIZING GDNN KERNEL...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex min-h-[80vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-slate-400">
+           <AlertTriangle className="w-12 h-12 text-red-500 mb-2" />
+           <p className="font-bold">Error loading prediction engine</p>
+           <p className="text-xs">{error?.message || "Check the backend connection."}</p>
         </div>
       </div>
     );
