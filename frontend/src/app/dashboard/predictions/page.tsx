@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import {
-  Brain, Cpu, Clock, Zap, Target, Database,
-  Activity, CheckCircle, RefreshCw, GitBranch, Terminal, MapPin, 
-  Layers, Filter, Server, Eye, AlertTriangle, Play, Pause, ChevronRight, Droplets, ChevronDown, ChevronUp, Search, BarChart2
+  Brain, Cpu, Zap, Target,
+  CheckCircle, RefreshCw, GitBranch, Terminal, MapPin, 
+  Eye, ChevronRight, ChevronDown, ChevronUp, Search, BarChart2
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -68,7 +68,6 @@ export default function PredictionEnginePage() {
   const [flowStage, setFlowStage] = useState(-1);
   const [selectedDistrictId, setSelectedDistrictId] = useState<number | null>(null);
   const [countdown, setCountdown] = useState(30);
-  const [forecastStep, setForecastStep] = useState(0);
   const [showLogs, setShowLogs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -109,12 +108,6 @@ export default function PredictionEnginePage() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setForecastStep(prev => (prev + 1) % 5);
-    }, 2500);
-    return () => clearInterval(timer);
-  }, []);
 
   if (isLoading && !data) {
     return (
