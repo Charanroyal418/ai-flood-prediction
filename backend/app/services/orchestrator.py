@@ -152,6 +152,43 @@ class RealtimeOrchestrator:
                 logger.error(f"[Pipeline] River ETL failed: {e}")
                 summary["errors"].append(f"river_etl: {e}")
 
+            # ─── STEP 2.5: Snapshot Generation ──────────────────────────
+            logger.info("[Pipeline] Step 2.5: Node Feature Snapshot Generation")
+            try:
+                from app.models.history import NodeFeatureSnapshot, WeatherHistory
+                from app.models.river import RiverLevel
+                
+                districts = self.db.query(District).all()
+                for d in districts:
+                    w = self.db.query(WeatherHistory).filter_by(district_id=d.id).order_by(WeatherHistory.recorded_at.desc()).first()
+                    r = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
+                    
+                    river_risk = 0.0
+                    if r and r.danger_level and r.danger_level > 0:
+                        river_risk = max(0.0, min(1.0, r.current_level / r.danger_level))
+                    
+                    snap = NodeFeatureSnapshot(
+                        district_id=d.id,
+                        rainfall=w.rainfall_mm if w else 0.0,
+                        risk_score=river_risk * 100.0,
+                        humidity=w.humidity if w else 70.0,
+                        pressure=w.pressure if w else 1010.0,
+                        temperature=w.temperature if w else 28.0,
+                        elevation=20.0,
+                        slope=5.0,
+                        urban_drainage=80.0 if "Chennai" in d.name else 40.0,
+                        historical_floods=2.0,
+                        population=d.population or 1000000.0,
+                        land_cover=0.8
+                    )
+                    self.db.add(snap)
+                self.db.commit()
+                summary["steps_completed"].append("snapshot_generation")
+            except Exception as e:
+                logger.error(f"[Pipeline] Snapshot generation failed: {e}")
+                summary["errors"].append(f"snapshot_generation: {e}")
+                self.db.rollback()
+
             # ─── STEP 3: Build Knowledge Graph ────────────────────────────
             logger.info("[Pipeline] Step 3: Knowledge Graph Update")
             try:
