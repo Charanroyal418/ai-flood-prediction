@@ -143,11 +143,15 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
 
     communities_list = []
     try:
-        undirected_G = G.to_undirected()
-        from networkx.algorithms.community import label_propagation_communities
-        communities = list(label_propagation_communities(undirected_G))
-        for comm in communities:
-            communities_list.append(list(comm))
+        # Group node IDs by their DB-assigned community_idx
+        comm_map = {}
+        for nid in kg_builder.node_ids:
+            if nid.startswith("d-"):
+                c_idx = G.nodes[nid].get("community_idx", 0)
+                if c_idx not in comm_map:
+                    comm_map[c_idx] = []
+                comm_map[c_idx].append(nid)
+        communities_list = list(comm_map.values())
     except Exception:
         pass
 

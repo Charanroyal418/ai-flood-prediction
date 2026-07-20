@@ -12,3 +12,4 @@ from app.models.terrain import DemTile, Landcover
 from app.models.logs import EtlLog, SchedulerLog, ApiLog
 from app.models.history import WeatherHistory, PredictionHistory, ModelInference, KnowledgeGraphEvents
 from app.models.entities import Dam, Catchment, Sensor, HistoricalFloodEvent
+from app.models.graph import GraphEdge

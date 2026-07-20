@@ -8,6 +8,7 @@ class District(Base):
     name = Column(String, unique=True, index=True, nullable=False)
     geom_json = Column(JSON, nullable=True) # Storing GeoJSON instead of PostGIS Geometry
     population = Column(Float, nullable=True)
+    community_idx = Column(Integer, nullable=True, default=0)
 
     # Relationships
     predictions = relationship("PredictionHistory", back_populates="district")
