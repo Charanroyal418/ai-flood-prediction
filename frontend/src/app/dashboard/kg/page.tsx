@@ -38,11 +38,16 @@ const STATUS_COLORS: Record<string, string> = {
   Safe: "#10b981",
 };
 
+const COMMUNITY_COLORS = [
+  "#818cf8", "#f472b6", "#34d399", "#fbbf24", "#fb923c", "#f87171", "#c084fc", "#38bdf8"
+];
+
 // Custom ReactFlow Node component
 function KGNode({ data }: { data: any }) {
   const cfg = TYPE_CONFIG[data.type] || TYPE_CONFIG.district;
   const statusColor = STATUS_COLORS[data.status] || STATUS_COLORS.Safe;
   const isTarget = data.propActive;
+  const communityColor = data.communityColor || cfg.bg;
 
   return (
     <div className="flex flex-col items-center" style={{ minWidth: 130 }}>
@@ -54,6 +59,7 @@ function KGNode({ data }: { data: any }) {
         style={{
           borderLeftWidth: 5,
           borderLeftColor: statusColor,
+          backgroundColor: data.communityColor ? `${data.communityColor}20` : 'white',
         }}
       >
         <div className="flex items-start justify-between mb-1.5">
@@ -108,7 +114,7 @@ export default function DynamicKnowledgeGraph() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [timeIndex, setTimeIndex] = useState(0); // 0 = Now, 1 = 15m ago, etc.
+  const [timeIndex, setTimeIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hoveredProjection, setHoveredProjection] = useState<any>(null);
   const playInterval = useRef<any>(null);
@@ -123,12 +129,11 @@ export default function DynamicKnowledgeGraph() {
     { label: "24h", key: "24h" }
   ];
 
-  // Fetch complete graph payload from backend (with timeout for Render cold start)
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["kgGraphData"],
     queryFn: async () => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
       try {
         const res = await api.get("/kg/graph", { signal: controller.signal });
         return res.data;
@@ -136,13 +141,12 @@ export default function DynamicKnowledgeGraph() {
         clearTimeout(timeoutId);
       }
     },
-    refetchInterval: 5 * 60 * 1000, // match backend 5-min cache
-    staleTime: 4 * 60 * 1000,       // data is fresh for 4 minutes
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 4 * 60 * 1000,
     retry: 2,
     retryDelay: (attempt) => Math.min(3000 * (attempt + 1), 10000),
   });
 
-  // Category layout columns to place entities logically in a left-to-right flow
   const categoryColumns: Record<string, number> = {
     sensor: 0,
     weather_station: 0,
@@ -163,9 +167,16 @@ export default function DynamicKnowledgeGraph() {
     return node.history[idx];
   };
 
-  // Re-build ReactFlow nodes and edges on data change or temporal slider movement
   const updateGraphLayout = useCallback((rawNodes: any[], rawEdges: any[], timeIdx: number) => {
     const colCounts: Record<number, number> = {};
+    
+    // Create a map of nodeId -> communityIndex for color coding
+    const communityMap = new Map<string, number>();
+    if (data?.communities) {
+      data.communities.forEach((comm: string[], i: number) => {
+        comm.forEach(id => communityMap.set(id, i));
+      });
+    }
     
     const newNodes = rawNodes.map((n: any) => {
       const col = categoryColumns[n.type] ?? 0;
@@ -174,11 +185,13 @@ export default function DynamicKnowledgeGraph() {
       
       const currentRisk = getRiskFromHistory(n, timeIdx);
       
-      // Determine dynamic status for history slider
       let status = "Safe";
       if (currentRisk >= 75) status = "Critical";
       else if (currentRisk >= 50) status = "Warning";
       else if (currentRisk >= 25) status = "Watch";
+      
+      const commIdx = communityMap.get(n.id);
+      const communityColor = commIdx !== undefined ? COMMUNITY_COLORS[commIdx % COMMUNITY_COLORS.length] : undefined;
       
       return {
         id: n.id,
@@ -192,6 +205,7 @@ export default function DynamicKnowledgeGraph() {
           risk_score: currentRisk,
           status,
           propActive: false,
+          communityColor
         },
       };
     });
@@ -221,26 +235,23 @@ export default function DynamicKnowledgeGraph() {
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, data?.communities]);
 
-  // Sync ReactFlow state when API data arrives
   useEffect(() => {
     if (data?.nodes) {
       updateGraphLayout(data.nodes, data.edges, timeIndex);
     }
   }, [data, timeIndex, updateGraphLayout]);
 
-  // Node Click handler
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNode(node.data);
   }, []);
 
-  // Temporal Playback Loop
   useEffect(() => {
     if (isPlaying) {
       playInterval.current = setInterval(() => {
         setTimeIndex((prev) => {
-          if (prev >= 6) return 0; // wrap around
+          if (prev >= 6) return 0;
           return prev + 1;
         });
       }, 2000);
@@ -250,23 +261,20 @@ export default function DynamicKnowledgeGraph() {
     return () => { if (playInterval.current) clearInterval(playInterval.current); };
   }, [isPlaying]);
 
-  // GNN Message Passing Animation Sequence
   const runGNNPropagation = async () => {
     if (isSimulating || !data?.propagation_steps) return;
     setIsSimulating(true);
     setIsPlaying(false);
-    setTimeIndex(0); // reset to Now
+    setTimeIndex(0);
 
     const steps = data.propagation_steps;
     
-    // Reset all propagation indicators
     setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, propActive: false } })));
     setEdges(eds => eds.map(e => ({ ...e, style: { stroke: "#cbd5e1", strokeWidth: 1.5 } })));
 
     for (let step = 0; step < steps.length; step++) {
       const activeIds = steps[step];
       
-      // Update nodes state
       setNodes(nds => nds.map(n => {
         const isActive = activeIds.includes(n.id);
         return {
@@ -275,7 +283,6 @@ export default function DynamicKnowledgeGraph() {
         };
       }));
 
-      // Update edges style during active message passing
       setEdges(eds => eds.map(e => {
         const isFromActiveNode = activeIds.includes(e.source);
         if (isFromActiveNode) {
@@ -288,11 +295,9 @@ export default function DynamicKnowledgeGraph() {
         return e;
       }));
 
-      // Delay between network message aggregation steps
       await new Promise(resolve => setTimeout(resolve, 1400));
     }
 
-    // Done simulation - flash all nodes back to normal status border
     setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, propActive: false } })));
     if (data) {
       updateGraphLayout(data.nodes, data.edges, timeIndex);
@@ -309,9 +314,7 @@ export default function DynamicKnowledgeGraph() {
           </div>
           <h2 className="text-lg font-heading font-bold text-slate-800">Knowledge Graph Unavailable</h2>
           <p className="text-sm text-slate-500">
-            {(error as any)?.code === "ERR_CANCELED"
-              ? "The request timed out. The backend server on Render's free tier may still be waking up from a cold start."
-              : "Failed to load the Knowledge Graph data. The backend may be starting up or experiencing issues."}
+            Failed to load the Knowledge Graph data.
           </p>
           <button
             onClick={() => refetch()}
@@ -319,7 +322,6 @@ export default function DynamicKnowledgeGraph() {
           >
             <RefreshCw className="w-4 h-4" /> Try Again
           </button>
-          <p className="text-[11px] text-slate-400">Render free-tier services spin down after inactivity. The first request may take 60–90 seconds.</p>
         </div>
       </div>
     );
@@ -331,20 +333,12 @@ export default function DynamicKnowledgeGraph() {
         <div className="flex flex-col items-center gap-4 max-w-sm text-center">
           <div className="w-14 h-14 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
           <p className="text-sm font-semibold text-slate-600 font-heading">Loading Dynamic Knowledge Graph...</p>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            The backend is running GNN inference. If the server was idle, this cold start can take <strong>60–90 seconds</strong> on Render&apos;s free tier.
-          </p>
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
-            <Clock className="w-3.5 h-3.5 animate-pulse" /> Waiting for response...
-          </div>
         </div>
       </div>
     );
   }
 
-  // Build explainability breakdown from real SHAP values returned by the GNN
   const getExplainabilityBreakdown = (node: any) => {
-    // Use actual SHAP values from backend if available
     if (node.shap_values && node.shap_values.length > 0) {
       return node.shap_values.map((s: any) => {
         const contrib = s.contribution ?? s.contribution_pct ?? 0;
@@ -355,7 +349,6 @@ export default function DynamicKnowledgeGraph() {
         };
       });
     }
-    // Fallback: derive from node telemetry when SHAP not available
     if (node.type !== "district") {
       return [
         { label: "Base Status", value: `${node.type} node, primary telemetry active.` },
@@ -382,7 +375,7 @@ export default function DynamicKnowledgeGraph() {
           <h1 className="text-2xl font-heading font-bold text-slate-800 flex items-center gap-2">
             <Network className="w-6 h-6 text-violet-600" /> Dynamic Graph Intelligence Engine
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">Real-time GAT structural metrics · Temporal propagation reasoning</p>
+          <p className="text-xs text-slate-500 mt-0.5">Real-time Knowledge Graph · AI Flood Susceptibility Partitioning</p>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -405,62 +398,42 @@ export default function DynamicKnowledgeGraph() {
       {/* Main Panel Content */}
       <div className="flex-1 min-h-0 grid grid-cols-12 gap-5">
         
-        {/* Left Panel: Graph Metrics & Communities */}
-        <div className="col-span-3 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          {/* Graph Metrics Panel */}
-          <div className="glass-card p-4 space-y-3 shrink-0">
-            <h2 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <Activity className="w-3.5 h-3.5 text-violet-500" /> Graph Structural Metrics
+        {/* Left Panel: Graph Metrics */}
+        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-h-0 overflow-y-auto">
+          
+          <div className="glass-card p-5 space-y-4 shrink-0 shadow-md">
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-3 font-heading">
+              <Activity className="w-4 h-4 text-violet-500" /> Graph Structural Metrics
             </h2>
-            <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="flex flex-col gap-3">
               {[
-                { label: "Graph Density", value: data.stats.density },
-                { label: "Avg Degree", value: data.stats.avg_degree },
-                { label: "Clustering Coeff", value: data.stats.clustering_coefficient },
-                { label: "Inference Latency", value: `${data.stats.latency_ms}ms` },
-                { label: "Total Nodes", value: data.stats.total_nodes },
-                { label: "Active Sensors", value: data.stats.active_sensors }
-              ].map(({ label, value }) => (
-                <div key={label} className="bg-slate-50 border border-slate-100 rounded-xl p-2">
-                  <p className="text-[14px] font-bold text-slate-800 font-mono">{value}</p>
-                  <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">{label}</p>
+                { label: "Graph Density", value: data.stats.density, explain: "Measures how interconnected the regions are. High density means floods spread easily across borders." },
+                { label: "Avg Degree", value: data.stats.avg_degree, explain: "Average number of direct connections per node. High degree indicates complex water flow networks." },
+                { label: "Clustering Coeff", value: data.stats.clustering_coefficient, explain: "Indicates localized risk pockets. High clustering means a flood in one area will likely trap nearby areas." },
+                { label: "Inference Latency", value: `${data.stats.latency_ms}ms`, explain: "Time taken by AI to analyze the entire graph. Lower is better for real-time alerts." },
+                { label: "Total Nodes", value: data.stats.total_nodes, explain: "Number of geographical and sensor entities being monitored in real time." },
+                { label: "Active Sensors", value: data.stats.active_sensors, explain: "Live data sources continuously feeding the Knowledge Graph." }
+              ].map(({ label, value, explain }) => (
+                <div key={label} className="bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm hover:shadow transition-shadow">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{label}</p>
+                    <p className="text-sm font-bold text-slate-800 font-mono">{value}</p>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-tight">{explain}</p>
                 </div>
               ))}
-            </div>
-          </div>
-
-          {/* Modularity Communities Cluster Panel */}
-          <div className="glass-card p-4 flex-1 flex flex-col min-h-0">
-            <h2 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2 shrink-0">
-              <Map className="w-3.5 h-3.5 text-blue-500" /> Community Partitioning
-            </h2>
-            <div className="mt-3 overflow-y-auto space-y-2 flex-1 pr-1">
-              {data.communities.map((comm: string[], i: number) => {
-                const districts = comm.filter(id => id.startsWith("d-")).map(id => {
-                  const node = data.nodes.find((n: any) => n.id === id);
-                  return node ? node.label : "";
-                }).filter(Boolean);
-
-                return (
-                  <div key={i} className="bg-slate-50 border border-slate-100/60 p-3 rounded-xl hover:bg-slate-100/50 transition-colors">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-[10px] font-bold text-slate-600">Basin Zone {i + 1}</span>
-                      <span className="text-[8px] font-bold bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-mono">
-                        {comm.length} Nodes
-                      </span>
-                    </div>
-                    <p className="text-[9px] text-slate-500 font-medium leading-relaxed truncate font-heading">
-                      {districts.join(", ")}
-                    </p>
-                  </div>
-                );
-              })}
             </div>
           </div>
         </div>
 
         {/* Center Panel: ReactFlow Canvas */}
-        <div className="col-span-6 glass-card overflow-hidden relative flex flex-col border border-slate-200 shadow-sm rounded-2xl bg-white">
+        <div className="col-span-12 lg:col-span-6 glass-card overflow-hidden relative flex flex-col border border-slate-200 shadow-lg rounded-2xl bg-white">
+          
+          <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-2 rounded-lg border border-slate-200 shadow-sm pointer-events-none">
+             <p className="text-xs font-bold text-slate-800">Spatial Flow Graph</p>
+             <p className="text-[10px] text-slate-500">Nodes are color-coded by Basin Community</p>
+          </div>
+
           <div className="flex-1 min-h-0 bg-slate-50 relative">
             <ReactFlow
               nodes={nodes}
@@ -475,23 +448,22 @@ export default function DynamicKnowledgeGraph() {
             >
               <Background color="#cbd5e1" gap={24} size={1} />
               <Controls className="bg-white border-slate-200 shadow-md rounded-xl" />
-              <MiniMap className="border border-slate-200 rounded-xl shrink-0" style={{ height: 100, width: 140 }} />
             </ReactFlow>
           </div>
 
           {/* Temporal Playback Slider Overlay */}
-          <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md border border-slate-200/80 p-3 rounded-2xl shadow-xl flex items-center gap-4 z-10">
+          <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md border border-slate-200 p-3 rounded-2xl shadow-xl flex items-center gap-4 z-10">
             <button
               onClick={() => setIsPlaying(!isPlaying)}
-              className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center hover:bg-violet-600 transition-colors flex-shrink-0"
+              className="w-10 h-10 rounded-xl bg-violet-600 text-white flex items-center justify-center hover:bg-violet-700 transition-colors flex-shrink-0 shadow-md shadow-violet-200"
             >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
+              {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 fill-white ml-0.5" />}
             </button>
             
-            <div className="flex-1">
-              <div className="flex justify-between text-[9px] font-bold text-slate-500 mb-1 font-mono uppercase">
+            <div className="flex-1 px-2">
+              <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-2 font-mono uppercase tracking-wider">
                 <span>Timeline Slider</span>
-                <span className="text-violet-600 font-heading">{TIME_WINDOWS[timeIndex].label} ago</span>
+                <span className="text-violet-600 bg-violet-50 px-2 py-0.5 rounded font-heading">{TIME_WINDOWS[timeIndex].label} ago</span>
               </div>
               <input
                 type="range"
@@ -502,9 +474,9 @@ export default function DynamicKnowledgeGraph() {
                   setTimeIndex(parseInt(e.target.value));
                   setIsPlaying(false);
                 }}
-                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
               />
-              <div className="flex justify-between text-[9px] font-semibold text-slate-400 mt-1 font-mono">
+              <div className="flex justify-between text-[10px] font-semibold text-slate-400 mt-2 font-mono">
                 {TIME_WINDOWS.map((win, idx) => (
                   <span key={win.key} className={idx === timeIndex ? "text-violet-600 font-bold" : ""}>
                     {win.label}
@@ -515,76 +487,57 @@ export default function DynamicKnowledgeGraph() {
           </div>
         </div>
 
-        {/* Right Panel: t-SNE Embeddings Plot & Node Inspector */}
-        <div className="col-span-3 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          {/* t-SNE Embeddings Plot */}
-          <div className="glass-card p-4 space-y-3 shrink-0">
-            <h2 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <BarChart2 className="w-3.5 h-3.5 text-pink-500" /> t-SNE Embedding Projection
+        {/* Right Panel: Communities & Explainability */}
+        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-h-0 overflow-y-auto">
+          
+          <div className="glass-card p-5 flex-1 flex flex-col min-h-0 shadow-md">
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-3 shrink-0">
+              <Map className="w-4 h-4 text-blue-500" /> Basin Communities
             </h2>
-            <div className="w-full bg-slate-50 rounded-xl border border-slate-100 relative flex items-center justify-center p-2">
-              {/* Inline interactive SVG for t-SNE mapping */}
-              <svg viewBox="0 0 220 220" className="w-full h-44 overflow-visible">
-                <line x1="110" y1="0" x2="110" y2="220" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="2,2" />
-                <line x1="0" y1="110" x2="220" y2="110" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="2,2" />
-                {data.embeddings_projection.map((pt: any) => {
-                  // Map coordinates from [-100, 100] to [10, 210] SVG bounds
-                  const cx = ((pt.x + 100) / 200) * 190 + 15;
-                  const cy = ((pt.y + 100) / 200) * 190 + 15;
-                  const color = pt.type === "district" ? "#a78bfa" : pt.type === "river" ? "#3b82f6" : "#0ea5e9";
-                  
-                  return (
-                    <circle
-                      key={pt.id}
-                      cx={cx}
-                      cy={cy}
-                      r="4.5"
-                      fill={color}
-                      className="cursor-pointer transition-transform hover:scale-155 duration-205 stroke-white stroke-[1]"
-                      onMouseEnter={() => setHoveredProjection(pt)}
-                      onMouseLeave={() => setHoveredProjection(null)}
-                      onClick={() => {
-                        const originalNode = data.nodes.find((n: any) => n.id === pt.id);
-                        if (originalNode) setSelectedNode(originalNode);
-                      }}
-                    />
-                  );
-                })}
-              </svg>
-              {/* Tooltip Overlay */}
-              {hoveredProjection && (
-                <div className="absolute top-2 left-2 right-2 bg-slate-900/90 text-white p-2 rounded-xl text-[9px] shadow-lg leading-tight font-semibold flex items-center gap-1.5 border border-white/10">
-                  <span>{TYPE_CONFIG[hoveredProjection.type]?.emoji}</span>
-                  <div>
-                    <p className="font-bold font-heading">{hoveredProjection.label}</p>
-                    <p className="text-[8px] text-slate-400 capitalize font-mono">{hoveredProjection.type}</p>
+            <p className="text-[10px] text-slate-500 mt-2 mb-3">AI clusters interconnected nodes that flood together.</p>
+            <div className="overflow-y-auto space-y-3 flex-1 pr-1">
+              {data.communities.map((comm: string[], i: number) => {
+                const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
+                const districts = comm.filter(id => id.startsWith("d-")).map(id => {
+                  const node = data.nodes.find((n: any) => n.id === id);
+                  return node ? node.label : "";
+                }).filter(Boolean);
+
+                return (
+                  <div key={i} className="bg-white border border-slate-200 p-3 rounded-xl hover:shadow-md transition-shadow relative overflow-hidden">
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: color }} />
+                    <div className="flex justify-between items-center mb-2 pl-2">
+                      <span className="text-xs font-bold text-slate-700">Cluster {i + 1}</span>
+                      <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-mono">
+                        {comm.length} Nodes
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed pl-2">
+                      {districts.join(", ")}
+                    </p>
                   </div>
-                </div>
-              )}
+                );
+              })}
             </div>
-            <p className="text-[9px] text-slate-400 font-medium leading-normal text-center font-heading">
-              Coordinates project learned 32D GRU node aggregates into 2D via PCA. Districts cluster by flood threat similarity.
-            </p>
           </div>
 
-          {/* Graph Explainability / Attention Dashboard */}
-          <div className="glass-card p-4 flex-1 flex flex-col min-h-0">
-            <h2 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-2 shrink-0 font-heading">
-              <TrendingUp className="w-3.5 h-3.5 text-amber-500" /> Attention Bottlenecks
+          <div className="glass-card p-5 flex-1 flex flex-col min-h-0 shadow-md">
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-3 shrink-0 font-heading">
+              <TrendingUp className="w-4 h-4 text-amber-500" /> AI Attention Bottlenecks
             </h2>
-            <div className="mt-3 overflow-y-auto space-y-2.5 flex-1 pr-1 text-[11px] font-heading">
+            <div className="mt-4 overflow-y-auto space-y-4 flex-1 pr-1">
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase mb-1 font-mono">Top Influential Edges</p>
-                <div className="space-y-1.5">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Top Influential Edges</p>
+                <div className="space-y-2">
                   {data.explainability.critical_edges.slice(0, 3).map((edge: any, i: number) => {
                     const sourceNode = data.nodes.find((n: any) => n.id === edge.source);
                     const targetNode = data.nodes.find((n: any) => n.id === edge.target);
                     return (
-                      <div key={i} className="flex justify-between items-center bg-slate-50 border border-slate-100 px-2 py-1.5 rounded-lg">
-                        <span className="font-semibold text-slate-700 max-w-[130px] truncate">
+                      <div key={i} className="flex justify-between items-center bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg">
+                        <span className="font-semibold text-slate-700 text-[10px] max-w-[150px] truncate">
                           {sourceNode?.label} → {targetNode?.label}
                         </span>
-                        <span className="text-[9px] font-bold text-red-500 font-mono">
+                        <span className="text-[10px] font-bold text-red-500 font-mono">
                           {edge.influence.toFixed(1)} infl
                         </span>
                       </div>
@@ -594,8 +547,8 @@ export default function DynamicKnowledgeGraph() {
               </div>
 
               <div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase mb-1 font-mono">Highest Attention Paths</p>
-                <div className="space-y-1.5 leading-relaxed bg-slate-50 border border-slate-100 p-2.5 rounded-xl font-medium text-slate-600">
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Highest Attention Paths</p>
+                <div className="space-y-2 bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium text-slate-600">
                   {(data.explainability.highest_attention_paths ?? []).length > 0
                     ? (data.explainability.highest_attention_paths as string[][]).map((path: string[], i: number) => {
                         const pathLabels = path.map((pid: string) => {
@@ -604,21 +557,22 @@ export default function DynamicKnowledgeGraph() {
                         });
                         const dot = i === 0 ? "bg-red-500" : "bg-amber-500";
                         return (
-                          <div key={i} className="flex items-center gap-1">
-                            <span className={`w-1.5 h-1.5 rounded-full ${dot} shrink-0`} />
-                            <span className="truncate text-[9px]">{pathLabels.join(" → ")}</span>
+                          <div key={i} className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${dot} shrink-0`} />
+                            <span className="text-[10px] text-slate-700 leading-tight">
+                              {pathLabels.join(" → ")}
+                            </span>
                           </div>
                         );
                       })
                     : (
-                      <p className="text-[9px] text-slate-400">Run GNN inference to compute attention paths.</p>
+                      <p className="text-[10px] text-slate-400">Run GNN inference to compute attention paths.</p>
                     )}
                 </div>
               </div>
             </div>
           </div>
         </div>
-
       </div>
 
       {/* Selected Node Details Drawer */}
@@ -628,53 +582,53 @@ export default function DynamicKnowledgeGraph() {
             initial={{ y: 250, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 250, opacity: 0 }}
-            className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 p-5 shadow-2xl z-40 max-w-5xl mx-auto rounded-t-3xl flex flex-col gap-4 max-h-[40vh]"
+            className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 p-6 shadow-2xl z-40 max-w-6xl mx-auto rounded-t-3xl flex flex-col gap-4 max-h-[40vh]"
           >
-            <div className="flex justify-between items-start border-b border-slate-100 pb-2">
+            <div className="flex justify-between items-start border-b border-slate-200 pb-3">
               <div>
-                <span className="text-[9px] font-bold uppercase tracking-wider text-violet-500 px-2 py-0.5 rounded-md bg-violet-50 border border-violet-100 font-mono">
-                  {TYPE_CONFIG[selectedNode.type]?.label} node info
+                <span className="text-[10px] font-bold uppercase tracking-widest text-violet-600 px-2.5 py-1 rounded-md bg-violet-100 border border-violet-200 font-mono">
+                  {TYPE_CONFIG[selectedNode.type]?.label} Entity
                 </span>
-                <h3 className="text-lg font-heading font-bold text-slate-800 mt-1 flex items-center gap-2">
+                <h3 className="text-xl font-heading font-bold text-slate-800 mt-2 flex items-center gap-2">
                   <span>{TYPE_CONFIG[selectedNode.type]?.emoji}</span> {selectedNode.label}
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedNode(null)}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-500"
+                className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-6 flex-1 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 flex-1 overflow-y-auto pr-2">
               {/* Metrics Column */}
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide font-mono">Live Telemetry Details</p>
-                <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs font-medium space-y-1.5 text-slate-600 font-heading">
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">Live Telemetry Details</p>
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-xs font-medium space-y-2 text-slate-700">
                   {Object.entries(selectedNode.data || {}).map(([key, value]) => (
                     <div key={key} className="flex justify-between">
-                      <span className="capitalize text-slate-400">{key.replace("_", " ")}</span>
-                      <span className="text-slate-800 font-mono font-bold">{String(value)}</span>
+                      <span className="capitalize text-slate-500">{key.replace(/_/g, " ")}</span>
+                      <span className="font-mono font-bold text-slate-800">{String(value)}</span>
                     </div>
                   ))}
-                  <div className="flex justify-between border-t border-slate-200/80 pt-1.5 mt-1.5 font-bold">
-                    <span className="text-slate-500 font-heading">Risk Score</span>
-                    <span className="text-red-500 font-mono">{selectedNode.risk_score.toFixed(1)} / 100</span>
+                  <div className="flex justify-between border-t border-slate-200 pt-2 mt-2 font-bold">
+                    <span className="text-slate-500 uppercase tracking-widest">Risk Score</span>
+                    <span className="text-red-500 font-mono text-sm">{selectedNode.risk_score.toFixed(1)} / 100</span>
                   </div>
                 </div>
               </div>
 
               {/* Explainability Breakdown Column */}
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide font-mono">Inference Contribution Explanation</p>
-                <div className="space-y-1.5 overflow-y-auto max-h-36 pr-1 font-heading">
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">Inference Contribution</p>
+                <div className="space-y-2 overflow-y-auto max-h-40 pr-1">
                   {getExplainabilityBreakdown(selectedNode).map((factor: any, idx: number) => (
-                    <div key={idx} className="flex justify-between items-center bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-lg text-xs">
+                    <div key={idx} className="flex justify-between items-center bg-white border border-slate-200 px-3 py-2 rounded-lg text-xs shadow-sm">
                       <span className="font-semibold text-slate-700">{factor.label}</span>
-                      <span className={`font-bold font-mono text-[10px] ${
-                        factor.isPositive === false ? "text-green-500" :
-                        parseFloat(factor.change ?? factor.value ?? "0") < 0 ? "text-green-500" : "text-red-500"
+                      <span className={`font-bold font-mono text-[11px] px-2 py-0.5 rounded ${
+                        factor.isPositive === false ? "bg-green-100 text-green-700" :
+                        parseFloat(factor.change ?? factor.value ?? "0") < 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                       }`}>{factor.change || factor.value}</span>
                     </div>
                   ))}
@@ -682,18 +636,18 @@ export default function DynamicKnowledgeGraph() {
               </div>
 
               {/* Embeddings Column */}
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide font-mono">128D Layer Embedding Vector</p>
-                <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 max-h-32 overflow-y-auto">
-                  <div className="grid grid-cols-4 gap-1.5 font-mono text-[9px] text-center">
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">128D Layer Embedding Vector</p>
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 h-full flex flex-col">
+                  <div className="grid grid-cols-4 gap-2 font-mono text-[10px] text-center mb-3">
                     {selectedNode.embedding.map((val: number, i: number) => (
-                      <span key={i} className="bg-white border border-slate-200/80 py-1.5 rounded font-bold text-slate-700 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                      <span key={i} className="bg-white border border-slate-200 py-1.5 rounded font-bold text-slate-700 shadow-sm">
                         {val.toFixed(2)}
                       </span>
                     ))}
                   </div>
-                  <p className="text-[8px] text-slate-400 mt-2 font-medium leading-tight font-heading">
-                    *First 8 dimension aggregates shown. Embedding is updated dynamically during spatial message passing iterations.
+                  <p className="text-[10px] text-slate-500 font-medium leading-relaxed mt-auto">
+                    *First 8 dimension aggregates shown. Embedding is updated dynamically during spatial message passing iterations by the GNN.
                   </p>
                 </div>
               </div>

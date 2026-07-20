@@ -26,10 +26,10 @@ def init_scheduler():
     if not scheduler.running:
         logger.info("Initializing APScheduler for Real-Time Pipeline...")
         
-        # Add Jobs (Tick every 60 seconds)
+        # Add Jobs (Tick every 15 minutes)
         scheduler.add_job(
             job_run_orchestrator,
-            trigger=IntervalTrigger(minutes=1),
+            trigger=IntervalTrigger(minutes=15),
             id="realtime_pipeline",
             name="End-to-End Flood Intelligence Pipeline",
             replace_existing=True
@@ -40,7 +40,7 @@ def init_scheduler():
         # Log to DB
         db = SessionLocal()
         try:
-            log = SchedulerLog(event="STARTED", message="Real-time pipeline initialized (60s tick).")
+            log = SchedulerLog(event="STARTED", message="Real-time pipeline initialized (15m tick).")
             db.add(log)
             db.commit()
         except Exception as e:

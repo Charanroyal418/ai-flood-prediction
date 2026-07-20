@@ -7,6 +7,8 @@ from app.models.weather import Weather, Rainfall
 from app.models.history import WeatherHistory
 from sqlalchemy import func
 import logging
+import json
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +89,7 @@ class WeatherETL(BaseETLPipeline):
             "&current=temperature_2m,relative_humidity_2m,surface_pressure,precipitation,"
             "wind_speed_10m,wind_direction_10m,cloud_cover,weather_code"
             "&hourly=precipitation_probability"
+            "&daily=precipitation_sum"
             "&timezone=Asia%2FKolkata"
         )
         
@@ -121,6 +124,26 @@ class WeatherETL(BaseETLPipeline):
                     "weather_code": current.get("weather_code", 0),
                     "rain_probability": rain_prob
                 })
+            
+            # Extract daily forecast for state average
+            daily_forecasts = []
+            for i in range(7): # Open-Meteo returns 7 days by default
+                try:
+                    date = results[0]["daily"]["time"][i]
+                    avg_precip = sum(res["daily"]["precipitation_sum"][i] for res in results if "daily" in res and "precipitation_sum" in res["daily"]) / len(results)
+                    # Convert date (YYYY-MM-DD) to Day name (e.g. Mon, Tue)
+                    from datetime import datetime
+                    day_name = datetime.strptime(date, "%Y-%m-%d").strftime("%a")
+                    daily_forecasts.append({"day": day_name, "rainfall": round(avg_precip, 1)})
+                except Exception as e:
+                    logger.warning(f"Failed to parse daily forecast for day {i}: {e}")
+            
+            if daily_forecasts:
+                data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+                os.makedirs(data_dir, exist_ok=True)
+                with open(os.path.join(data_dir, "state_forecast.json"), "w") as f:
+                    json.dump(daily_forecasts, f)
+
             return raw_data
         except Exception as e:
             logger.error(f"Open-Meteo API Failed: {e}")
