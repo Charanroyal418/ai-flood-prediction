@@ -10,31 +10,7 @@ from app.models.river import RiverLevel
 from app.models.terrain import DemTile
 from app.models.history import WeatherHistory, PredictionHistory
 
-GRAPH_EDGES = [
-    ("ws-1", "d-3"), ("ws-1", "d-33"), ("ws-2", "d-29"), ("ws-2", "d-1"),
-    ("ws-3", "d-14"), ("ws-3", "d-24"), ("ws-4", "d-4"), ("ws-4", "d-18"),
-    ("rg-1", "d-23"), ("rg-2", "d-5"), ("rg-3", "d-16"), ("rg-4", "d-30"),
-    ("rg-5", "d-18"), ("rg-6", "d-11"), ("rg-7", "d-24"), ("rg-8", "d-8"),
-    ("rg-9", "d-28"), ("rg-10", "d-10"),
-    ("rv-1", "d-6"), ("rv-1", "d-23"), ("rv-1", "d-8"), ("rv-1", "d-17"),
-    ("rv-1", "d-12"), ("rv-1", "d-29"), ("rv-1", "d-26"), ("rv-1", "d-15"),
-    ("rv-2", "d-10"), ("rv-2", "d-2"), ("rv-2", "d-3"),
-    ("rv-3", "d-33"), ("rv-3", "d-10"), ("rv-3", "d-3"),
-    ("rv-4", "d-36"), ("rv-4", "d-22"), ("rv-4", "d-10"), ("rv-4", "d-2"),
-    ("rv-5", "d-27"), ("rv-5", "d-7"), ("rv-5", "d-14"), ("rv-5", "d-24"), ("rv-5", "d-21"),
-    ("rv-6", "d-25"), ("rv-6", "d-30"), ("rv-6", "d-28"),
-    ("rv-7", "d-13"), ("rv-7", "d-6"), ("rv-7", "d-34"), ("rv-7", "d-37"), ("rv-7", "d-5"),
-    ("rv-8", "d-23"), ("rv-8", "d-19"), ("rv-8", "d-1"), ("rv-8", "d-5"),
-    ("rv-9", "d-18"), ("rv-9", "d-4"), ("rv-9", "d-8"),
-    ("rs-1", "rv-1"), ("rs-2", "rv-2"), ("rs-3", "rv-3"),
-    ("rs-4", "rv-7"), ("rs-5", "rv-5"), ("rs-6", "rv-6"),
-    ("ez-1", "d-3"), ("ez-1", "d-16"), ("ez-1", "d-35"),
-    ("ez-2", "d-5"), ("ez-2", "d-2"), ("ez-2", "d-28"),
-    ("d-18", "d-4"), ("d-4", "d-8"), ("d-13", "d-6"), ("d-6", "d-23"),
-    ("d-23", "d-29"), ("d-29", "d-26"), ("d-26", "d-16"), ("d-26", "d-35"),
-    ("d-33", "d-3"), ("d-10", "d-3"), ("d-27", "d-14"), ("d-14", "d-24"),
-    ("d-24", "d-21"), ("d-30", "d-28")
-]
+# GRAPH_EDGES removed: We now dynamically load real adjacency and river flow paths from the database.
 
 class KnowledgeGraphBuilder:
     def __init__(self):
@@ -73,8 +49,7 @@ class KnowledgeGraphBuilder:
                 "elevation_zone" if nid.startswith("ez-") else "flood_event"
             self.graph.add_node(nid, type=t, risk_score=15.0, elevation=20.0, rainfall=0.0, river_level=0.0)
             
-        for u, v in GRAPH_EDGES:
-            self.graph.add_edge(u, v, weight=0.5)
+
 
         for i in range(1, 39): self.graph.add_edge(f"d-{i}", f"pop-{i}", weight=0.5)
         for i in range(1, 10): self.graph.add_edge(f"c-{i}", f"rv-{i}", weight=0.5)
@@ -87,7 +62,17 @@ class KnowledgeGraphBuilder:
         self.graph.add_edge("db-3", "rv-6", weight=0.5)
 
     def update_graph_from_db(self, db: Session):
+        from app.models.graph import GraphEdge
         districts = db.query(District).all()
+        
+        # Load real edges from DB
+        db_edges = db.query(GraphEdge).all()
+        # Remove any existing district-to-district edges first to prevent stale connections
+        edges_to_remove = [(u, v) for u, v in self.graph.edges() if u.startswith("d-") and v.startswith("d-")]
+        self.graph.remove_edges_from(edges_to_remove)
+        
+        for e in db_edges:
+            self.graph.add_edge(f"d-{e.source_id}", f"d-{e.target_id}", weight=e.weight, type=e.edge_type)
 
         # --- Batch all queries up front to avoid N+1 and full table scans ---
         latest_weathers = db.query(Weather).order_by(Weather.recorded_at.desc()).limit(100).all()
@@ -129,6 +114,9 @@ class KnowledgeGraphBuilder:
                 "label": f"{d.name} Pop", "risk_score": float(risk * 0.9),
                 "population_count": int(d.population or 1000000), "vulnerability": 5.0
             })
+            
+            # Store community_idx for frontend clustering
+            self.graph.nodes[node_id]["community_idx"] = d.community_idx or 0
 
         rivers = db.query(RiverLevel).all()
         for idx, r in enumerate(rivers):
