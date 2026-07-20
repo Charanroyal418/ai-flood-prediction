@@ -499,7 +499,7 @@ export default function DynamicKnowledgeGraph() {
           <div className="flex-1 min-h-0 bg-slate-50 relative">
             <ReactFlow
               nodes={nodes}
-              edges={edges.filter(e => showAllEdges || e.dynamicInfluence > 15 || e.attention > 0.3)}
+              edges={edges.filter((e: any) => showAllEdges || e.dynamicInfluence > 15 || e.attention > 0.3)}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
