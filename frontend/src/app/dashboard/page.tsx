@@ -251,7 +251,7 @@ export default function CommandCenter() {
         avg_rainfall_24h_mm: wsDistricts.reduce((s, d) => s + (d.rainfall_mm || 0), 0) / (wsDistricts.length || 1),
         gdnn_inference_ms: modelMeta?.inference_time_ms ?? 0,
         model_confidence: wsDistricts.reduce((s, d) => s + (d.confidence || 0), 0) / (wsDistricts.length || 1),
-        kg_nodes: modelMeta?.node_count ?? 0,
+        kg_nodes: modelMeta?.node_count ?? data?.metrics?.nodes ?? 0,
       }
     : data?.metrics;
 
@@ -278,12 +278,11 @@ export default function CommandCenter() {
   const handleSimulate = async () => {
     setSimulating(true);
     try {
-      // Try WebSocket trigger first (faster)
       if (dashboardStatus === "connected") {
         triggerPipeline(true);
         setTimeout(() => setSimulating(false), 3000);
       } else {
-        await api.post("/dashboard/simulate-storm");
+        await api.post("/predict/inference-cycle"); // Trigger inference cycle
         queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
         setSimulating(false);
       }
@@ -305,7 +304,7 @@ export default function CommandCenter() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-heading font-bold text-slate-800">Command Center</h1>
-          <p className="text-sm text-slate-500 mt-1">Tamil Nadu Flood Intelligence · Real-time GDNN monitoring</p>
+          <p className="text-sm text-slate-500 mt-1">Tamil Nadu Flood Intelligence · Real-time Platform Monitoring</p>
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -349,7 +348,7 @@ export default function CommandCenter() {
             <MetricCard title="Critical Districts" value={metrics?.critical_districts ?? 0} icon={MapPin} color="text-orange-500" bg="bg-orange-50" />
             <MetricCard title="High Risk Districts" value={metrics?.high_risk_districts ?? 0} icon={TrendingUp} color="text-amber-500" bg="bg-amber-50" />
             <MetricCard title="Avg Rainfall" value={metrics?.avg_rainfall_24h_mm ?? 0} unit="mm" icon={CloudRain} color="text-blue-500" bg="bg-blue-50" />
-            <MetricCard title="GDNN Latency" value={metrics?.gdnn_inference_ms ?? 0} unit="ms" icon={Brain} color="text-indigo-500" bg="bg-indigo-50" />
+            <MetricCard title="Model Latency" value={metrics?.gdnn_inference_ms ?? 0} unit="ms" icon={Brain} color="text-indigo-500" bg="bg-indigo-50" />
           </>
         )}
       </div>
@@ -487,7 +486,7 @@ export default function CommandCenter() {
         <div className="glass-card p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="text-sm font-heading font-bold text-slate-800">GDNN Inference Pipeline</h2>
+              <h2 className="text-sm font-heading font-bold text-slate-800">AI Inference Pipeline</h2>
               <p className="text-[11px] text-slate-400">Knowledge Graph → Temporal GNN → Risk Classification</p>
             </div>
             <div className="flex items-center gap-1.5 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-100 px-2.5 py-1 rounded-lg">

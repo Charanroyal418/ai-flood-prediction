@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.etl.weather import WeatherETL
 from app.etl.nasa_gpm import NasaGPMETL
+from app.etl.river import RiverETL
 from app.kg.builder import kg_builder
 from app.ml.inference import gnn_engine
 from app.models.district import District
@@ -139,6 +140,17 @@ class RealtimeOrchestrator:
                 logger.error(f"[Pipeline] GPM ETL failed: {e}")
                 summary["errors"].append(f"nasa_gpm_etl: {e}")
                 self._gpm_fpi_cache = {}
+
+            # ─── STEP 2B: River Telemetry ETL ────────────────────────────
+            logger.info("[Pipeline] Step 2B: River Telemetry")
+            try:
+                river_etl = RiverETL(self.db)
+                river_etl.execute()
+                summary["steps_completed"].append("river_etl")
+                logger.info(f"[Pipeline] River ETL done: {river_etl.records_processed} records")
+            except Exception as e:
+                logger.error(f"[Pipeline] River ETL failed: {e}")
+                summary["errors"].append(f"river_etl: {e}")
 
             # ─── STEP 3: Build Knowledge Graph ────────────────────────────
             logger.info("[Pipeline] Step 3: Knowledge Graph Update")
@@ -255,15 +267,14 @@ class RealtimeOrchestrator:
                         .first()
                     )
                     now = datetime.now(timezone.utc)
-                    alert_cooldown = 3600  # 1 hour between alerts
-
-                    should_alert = not recent_alert or (
-                        recent_alert.created_at.replace(tzinfo=timezone.utc)
-                        and (now - recent_alert.created_at.replace(tzinfo=timezone.utc))
-                        .total_seconds()
-                        > alert_cooldown
-                    )
-
+                    
+                    # Alert if no recent alert OR the risk level changed (escalation/de-escalation)
+                    should_alert = False
+                    if not recent_alert:
+                        should_alert = True
+                    elif recent_alert.level != risk_level:
+                        should_alert = True
+                        
                     if should_alert:
                         top_reason = (
                             shap_values[0]["label"] if shap_values else "High rainfall"
@@ -280,7 +291,7 @@ class RealtimeOrchestrator:
                             suggested_response=(
                                 "Immediate evacuation of flood-prone zones. "
                                 "Open relief camps."
-                                if risk_level == "Severe"
+                                if risk_level == "Severe" or risk_level == "Critical"
                                 else "Monitor water levels. Pre-position rescue teams."
                             ),
                             confidence=confidence,
@@ -288,6 +299,12 @@ class RealtimeOrchestrator:
                         )
                         self.db.add(alert)
                         alerts_generated += 1
+                        
+                        # Console log as requested for outbound notification placeholder
+                        print(f"🚨 OUTBOUND ALERT (Console Placeholder) 🚨")
+                        print(f"To: Emergency Contacts ({district.name})")
+                        print(f"Message: {alert.message}")
+                        print(f"Response: {alert.suggested_response}\n")
 
                 summary["districts_processed"] += 1
 

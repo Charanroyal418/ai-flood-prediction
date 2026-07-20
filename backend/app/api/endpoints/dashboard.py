@@ -8,7 +8,10 @@ from app.api import deps
 from app.models.district import District
 from app.models.history import PredictionHistory, WeatherHistory, ModelInference, KnowledgeGraphEvents
 from app.models.alert import Alert
+import json
+import os
 from app.models.weather import Weather
+from app.models.river import RiverLevel
 
 router = APIRouter()
 
@@ -22,6 +25,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     
     # Get latest inference metrics
     inf = db.query(ModelInference).order_by(ModelInference.created_at.desc()).first()
+    last_updated_ts = inf.created_at.isoformat() if inf else now.isoformat()
     
     # Get all districts
     districts = db.query(District).all()
@@ -59,6 +63,13 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         if d.geom_json and "coordinates" in d.geom_json:
             lon, lat = d.geom_json["coordinates"]
             
+        river_level_m = 0
+        river_danger_m = 5.0
+        r_lvl = db.query(RiverLevel).filter(RiverLevel.district_id == d.id).order_by(RiverLevel.recorded_at.desc()).first()
+        if r_lvl:
+            river_level_m = r_lvl.current_level
+            river_danger_m = r_lvl.danger_level
+            
         districts_with_risk.append({
             "id": d.id,
             "name": d.name,
@@ -73,8 +84,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "temperature": w.temperature,
             "pressure": w.pressure,
             "wind_speed": w.wind_speed,
-            "river_level_m": 0, # Placeholder until river API is added
-            "river_danger_m": 5.0,
+            "river_level_m": river_level_m,
+            "river_danger_m": river_danger_m,
             "flood_probability": p.current_risk_score / 100.0,
             "ai_confidence": p.confidence,
             "shap_values": p.shap_values,
@@ -140,27 +151,27 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     
     # 7-day Precipitation Forecast (State average)
     weekly_forecast = []
-    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    today_idx = datetime.now().weekday()
-    days_ordered = days[today_idx:] + days[:today_idx]
     
-    for idx, day in enumerate(days_ordered):
-        if idx == 0:
-            val = avg_rainfall
-        else:
-            rng = random.Random(day + str(datetime.now().date()))
-            if avg_rainfall > 10:
-                val = avg_rainfall * (0.6 ** idx) + rng.uniform(0, 5)
-            else:
-                val = rng.uniform(2.0, 8.0)
-        weekly_forecast.append({
-            "day": day,
-            "rainfall": round(val, 1)
-        })
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
+    forecast_file = os.path.join(data_dir, "state_forecast.json")
+    if os.path.exists(forecast_file):
+        try:
+            with open(forecast_file, "r") as f:
+                weekly_forecast = json.load(f)
+        except Exception:
+            pass
+            
+    if not weekly_forecast:
+        # Graceful fallback if ETL hasn't run yet
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        today_idx = datetime.now().weekday()
+        days_ordered = days[today_idx:] + days[:today_idx]
+        for day in days_ordered:
+            weekly_forecast.append({"day": day, "rainfall": 0.0})
 
     return {
         "status": "online",
-        "timestamp": now.isoformat(),
+        "timestamp": last_updated_ts,
         "metrics": {
             "avg_risk_score": round(avg_risk, 1),
             "active_alerts_count": len(alerts_data),
@@ -258,39 +269,27 @@ def get_historical_flood_events() -> Any:
 
 @router.get("/river")
 def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
-    """Returns real-time river levels for TN's 9 major rivers."""
-    # Let's get the state average rainfall to dynamically raise river levels
-    # If the user simulates a storm, the rivers will rise!
-    from app.models.history import WeatherHistory
-    latest_weather = db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(38).all()
-    avg_rainfall = sum(w.rainfall_mm or 0 for w in latest_weather) / len(latest_weather) if latest_weather else 0
+    """Returns real-time river levels for TN's major rivers."""
+    # Group by station to get latest levels
+    from sqlalchemy import func
     
-    # 9 major rivers
-    rivers_base = [
-        {"name": "Cauvery River", "station": "Mettur Dam Station", "danger_m": 120.0, "base_m": 85.0},
-        {"name": "Adyar River", "station": "Chembarambakkam Outflow", "danger_m": 7.5, "base_m": 2.5},
-        {"name": "Cooum River", "station": "Napier Bridge Gauging Station", "danger_m": 5.0, "base_m": 1.8},
-        {"name": "Palar River", "station": "Vaniyambadi Gauge", "danger_m": 15.0, "base_m": 6.2},
-        {"name": "Ponnaiyar River", "station": "Sathanur Reservoir Gauge", "danger_m": 35.0, "base_m": 18.5},
-        {"name": "Vellar River", "station": "Kollidam Outlet", "danger_m": 12.0, "base_m": 5.0},
-        {"name": "Vaigai River", "station": "Vaigai Dam Gauging Station", "danger_m": 85.0, "base_m": 45.0},
-        {"name": "Thamirabarani River", "station": "Papanasam Release Station", "danger_m": 24.0, "base_m": 11.0},
-        {"name": "Bhavani River", "station": "Bhavanisagar Inflow", "danger_m": 32.0, "base_m": 16.5},
-    ]
+    subquery = db.query(
+        RiverLevel.station_name,
+        func.max(RiverLevel.recorded_at).label('max_date')
+    ).group_by(RiverLevel.station_name).subquery()
+    
+    latest_levels = db.query(RiverLevel).join(
+        subquery,
+        (RiverLevel.station_name == subquery.c.station_name) & 
+        (RiverLevel.recorded_at == subquery.c.max_date)
+    ).all()
     
     rivers_data = []
-    for idx, r in enumerate(rivers_base):
-        # Seed based on river name + current date (for slight daily variations)
-        rng = random.Random(r["name"] + str(datetime.now().date()))
+    for r in latest_levels:
+        danger_m = r.danger_level
+        current_m = r.current_level
         
-        # If there's high rainfall (simulated storm), the rivers rise significantly
-        storm_factor = min(2.0, 1.0 + (avg_rainfall / 15.0)) if avg_rainfall > 10 else 1.0
-        
-        # Calculate current level
-        current_m = r["base_m"] * storm_factor + rng.uniform(-1.0, 2.0)
-        current_m = min(r["danger_m"] * 1.15, current_m) # Caps river rise at 115% of danger level
-        
-        overflow_pct = round((current_m / r["danger_m"]) * 100)
+        overflow_pct = round((current_m / danger_m) * 100) if danger_m > 0 else 0
         
         if overflow_pct >= 95:
             status = "Critical"
@@ -300,12 +299,13 @@ def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
             status = "Normal"
             
         rivers_data.append({
-            "name": r["name"],
-            "station": r["station"],
+            "name": r.river_name,
+            "station": r.station_name,
             "current_m": round(current_m, 2),
-            "danger_m": r["danger_m"],
+            "danger_m": danger_m,
             "overflow_pct": overflow_pct,
-            "status": status
+            "status": status,
+            "timestamp": r.recorded_at.isoformat()
         })
         
     return rivers_data

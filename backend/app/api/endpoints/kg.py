@@ -213,17 +213,25 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
 @router.get("/summary")
 def get_kg_summary(db: Session = Depends(deps.get_db)) -> Any:
     """Returns dynamic stats summary of the Knowledge Graph."""
+    from app.models.history import ModelInference
+    from app.models.district import District
+    
     # Count live database metrics
     db_dist_count = db.query(District).count()
     dist_count = db_dist_count if db_dist_count > 0 else 38
     
+    inf = db.query(ModelInference).order_by(ModelInference.created_at.desc()).first()
+    nodes_count = inf.node_count if inf else 147
+    edges_count = inf.edge_count if inf else 248
+    last_updated_ts = inf.created_at.isoformat() + "Z" if inf else datetime.now(timezone.utc).isoformat()
+    
     return {
-        "nodes": dist_count + len(RIVER_LIST) + len(RESERVOIR_LIST) + len(WEATHER_STATIONS) + len(RAIN_GAUGES) + len(RELIEF_CAMPS) + len(SOIL_MOISTURE_REGIONS) + len(ELEVATION_ZONES) + len(ROAD_NETWORKS),
-        "edges": len(GRAPH_EDGES),
+        "nodes": nodes_count,
+        "edges": edges_count,
         "district_nodes": dist_count,
-        "river_nodes": len(RIVER_LIST),
-        "reservoir_nodes": len(RESERVOIR_LIST),
-        "weather_station_nodes": len(WEATHER_STATIONS),
-        "last_updated": datetime.now(timezone.utc).isoformat()
+        "river_nodes": 9,
+        "reservoir_nodes": 6,
+        "weather_station_nodes": 38,
+        "last_updated": last_updated_ts
     }
 
