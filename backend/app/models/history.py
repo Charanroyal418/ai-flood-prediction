@@ -68,3 +68,25 @@ class KnowledgeGraphEvents(Base):
     influence_weight = Column(Float)
     description = Column(String)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+class NodeFeatureSnapshot(Base):
+    __tablename__ = "node_feature_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    district_id = Column(Integer, ForeignKey("districts.id"), index=True)
+    recorded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+    
+    rainfall = Column(Float, default=0.0)
+    risk_score = Column(Float, default=0.0) # XGBoost base / river level
+    humidity = Column(Float, default=0.0)
+    pressure = Column(Float, default=0.0)
+    temperature = Column(Float, default=0.0)
+    elevation = Column(Float, default=0.0)
+    slope = Column(Float, default=0.0)
+    urban_drainage = Column(Float, default=0.0)
+    historical_floods = Column(Float, default=0.0)
+    population = Column(Float, default=0.0)
+    land_cover = Column(Float, default=0.0)
+    temporal = Column(Float, default=0.0)
+
+    district = relationship("District")
