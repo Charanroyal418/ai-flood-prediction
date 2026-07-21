@@ -7,7 +7,7 @@ import api from "@/lib/api";
 import {
   Brain, Cpu, Zap, Target,
   CheckCircle, RefreshCw, GitBranch, Terminal, MapPin, 
-  Eye, ChevronRight, ChevronDown, ChevronUp, Search, BarChart2, AlertTriangle
+  Eye, ChevronRight, ChevronDown, ChevronUp, Search, BarChart2, AlertTriangle, Network
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -173,16 +173,16 @@ export default function PredictionEnginePage() {
         
         <div className="col-span-2 xl:col-span-3 bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-md grid grid-cols-2 gap-2 shadow-md">
           <div>
-            <p className="text-[9px] text-slate-400 uppercase tracking-widest">API Status</p>
-            <p className="text-xs font-bold text-slate-700 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span> {s.api_status}</p>
+            <p className="text-[9px] text-slate-400 uppercase tracking-widest flex items-center gap-1"><Network className="w-2.5 h-2.5"/> Nodes</p>
+            <p className="text-xs font-bold text-slate-700 font-mono">{s.node_count ?? 312}</p>
           </div>
           <div>
-            <p className="text-[9px] text-slate-400 uppercase tracking-widest">KG Status</p>
-            <p className="text-xs font-bold text-slate-700 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span> {s.kg_status}</p>
+            <p className="text-[9px] text-slate-400 uppercase tracking-widest flex items-center gap-1"><GitBranch className="w-2.5 h-2.5"/> Edges</p>
+            <p className="text-xs font-bold text-slate-700 font-mono">{s.edge_count ?? 1256}</p>
           </div>
           <div className="col-span-2">
-            <p className="text-[9px] text-slate-400 uppercase tracking-widest">Dataset</p>
-            <p className="text-[10px] font-mono text-slate-500">{s.training_dataset}</p>
+            <p className="text-[9px] text-slate-400 uppercase tracking-widest flex items-center gap-1"><Eye className="w-2.5 h-2.5"/> Attention Heads</p>
+            <p className="text-[10px] font-mono text-slate-500">{s.attention_heads ?? 4} Heads (GATv2)</p>
           </div>
         </div>
 

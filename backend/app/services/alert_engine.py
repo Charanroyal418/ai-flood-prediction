@@ -5,6 +5,9 @@ from app.models.river import RiverLevel
 from app.models.weather import Rainfall
 from datetime import datetime, timedelta, timezone
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AlertEngine:
     @staticmethod
@@ -74,3 +77,4 @@ class AlertEngine:
                 suggested_response="Evacuate low lying areas" if severity == "Severe" else "Stay alert"
             )
             db.add(alert)
+            logger.warning(f"[AlertEngine] Triggered {level} Alert for District {district_id}: {reason}")

@@ -182,6 +182,16 @@ class GNNInferenceEngine:
                 pred_classes = probs.argmax(dim=1)        # Class with max probability
                 confidence = probs.max(dim=1).values      # Confidence per node
 
+            # Pre-process attention for explainability
+            attn_edge_idx = None
+            attn_alpha_avg = None
+            if attentions and len(attentions) > 0:
+                attn_edge_idx, attn_alpha = attentions[0]
+                if attn_alpha.dim() > 1:
+                    attn_alpha_avg = attn_alpha.mean(dim=1)
+                else:
+                    attn_alpha_avg = attn_alpha
+
             results = []
             for i, node_id in enumerate(node_ids):
                 cls = pred_classes[i].item()
@@ -195,6 +205,37 @@ class GNNInferenceEngine:
 
                 # Extract SHAP based on feature gradients or input feature values weighted by first layer GAT
                 shap = self._compute_shap(H[i, -1, :].tolist(), risk_score)
+                
+                # Add Attention layer explainability (Why it's spreading)
+                if attn_edge_idx is not None and attn_alpha_avg is not None:
+                    # Find edges incoming to this node
+                    in_edges = (attn_edge_idx[1] == i).nonzero(as_tuple=True)[0]
+                    if len(in_edges) > 0:
+                        # Get the most influential neighbor
+                        best_edge_idx = in_edges[attn_alpha_avg[in_edges].argmax()]
+                        src_node_idx = attn_edge_idx[0, best_edge_idx].item()
+                        
+                        # Only explain if it's from another node (not self-loop)
+                        if src_node_idx != i:
+                            src_node_id = node_ids[src_node_idx]
+                            weight = attn_alpha_avg[best_edge_idx].item()
+                            if weight > 0.05:  # Significant attention threshold
+                                # Convert node ID like 'd-14' to District 14 or keep as is
+                                friendly_src = src_node_id
+                                try:
+                                    if src_node_id.startswith('d-'):
+                                        friendly_src = f"District {src_node_id.split('-')[1]}"
+                                except Exception:
+                                    pass
+
+                                shap.append({
+                                    "label": f"Attention from {friendly_src}",
+                                    "value": round(weight, 3),
+                                    "color": "#f43f5e", # Rose color for graph attention
+                                    "contribution_pct": round(weight * 100, 1),
+                                })
+                                # Re-sort so highest contribution is first
+                                shap.sort(key=lambda x: -x["contribution_pct"])
 
                 results.append({
                     "node_id": node_id,
