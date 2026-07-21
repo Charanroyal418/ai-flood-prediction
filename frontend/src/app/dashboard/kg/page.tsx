@@ -112,7 +112,21 @@ function KGNode({ data }: { data: any }) {
   );
 }
 
-const nodeTypes: NodeTypes = { kgNode: KGNode };
+function ClusterBackgroundNode({ data }: { data: any }) {
+  return (
+    <div 
+      className="rounded-[3rem] shadow-sm transition-all duration-300 pointer-events-none"
+      style={{
+        width: data.width,
+        height: data.height,
+        backgroundColor: data.color + '25',
+        border: `3px dashed ${data.color}50`
+      }}
+    />
+  );
+}
+
+const nodeTypes: NodeTypes = { kgNode: KGNode, clusterBackground: ClusterBackgroundNode };
 
 export default function DynamicKnowledgeGraph() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -237,51 +251,90 @@ export default function DynamicKnowledgeGraph() {
     const simulation = d3.forceSimulation(newNodes)
       .force("charge", d3.forceManyBody().strength(-800))
       .force("center", d3.forceCenter(0, 0))
+      .force("collide", d3.forceCollide((d: any) => d.data?.type === 'district' ? 95 : 65).iterations(3))
       .force("x", d3.forceX((d: any) => {
         const idx = d.data.communityIdx;
-        const angle = (idx / 8) * Math.PI * 2;
-        return Math.cos(angle) * 600;
-      }).strength(0.3))
+        const totalComms = Math.max(8, data?.communities?.length || 8);
+        const angle = (idx / totalComms) * Math.PI * 2;
+        return Math.cos(angle) * 2000;
+      }).strength(0.5))
       .force("y", d3.forceY((d: any) => {
         const idx = d.data.communityIdx;
-        const angle = (idx / 8) * Math.PI * 2;
-        return Math.sin(angle) * 600;
-      }).strength(0.3))
-      .force("link", d3.forceLink(newEdges).id((d: any) => d.id).distance(150).strength(0.1))
+        const totalComms = Math.max(8, data?.communities?.length || 8);
+        const angle = (idx / totalComms) * Math.PI * 2;
+        return Math.sin(angle) * 2000;
+      }).strength(0.5))
+      .force("link", d3.forceLink(newEdges).id((d: any) => d.id).distance(200).strength(0.1))
       .stop();
 
     // Fast-forward simulation
-    simulation.tick(300);
+    simulation.tick(400);
 
     const finalNodes = newNodes.map((n: any) => ({
       id: n.id,
       type: n.type,
       position: { x: n.x, y: n.y },
-      data: n.data
+      data: n.data,
+      zIndex: 10
     }));
+
+    // Calculate community bounding boxes for backgrounds
+    const communityBounds: Record<number, { minX: number, maxX: number, minY: number, maxY: number }> = {};
+    finalNodes.forEach((n) => {
+      const idx = n.data.communityIdx;
+      if (idx === undefined) return;
+      if (!communityBounds[idx]) {
+        communityBounds[idx] = { minX: n.position.x, maxX: n.position.x, minY: n.position.y, maxY: n.position.y };
+      } else {
+        communityBounds[idx].minX = Math.min(communityBounds[idx].minX, n.position.x);
+        communityBounds[idx].maxX = Math.max(communityBounds[idx].maxX, n.position.x);
+        communityBounds[idx].minY = Math.min(communityBounds[idx].minY, n.position.y);
+        communityBounds[idx].maxY = Math.max(communityBounds[idx].maxY, n.position.y);
+      }
+    });
 
     // Generate community label nodes
     const communityLabelNodes: any[] = [];
     if (data?.communities) {
       data.communities.forEach((_: any, i: number) => {
-        const angle = (i / 8) * Math.PI * 2;
-        const r = 800; // place labels further out
-        communityLabelNodes.push({
-          id: `community-label-${i}`,
-          type: "default",
-          position: { x: Math.cos(angle) * r, y: Math.sin(angle) * r },
-          data: { label: `Cluster ${i + 1}` },
-          style: {
-            background: COMMUNITY_COLORS[i % COMMUNITY_COLORS.length] + '20',
-            color: COMMUNITY_COLORS[i % COMMUNITY_COLORS.length],
-            border: `2px solid ${COMMUNITY_COLORS[i % COMMUNITY_COLORS.length]}`,
-            borderRadius: '20px',
-            fontWeight: 'bold',
-            padding: '10px 20px',
-            fontSize: '16px',
-            pointerEvents: 'none'
-          }
-        });
+        const bounds = communityBounds[i];
+        if (bounds) {
+          const padding = 150;
+          const width = (bounds.maxX - bounds.minX) + padding * 2;
+          const height = (bounds.maxY - bounds.minY) + padding * 2;
+          const cx = bounds.minX - padding;
+          const cy = bounds.minY - padding;
+
+          communityLabelNodes.push({
+            id: `community-bg-${i}`,
+            type: "clusterBackground",
+            position: { x: cx, y: cy },
+            data: { 
+              width, 
+              height, 
+              color: COMMUNITY_COLORS[i % COMMUNITY_COLORS.length] 
+            },
+            zIndex: -1
+          });
+
+          communityLabelNodes.push({
+            id: `community-label-${i}`,
+            type: "default",
+            position: { x: cx, y: cy - 60 },
+            data: { label: `Cluster ${i + 1}` },
+            style: {
+              background: COMMUNITY_COLORS[i % COMMUNITY_COLORS.length] + '20',
+              color: COMMUNITY_COLORS[i % COMMUNITY_COLORS.length],
+              border: `2px solid ${COMMUNITY_COLORS[i % COMMUNITY_COLORS.length]}`,
+              borderRadius: '20px',
+              fontWeight: 'bold',
+              padding: '10px 20px',
+              fontSize: '16px',
+              pointerEvents: 'none'
+            },
+            zIndex: 0
+          });
+        }
       });
     }
 
@@ -499,14 +552,14 @@ export default function DynamicKnowledgeGraph() {
           <div className="flex-1 min-h-0 bg-slate-50 relative">
             <ReactFlow
               nodes={nodes}
-              edges={edges.filter((e: any) => showAllEdges || e.dynamicInfluence > 15 || e.attention > 0.3)}
+              edges={edges.filter((e: any) => showAllEdges || e.dynamicInfluence > 30 || e.attention > 0.6)}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
               nodeTypes={nodeTypes}
               fitView
-              minZoom={0.2}
-              maxZoom={1.5}
+              minZoom={0.02}
+              maxZoom={2}
             >
               <Background color="#cbd5e1" gap={24} size={1} />
               <Controls className="bg-white border-slate-200 shadow-md rounded-xl" />
