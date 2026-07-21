@@ -157,25 +157,56 @@ class RealtimeOrchestrator:
             try:
                 from app.models.history import NodeFeatureSnapshot, WeatherHistory
                 from app.models.river import RiverLevel
+                from app.models.terrain import DemTile
+                from app.services.hydrology import GEOM_PARAMS
+                from app.api.endpoints.ml import get_model
+                import pandas as pd
+                
+                xgb_model = get_model()
+                
+                dem_tiles = self.db.query(DemTile).all()
+                dem_map = {t.district_id: t for t in dem_tiles}
                 
                 districts = self.db.query(District).all()
                 for d in districts:
                     w = self.db.query(WeatherHistory).filter_by(district_id=d.id).order_by(WeatherHistory.recorded_at.desc()).first()
                     r = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
                     
+                    dem = dem_map.get(d.id)
+                    elevation = float(dem.elevation) if dem and dem.elevation else 15.0
+                    geom = GEOM_PARAMS.get(d.name, (elevation, 5.0, 0.5))
+                    actual_slope = geom[1]
+                    
                     river_risk = 0.0
                     if r and r.danger_level and r.danger_level > 0:
                         river_risk = max(0.0, min(1.0, r.current_level / r.danger_level))
+                        
+                    rainfall = w.rainfall_mm if w else 0.0
+                    
+                    xgb_prob = river_risk
+                    if xgb_model is not None:
+                        try:
+                            # Using dynamic metrics per district
+                            feats = pd.DataFrame([{
+                                "elevation_m": elevation,
+                                "distance_to_river_m": 2500.0 if r else 8000.0,
+                                "rainfall_24h_mm": rainfall,
+                                "soil_moisture_index": min(0.9, 0.4 + (rainfall / 150.0)),
+                                "slope_degrees": actual_slope
+                            }])
+                            xgb_prob = xgb_model.predict_proba(feats)[0][1]
+                        except Exception as e:
+                            logger.error(f"XGBoost fallback: {e}")
                     
                     snap = NodeFeatureSnapshot(
                         district_id=d.id,
-                        rainfall=w.rainfall_mm if w else 0.0,
-                        risk_score=river_risk * 100.0,
+                        rainfall=rainfall,
+                        risk_score=xgb_prob * 100.0,
                         humidity=w.humidity if w else 70.0,
                         pressure=w.pressure if w else 1010.0,
                         temperature=w.temperature if w else 28.0,
-                        elevation=20.0,
-                        slope=5.0,
+                        elevation=elevation,
+                        slope=actual_slope,
                         urban_drainage=80.0 if "Chennai" in d.name else 40.0,
                         historical_floods=2.0,
                         population=d.population or 1000000.0,
@@ -339,7 +370,7 @@ class RealtimeOrchestrator:
                         alerts_generated += 1
                         
                         # Console log as requested for outbound notification placeholder
-                        print(f"🚨 OUTBOUND ALERT (Console Placeholder) 🚨")
+                        print(f"*** OUTBOUND ALERT (Console Placeholder) ***")
                         print(f"To: Emergency Contacts ({district.name})")
                         print(f"Message: {alert.message}")
                         print(f"Response: {alert.suggested_response}\n")
@@ -349,7 +380,8 @@ class RealtimeOrchestrator:
             # ─── STEP 7: Knowledge Graph Events ───────────────────────────
             logger.info("[Pipeline] Step 7: Knowledge Graph Events")
             try:
-                self._record_kg_events(nodes_data, node_ids)
+                attentions = inference_results.get("attentions", []) if isinstance(inference_results, dict) else []
+                self._record_kg_events(nodes_data, node_ids, attentions)
                 summary["steps_completed"].append("kg_events")
             except Exception as e:
                 logger.warning(f"[Pipeline] KG events failed: {e}")
@@ -398,7 +430,7 @@ class RealtimeOrchestrator:
             return summary
 
     def _record_kg_events(
-        self, inference_results: List[Dict], node_ids: List[str]
+        self, inference_results: List[Dict], node_ids: List[str], attentions: List[tuple] = None
     ):
         """Record significant KG risk propagation events to DB."""
         result_map = {r["node_id"]: r for r in inference_results}
@@ -411,8 +443,35 @@ class RealtimeOrchestrator:
             and result_map.get(nid, {}).get("risk_score", 0) >= 60
         ]
 
-        # Record propagation events for connected high-risk nodes
-        for edge_u, edge_v in list(kg_builder.graph.edges())[:20]:  # limit to 20
+        if not attentions:
+            return
+            
+        edge_index, alpha = attentions[0]
+        # Calculate mean attention across heads
+        if alpha.dim() > 1:
+            alpha = alpha.mean(dim=1)
+            
+        edge_index_np = edge_index.cpu().numpy()
+        alpha_np = alpha.cpu().numpy()
+        
+        node_id_map = {i: nid for i, nid in enumerate(node_ids)}
+        
+        events_recorded = 0
+        
+        for i in range(edge_index_np.shape[1]):
+            if events_recorded >= 20:
+                break
+                
+            u_idx = edge_index_np[0, i]
+            v_idx = edge_index_np[1, i]
+            weight = float(alpha_np[i])
+            
+            edge_u = node_id_map.get(u_idx)
+            edge_v = node_id_map.get(v_idx)
+            
+            if not edge_u or not edge_v:
+                continue
+
             risk_u = result_map.get(edge_u, {}).get("risk_score", 0)
             risk_v = result_map.get(edge_v, {}).get("risk_score", 0)
 
@@ -429,19 +488,22 @@ class RealtimeOrchestrator:
                 tgt_id = int(edge_v.split("-")[1])
             except (ValueError, IndexError):
                 continue
+                
+            src_name = self.db.query(District).filter_by(id=src_id).first().name
+            tgt_name = self.db.query(District).filter_by(id=tgt_id).first().name
 
-            weight = kg_builder.graph[edge_u][edge_v].get("weight", 0.5)
             kg_event = KnowledgeGraphEvents(
                 source_district_id=src_id,
                 target_district_id=tgt_id,
                 event_type="RISK_PROPAGATION",
                 influence_weight=round(weight, 3),
                 description=(
-                    f"Risk propagated: score {risk_u:.0f} -> {risk_v:.0f} "
-                    f"(weight={weight:.2f})"
+                    f"Risk propagated from {src_name} to {tgt_name} due to river flow "
+                    f"(attention_weight={weight:.3f})"
                 ),
             )
             self.db.add(kg_event)
+            events_recorded += 1
 
     def _trigger_ws_broadcast(
         self,

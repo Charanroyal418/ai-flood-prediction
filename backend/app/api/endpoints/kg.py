@@ -18,15 +18,13 @@ _kg_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _KG_CACHE_TTL = 300  # 5 minutes – avoids re-running GNN on every poll (free-tier friendly)
 
 def get_2d_projections(embeddings: np.ndarray) -> np.ndarray:
-    """Projects 32D embeddings to 2D using pure numpy eigenvalue decomposition PCA."""
-    mean = np.mean(embeddings, axis=0)
-    centered = embeddings - mean
-    cov = np.cov(centered, rowvar=False)
-    cov += np.eye(cov.shape[0]) * 1e-6
-    eig_vals, eig_vecs = np.linalg.eigh(cov)
-    idx = np.argsort(eig_vals)[::-1]
-    top_vecs = eig_vecs[:, idx[:2]]
-    return np.dot(centered, top_vecs)
+    """Projects 32D embeddings to 2D using t-SNE."""
+    if embeddings.shape[0] < 2:
+        return np.zeros((embeddings.shape[0], 2))
+    from sklearn.manifold import TSNE
+    perplexity = min(30.0, float(embeddings.shape[0]) - 1.0)
+    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='pca', learning_rate='auto')
+    return tsne.fit_transform(embeddings)
 
 @router.get("/graph")
 def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:

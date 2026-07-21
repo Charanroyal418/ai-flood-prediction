@@ -512,6 +512,16 @@ def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
         r = result_map.get(nid)
         if not r:
             continue
+        # Format SHAP values for the frontend
+        shap_values = []
+        reasoning_chain = []
+        if "shap_values" in r:
+            for sv in r["shap_values"]:
+                label = sv.get("label", "Unknown")
+                contrib = sv.get("contribution_pct", 0)
+                shap_values.append({"feature": label, "contribution": contrib})
+                reasoning_chain.append(f"{label} contributes {contrib}%")
+
         district_results.append({
             "district_id": d.id,
             "district": d.name,
@@ -521,6 +531,9 @@ def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
             "confidence": round(r["confidence"], 3),
             "class_probabilities": r.get("class_probabilities", {}),
             "inference_mode": r.get("inference_mode", "Physics"),
+            "shap_values": shap_values,
+            "reasoning_chain": reasoning_chain,
+            "inference_time_ms": round(gnn_total_ms / len(db_districts), 1),
         })
 
     district_results.sort(key=lambda x: x["risk_score"], reverse=True)
@@ -638,6 +651,18 @@ def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
             latency_ms=total_ms,
         )
         db.add(inf_log)
+        
+        # Write GNN's adjusted authoritative score to PredictionHistory
+        for d in district_results:
+            pred = PredictionHistory(
+                district_id=d["district_id"],
+                current_risk_score=d["risk_score"],
+                current_risk_level=d["risk_level"],
+                confidence=d["confidence"],
+                shap_values=d.get("shap_values", [])
+            )
+            db.add(pred)
+            
         db.commit()
     except Exception as e:
         logger.warning(f"[InferenceCycle] Failed to log inference: {e}")
@@ -664,6 +689,9 @@ def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
         "gnn_latency_ms": gnn_total_ms,
         "backend_status": "online",
         "database_status": "connected",
+        "node_count": int(num_nodes),
+        "edge_count": int(edge_index.shape[1]) if edge_index.shape[1] > 0 else kg_edges,
+        "attention_heads": attention_stats.get('num_heads', 4),
     }
 
     payload = {

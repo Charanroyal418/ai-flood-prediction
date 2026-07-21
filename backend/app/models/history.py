@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import uuid
 
 from app.db.base_class import Base
+from app.models.district import District
 
 class WeatherHistory(Base):
     __tablename__ = "weather_history"
