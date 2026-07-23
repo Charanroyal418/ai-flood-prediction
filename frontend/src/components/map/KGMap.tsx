@@ -68,7 +68,7 @@ export default function KGMap({ nodes, edges, showAllEdges, onNodeClick, activeN
 
   // Only plot nodes with valid coordinates
   const mapNodes = nodes.filter((n: any) => n.lat && n.lon && n.lat !== 0 && n.lon !== 0 && n.type === 'district');
-  const nodeMap = new Map(mapNodes.map((n: any) => [n.id, n]));
+  const nodeMap = new Map<string, any>(mapNodes.map((n: any) => [n.id, n]));
 
   // Draw edges connecting valid nodes
   const mapEdges = edges
@@ -92,8 +92,8 @@ export default function KGMap({ nodes, edges, showAllEdges, onNodeClick, activeN
         />
 
         {mapEdges.map((edge: any) => {
-          const source = nodeMap.get(edge.source);
-          const target = nodeMap.get(edge.target);
+          const source: any = nodeMap.get(edge.source);
+          const target: any = nodeMap.get(edge.target);
           if (!source || !target) return null;
           
           const isHighInfluence = edge.dynamicInfluence > 20 || edge.attention > 0.4;
