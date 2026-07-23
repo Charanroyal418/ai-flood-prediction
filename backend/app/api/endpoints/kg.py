@@ -18,13 +18,21 @@ _kg_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _KG_CACHE_TTL = 300  # 5 minutes – avoids re-running GNN on every poll (free-tier friendly)
 
 def get_2d_projections(embeddings: np.ndarray) -> np.ndarray:
-    """Projects 32D embeddings to 2D using t-SNE."""
+    """Projects 32D embeddings to 2D using t-SNE or fast SVD fallback."""
     if embeddings.shape[0] < 2:
         return np.zeros((embeddings.shape[0], 2))
-    from sklearn.manifold import TSNE
-    perplexity = min(30.0, float(embeddings.shape[0]) - 1.0)
-    tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='pca', learning_rate='auto')
-    return tsne.fit_transform(embeddings)
+    try:
+        from sklearn.manifold import TSNE
+        perplexity = min(30.0, float(embeddings.shape[0]) - 1.0)
+        tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='random', learning_rate='auto')
+        return tsne.fit_transform(embeddings)
+    except Exception:
+        # Fast 2D SVD fallback
+        try:
+            U, S, Vt = np.linalg.svd(embeddings, full_matrices=False)
+            return U[:, :2] * S[:2]
+        except Exception:
+            return np.random.randn(embeddings.shape[0], 2)
 
 @router.get("/graph")
 def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
@@ -117,6 +125,7 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
             "y": float(round(y_val, 2))
         })
         
+        base_risk = pred.get("risk_score", n.get("risk_score", 15.0))
         # Multi-horizon temporal forecast scaling for timeline slider [Now, +15m, +30m, +1h, +3h, +6h, +24h]
         temporal_scales = [1.0, 1.04, 1.10, 1.18, 1.30, 1.48, 1.65]
         history = [round(min(99.9, max(1.0, base_risk * scale)), 1) for scale in temporal_scales]
