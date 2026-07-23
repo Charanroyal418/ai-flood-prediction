@@ -165,14 +165,17 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
 
     latency_ms = (datetime.now() - start_time).total_seconds() * 1000
 
-    critical_edges = sorted(edges_response, key=lambda x: x["influence"], reverse=True)[:5]
+    # Filter for district-to-district edges only for ranking & path analysis
+    district_edges = [e for e in edges_response if e["source"].startswith("d-") and e["target"].startswith("d-")]
+    critical_edges = sorted(district_edges, key=lambda x: x["influence"], reverse=True)[:5]
+    
     attention_paths = []
     if critical_edges:
         start_edge = critical_edges[0]
         path = [start_edge["source"], start_edge["target"]]
         current = start_edge["target"]
         for _ in range(4):
-            out_edges = [e for e in edges_response if e["source"] == current]
+            out_edges = [e for e in district_edges if e["source"] == current]
             if not out_edges: break
             best_out = max(out_edges, key=lambda x: x["attention"])
             path.append(best_out["target"])
