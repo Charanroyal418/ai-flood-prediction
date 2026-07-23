@@ -410,7 +410,7 @@ export default function DynamicKnowledgeGraph() {
                 <div className="mt-2 flex items-center gap-3">
                   <span
                     className="text-[11px] font-bold px-2.5 py-1 rounded-full text-white"
-                    style={{ background: RISK_COLORS[selectedNode.status] || "#94a3b8" }}
+                    style={{ background: STATUS_COLORS[selectedNode.status] || "#94a3b8" }}
                   >
                     Risk Level: {selectedNode.status}
                   </span>
