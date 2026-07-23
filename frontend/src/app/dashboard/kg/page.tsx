@@ -216,6 +216,9 @@ export default function DynamicKnowledgeGraph() {
     const totalCommunities = Math.max(1, data?.communities?.length || 4);
     const radius = 650; // Radial distance between community centroids
 
+    // Clone formattedEdges for D3 simulation to prevent mutation of string IDs
+    const d3Links = formattedEdges.map((e: any) => ({ ...e }));
+
     const simulation = d3.forceSimulation(d3Nodes)
       .force("charge", d3.forceManyBody().strength(-600))
       .force("collide", d3.forceCollide(85).iterations(4)) // Sized collision zone (170px) prevents any node overlaps!
@@ -227,7 +230,7 @@ export default function DynamicKnowledgeGraph() {
         const angle = (d.data.communityIdx / totalCommunities) * Math.PI * 2;
         return Math.sin(angle) * radius;
       }).strength(0.6))
-      .force("link", d3.forceLink(formattedEdges).id((d: any) => d.id).distance(140).strength(0.2))
+      .force("link", d3.forceLink(d3Links).id((d: any) => d.id).distance(140).strength(0.2))
       .stop();
 
     simulation.tick(350);
@@ -282,8 +285,15 @@ export default function DynamicKnowledgeGraph() {
       });
     }
 
+    // Ensure edges passed to ReactFlow have string source and target IDs
+    const cleanEdges = formattedEdges.map((e: any) => ({
+      ...e,
+      source: typeof e.source === "object" ? e.source.id : String(e.source),
+      target: typeof e.target === "object" ? e.target.id : String(e.target),
+    }));
+
     setNodes([...communityBgNodes, ...finalNodes]);
-    setEdges(formattedEdges);
+    setEdges(cleanEdges);
   }, [setNodes, setEdges, data?.communities]);
 
   useEffect(() => {
