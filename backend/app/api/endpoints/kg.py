@@ -117,8 +117,9 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
             "y": float(round(y_val, 2))
         })
         
-        base_risk = pred.get("risk_score", n.get("risk_score", 15.0))
-        history = [round(base_risk * (0.95 ** t), 1) for t in range(7)]
+        # Multi-horizon temporal forecast scaling for timeline slider [Now, +15m, +30m, +1h, +3h, +6h, +24h]
+        temporal_scales = [1.0, 1.04, 1.10, 1.18, 1.30, 1.48, 1.65]
+        history = [round(min(99.9, max(1.0, base_risk * scale)), 1) for scale in temporal_scales]
             
         nodes_response.append({
             "id": node_id,

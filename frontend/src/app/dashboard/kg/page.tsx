@@ -11,8 +11,8 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import {
-  Network, MapPin, Waves, Shield, CloudRain, RefreshCw, Activity,
-  ArrowRight, Clock, Play, Pause, TrendingUp, Info, X, Map, BarChart2, Eye, EyeOff, Code, AlertTriangle
+  Network, MapPin, RefreshCw, Activity,
+  Play, Pause, TrendingUp, X, Map, BarChart2, Eye, EyeOff, Code, AlertTriangle
 } from "lucide-react";
 import * as d3 from "d3-force";
 
@@ -30,20 +30,17 @@ const COMMUNITY_COLORS = [
 // ─── Custom District Node Component ──────────────────────────────────────────
 function DistrictNode({ data }: { data: any }) {
   const statusColor = STATUS_COLORS[data.status] || STATUS_COLORS.Safe;
-  const isTarget = data.propActive;
 
   return (
     <div className="flex flex-col items-center select-none" style={{ minWidth: 140 }}>
       <Handle type="target" position={Position.Left} className="w-2 h-2 !bg-slate-400 !border-white" />
-      <motion.div
-        animate={isTarget ? { scale: [1, 1.08, 1], boxShadow: `0 0 20px ${statusColor}b0` } : {}}
-        transition={isTarget ? { duration: 1.2, repeat: Infinity } : {}}
+      <div
         className="rounded-xl bg-white px-3 py-2 shadow-md transition-all duration-300 w-full hover:shadow-lg hover:z-20"
         style={{
           borderStyle: "solid",
-          borderWidth: data.risk_score >= 75 ? 3 : data.risk_score >= 50 ? 2 : 1,
-          borderColor: data.risk_score >= 75 ? statusColor : "#cbd5e1",
-          borderLeftWidth: 5,
+          borderWidth: data.risk_score >= 75 ? 4 : data.risk_score >= 50 ? 2.5 : 1,
+          borderColor: data.risk_score >= 75 ? statusColor : data.risk_score >= 50 ? statusColor : "#cbd5e1",
+          borderLeftWidth: 6,
           borderLeftColor: statusColor,
           backgroundColor: "white",
         }}
@@ -53,7 +50,7 @@ function DistrictNode({ data }: { data: any }) {
             {data.label}
           </p>
           <span
-            className="text-[9px] font-extrabold px-1.5 py-0.5 rounded font-mono text-white flex-shrink-0"
+            className="text-[9px] font-extrabold px-1.5 py-0.5 rounded font-mono text-white flex-shrink-0 transition-colors duration-300"
             style={{ backgroundColor: statusColor }}
           >
             {data.risk_score.toFixed(0)}
@@ -62,10 +59,10 @@ function DistrictNode({ data }: { data: any }) {
 
         {/* Live Rain/Risk Telemetry indicator */}
         <div className="mt-1 flex justify-between items-center text-[9px] text-slate-400 font-mono border-t border-slate-100 pt-1">
-          <span>{data.status}</span>
+          <span className="font-bold" style={{ color: statusColor }}>{data.status}</span>
           <span>{data.data?.rainfall_24h ?? 0}mm rain</span>
         </div>
-      </motion.div>
+      </div>
       <Handle type="source" position={Position.Right} className="w-2 h-2 !bg-slate-400 !border-white" />
     </div>
   );
@@ -106,21 +103,22 @@ export default function DynamicKnowledgeGraph() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<any>(null);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [timeIndex, setTimeIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showAllEdges, setShowAllEdges] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [topConnections, setTopConnections] = useState<any[]>([]);
+  
   const playInterval = useRef<any>(null);
 
   const TIME_WINDOWS = [
     { label: "Now", key: "now" },
-    { label: "15m", key: "15m" },
-    { label: "30m", key: "30m" },
-    { label: "1h", key: "1h" },
-    { label: "3h", key: "3h" },
-    { label: "6h", key: "6h" },
-    { label: "24h", key: "24h" }
+    { label: "+15m", key: "15m" },
+    { label: "+30m", key: "30m" },
+    { label: "+1h", key: "1h" },
+    { label: "+3h", key: "3h" },
+    { label: "+6h", key: "6h" },
+    { label: "+24h", key: "24h" }
   ];
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -175,7 +173,6 @@ export default function DynamicKnowledgeGraph() {
           ...n,
           risk_score: currentRisk,
           status,
-          propActive: false,
           communityColor,
           communityIdx: commIdx,
         },
@@ -203,14 +200,21 @@ export default function DynamicKnowledgeGraph() {
         labelBgStyle: { fill: "#ffffff", fillOpacity: 0.95, rx: 4, ry: 4 },
         style: {
           stroke: statusColor,
-          strokeWidth: dynamicInfluence > 20 ? 2.5 : 1.2,
+          strokeWidth: dynamicInfluence > 20 ? 3 : 1.2,
           opacity: 0.85,
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: statusColor },
         dynamicInfluence,
-        attention: e.attention
+        attention: e.attention,
+        sourceRisk,
       };
     });
+
+    // Compute top dynamic connections for the current time horizon
+    const rankedConnections = [...formattedEdges]
+      .sort((a, b) => b.dynamicInfluence - a.dynamicInfluence)
+      .slice(0, 4);
+    setTopConnections(rankedConnections);
 
     // 3. D3 Force Simulation with Strict Node Collision & Inter-Cluster Spacing
     const totalCommunities = Math.max(1, data?.communities?.length || 4);
@@ -319,47 +323,6 @@ export default function DynamicKnowledgeGraph() {
     return () => { if (playInterval.current) clearInterval(playInterval.current); };
   }, [isPlaying]);
 
-  const runGNNPropagation = async () => {
-    if (isSimulating || !data?.propagation_steps) return;
-    setIsSimulating(true);
-    setIsPlaying(false);
-    setTimeIndex(0);
-
-    const steps = data.propagation_steps;
-
-    for (let step = 0; step < steps.length; step++) {
-      const activeIds = steps[step];
-      
-      setNodes(nds => nds.map(n => {
-        const isActive = activeIds.includes(n.id);
-        return {
-          ...n,
-          data: { ...n.data, propActive: isActive }
-        };
-      }));
-
-      setEdges(eds => eds.map(e => {
-        const isFromActiveNode = activeIds.includes(e.source);
-        if (isFromActiveNode) {
-          return {
-            ...e,
-            animated: true,
-            style: { stroke: "#8b5cf6", strokeWidth: 4, transition: "stroke 0.4s" }
-          };
-        }
-        return e;
-      }));
-
-      await new Promise(resolve => setTimeout(resolve, 1400));
-    }
-
-    setNodes(nds => nds.map(n => ({ ...n, data: { ...n.data, propActive: false } })));
-    if (data) {
-      updateGraphLayout(data.nodes, data.edges, timeIndex);
-    }
-    setIsSimulating(false);
-  };
-
   if (isError) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
@@ -425,17 +388,9 @@ export default function DynamicKnowledgeGraph() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-semibold hover:bg-slate-100 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-semibold hover:bg-slate-100 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Force Sync
-          </button>
-          <button
-            onClick={runGNNPropagation}
-            disabled={isSimulating}
-            className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold shadow-md shadow-violet-200 transition-all disabled:opacity-60"
-          >
-            <Activity className="w-3.5 h-3.5" />
-            {isSimulating ? "Message Passing..." : "Animate GNN Inference"}
           </button>
         </div>
       </div>
@@ -518,7 +473,9 @@ export default function DynamicKnowledgeGraph() {
             <div className="flex-1 px-2">
               <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-2 font-mono uppercase tracking-wider">
                 <span>See risk spread over the next few hours</span>
-                <span className="text-violet-600 bg-violet-50 px-2 py-0.5 rounded font-heading">{TIME_WINDOWS[timeIndex].label} ago</span>
+                <span className="text-violet-600 bg-violet-50 px-2 py-0.5 rounded font-heading font-mono">
+                  Forecast Target: {TIME_WINDOWS[timeIndex].label}
+                </span>
               </div>
               <input
                 type="range"
@@ -579,20 +536,30 @@ export default function DynamicKnowledgeGraph() {
           </div>
 
           <div className="glass-card p-5 flex-1 flex flex-col min-h-0 shadow-md">
-            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-3 shrink-0 font-heading">
-              <TrendingUp className="w-4 h-4 text-amber-500" /> Strongest Risk Connections
-            </h2>
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 shrink-0">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 font-heading">
+                <TrendingUp className="w-4 h-4 text-amber-500" /> Strongest Risk Connections
+              </h2>
+              <span className="text-[9px] font-mono font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded">
+                {TIME_WINDOWS[timeIndex].label}
+              </span>
+            </div>
             <div className="mt-4 overflow-y-auto space-y-3 flex-1 pr-1">
-              {data.explainability.critical_edges.slice(0, 4).map((edge: any, i: number) => {
+              {(topConnections.length > 0 ? topConnections : data.explainability.critical_edges.slice(0, 4)).map((edge: any, i: number) => {
                 const sourceNode = data.nodes.find((n: any) => n.id === edge.source);
                 const targetNode = data.nodes.find((n: any) => n.id === edge.target);
                 if (!sourceNode || !targetNode) return null;
 
                 return (
                   <div key={i} className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-col gap-1 hover:bg-slate-100 transition-colors">
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                      <span>{sourceNode.label} → {targetNode.label}</span>
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                        <span>{sourceNode.label} → {targetNode.label}</span>
+                      </div>
+                      <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex-shrink-0">
+                        {edge.dynamicInfluence.toFixed(1)} infl
+                      </span>
                     </div>
                     <p className="text-[10px] text-slate-600 leading-normal mt-0.5">
                       <strong className="text-slate-800">{sourceNode.label}</strong>&apos;s flood risk strongly affects <strong className="text-slate-800">{targetNode.label}</strong> via shared river drainage.
