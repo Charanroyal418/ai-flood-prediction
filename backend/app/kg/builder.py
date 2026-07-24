@@ -157,56 +157,32 @@ class KnowledgeGraphBuilder:
         node_to_idx = {nid: i for i, nid in enumerate(self.node_ids)}
         
         if db:
-            from app.models.history import NodeFeatureSnapshot
             self.update_graph_from_db(db)
             
-            for idx, nid in enumerate(self.node_ids):
-                node = self.graph.nodes[nid]
-                
-                snapshots_data = []
-                if nid.startswith("d-"):
-                    try:
-                        district_id = int(nid.split("-")[1])
-                        snapshots = db.query(NodeFeatureSnapshot).filter_by(district_id=district_id).order_by(NodeFeatureSnapshot.recorded_at.desc()).limit(seq_len).all()
-                        if snapshots:
-                            snapshots.reverse()
-                            while len(snapshots) < seq_len:
-                                snapshots.insert(0, snapshots[0])
-                            for snap in snapshots:
-                                snapshots_data.append([
-                                    snap.rainfall, snap.risk_score / 100.0, snap.humidity,
-                                    snap.pressure, snap.temperature, snap.elevation,
-                                    snap.slope, snap.urban_drainage, snap.historical_floods,
-                                    snap.population / 1000000.0, snap.land_cover, snap.temporal
-                                ])
-                    except Exception:
-                        pass
-                
-                # Fallback to mock data for non-district nodes or if snapshots are missing
-                if not snapshots_data:
-                    rain = node.get("rainfall", 0.0)
-                    risk = node.get("risk_score", 15.0)
-                    elev = node.get("elevation", 15.0)
-                    temp = node.get("temperature", 28.0)
-                    hum = node.get("humidity", 70.0)
-                    pres = node.get("pressure", 1010.0)
-                    pop = node.get("population", 1000000)
-                    
-                    for t in range(seq_len):
-                        decay = 0.9 ** (seq_len - 1 - t)
-                        snapshots_data.append([
-                            rain * decay, (risk / 100.0) * decay, hum, pres, temp,
-                            elev, 5.0 if elev < 20 else 15.0,
-                            80.0 if "Chennai" in node.get("label", "") else 40.0,
-                            5.0 if elev < 10 else 1.0, pop / 1000000.0,
-                            0.8 if elev < 15 else 0.2, float(t)
-                        ])
-                
-                for t in range(seq_len):
-                    for f in range(num_features):
-                        H[idx, t, f] = snapshots_data[t][f]
-        else:
-            H = torch.rand((num_nodes, seq_len, num_features))
+        for idx, nid in enumerate(self.node_ids):
+            node = self.graph.nodes.get(nid, {})
+            snapshots_data = []
+            
+            rain = float(node.get("rainfall", 0.0))
+            risk = float(node.get("risk_score", 15.0))
+            elev = float(node.get("elevation", 15.0))
+            temp = float(node.get("temperature", 28.0))
+            hum = float(node.get("humidity", 70.0))
+            pres = float(node.get("pressure", 1010.0))
+            pop = float(node.get("population", 1000000))
+            
+            for t in range(seq_len):
+                decay = 0.9 ** (seq_len - 1 - t)
+                snapshots_data.append([
+                    rain * decay, (risk / 100.0) * decay, hum, pres, temp,
+                    elev, 5.0 if elev < 20 else 15.0,
+                    80.0 if "Chennai" in str(node.get("label", "")) else 40.0,
+                    5.0 if risk > 50 else 1.0, pop / 1000000.0, 0.5, float(t)
+                ])
+
+            for t in range(seq_len):
+                for f in range(num_features):
+                    H[idx, t, f] = snapshots_data[t][f]
             
         sources, targets = [], []
         for u, v in self.graph.edges():
