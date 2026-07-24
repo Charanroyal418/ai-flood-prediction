@@ -46,6 +46,13 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         if w.district_id not in weather_map:
             weather_map[w.district_id] = w
             
+    # Get latest river levels per district
+    all_rivers = db.query(RiverLevel).order_by(RiverLevel.recorded_at.desc()).limit(200).all()
+    river_map = {}
+    for r in all_rivers:
+        if r.district_id not in river_map:
+            river_map[r.district_id] = r
+            
     districts_with_risk = []
     for d in districts:
         p = pred_map.get(d.id)
@@ -66,7 +73,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             
         river_level_m = 0
         river_danger_m = 5.0
-        r_lvl = db.query(RiverLevel).filter(RiverLevel.district_id == d.id).order_by(RiverLevel.recorded_at.desc()).first()
+        r_lvl = river_map.get(d.id)
         if r_lvl:
             river_level_m = r_lvl.current_level
             river_danger_m = r_lvl.danger_level
