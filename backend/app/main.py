@@ -8,7 +8,7 @@ import app.db.base # Ensure all models are registered
 
 from app.core.config import settings
 from app.api.api import api_router
-from app.core.exceptions import http_exception_handler, validation_exception_handler
+from app.core.exceptions import http_exception_handler, validation_exception_handler, global_exception_handler
 from app.scheduler.manager import init_scheduler, shutdown_scheduler
 
 @asynccontextmanager
@@ -39,5 +39,6 @@ app.add_middleware(
 # Exception handlers
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
