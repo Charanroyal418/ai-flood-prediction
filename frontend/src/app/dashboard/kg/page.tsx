@@ -53,7 +53,7 @@ function DistrictNode({ data }: { data: any }) {
             className="text-[9px] font-extrabold px-1.5 py-0.5 rounded font-mono text-white flex-shrink-0 transition-colors duration-300"
             style={{ backgroundColor: statusColor }}
           >
-            {data.risk_score.toFixed(0)}
+            {data.risk_score.toFixed(1)}
           </span>
         </div>
 
@@ -188,19 +188,22 @@ export default function DynamicKnowledgeGraph() {
       const sourceNode = rawNodes.find(n => n.id === e.source);
       const sourceRisk = sourceNode ? getRiskFromHistory(sourceNode, timeIdx) : 15;
       const dynamicInfluence = e.attention * sourceRisk;
-      const statusColor = sourceRisk >= 75 ? STATUS_COLORS.Critical : sourceRisk >= 50 ? STATUS_COLORS.Warning : "#94a3b8";
+      const statusColor = sourceRisk >= 75 ? STATUS_COLORS.Critical 
+                        : sourceRisk >= 50 ? STATUS_COLORS.Warning 
+                        : sourceRisk >= 25 ? STATUS_COLORS.Watch 
+                        : "#94a3b8";
 
       return {
         id: e.id,
         source: e.source,
         target: e.target,
-        animated: dynamicInfluence > 20 || e.attention > 0.4,
-        label: `${e.attention.toFixed(2)}`,
-        labelStyle: { fill: "#64748b", fontWeight: 700, fontSize: 8 },
+        animated: dynamicInfluence > 15 || e.attention > 0.4,
+        label: `infl: ${dynamicInfluence.toFixed(1)}`,
+        labelStyle: { fill: "#475569", fontWeight: 700, fontSize: 8 },
         labelBgStyle: { fill: "#ffffff", fillOpacity: 0.95, rx: 4, ry: 4 },
         style: {
           stroke: statusColor,
-          strokeWidth: dynamicInfluence > 20 ? 3 : 1.2,
+          strokeWidth: Math.max(1.2, Math.min(5.0, dynamicInfluence / 4)),
           opacity: 0.85,
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: statusColor },
@@ -303,6 +306,21 @@ export default function DynamicKnowledgeGraph() {
   useEffect(() => {
     if (data?.nodes) {
       updateGraphLayout(data.nodes, data.edges, timeIndex);
+      if (selectedNode) {
+        const updatedNode = data.nodes.find((n: any) => n.id === selectedNode.id);
+        if (updatedNode) {
+          const currentRisk = getRiskFromHistory(updatedNode, timeIndex);
+          let status = "Safe";
+          if (currentRisk >= 75) status = "Critical";
+          else if (currentRisk >= 50) status = "Warning";
+          else if (currentRisk >= 25) status = "Watch";
+          setSelectedNode((prev: any) => prev ? {
+            ...prev,
+            risk_score: currentRisk,
+            status,
+          } : null);
+        }
+      }
     }
   }, [data, timeIndex, updateGraphLayout]);
 
