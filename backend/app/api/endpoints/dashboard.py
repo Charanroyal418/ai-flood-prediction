@@ -9,6 +9,7 @@ from app.models.district import District
 from app.models.history import PredictionHistory, WeatherHistory, ModelInference, KnowledgeGraphEvents
 from app.models.alert import Alert
 import json
+import re
 import os
 from app.models.weather import Weather
 from app.models.river import RiverLevel

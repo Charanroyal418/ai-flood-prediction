@@ -335,6 +335,19 @@ export default function CommandCenter() {
         </div>
       </div>
 
+      {/* System Alert / Error Banner */}
+      {(data?.status === "error" || (data?.message && data?.message !== "online" && !data?.message?.includes("success"))) && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl flex items-center justify-between text-xs font-medium">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <span><strong>Backend Pipeline Alert:</strong> {data?.message || "Data pipeline returned a recovery response."}</span>
+          </div>
+          <button onClick={() => queryClient.invalidateQueries({ queryKey: ["dashboardLive"] })} className="font-semibold text-amber-900 underline hover:no-underline">
+            Retry Pipeline
+          </button>
+        </div>
+      )}
+
       {/* AI Pipeline Status Bar */}
       <div className="glass-card p-4">
         <PipelineStatus nodeCount={metrics?.kg_nodes || 147} />
@@ -499,12 +512,12 @@ export default function CommandCenter() {
               Active
             </div>
           </div>
-          <PipelineStatus />
+          <PipelineStatus nodeCount={metrics?.kg_nodes || 147} />
           <div className="mt-5 grid grid-cols-3 gap-3">
             {[
               { label: "Model", value: modelMeta?.inference_mode ?? (metrics?.inference_mode || "GDNN v2.1") },
               { label: "Confidence", value: `${((metrics?.model_confidence ?? 0.924) * 100).toFixed(1)}%` },
-              { label: "KG Nodes", value: modelMeta?.node_count ?? metrics?.kg_nodes ?? 312 },
+              { label: "KG Nodes", value: modelMeta?.node_count ?? metrics?.kg_nodes ?? 147 },
             ].map(({ label, value }) => (
               <div key={label} className="text-center p-3 rounded-xl bg-violet-50/60 border border-violet-100">
                 <p className="text-[10px] text-violet-500 font-semibold uppercase tracking-wide">{label}</p>
