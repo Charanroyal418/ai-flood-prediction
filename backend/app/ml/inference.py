@@ -383,13 +383,13 @@ class GNNInferenceEngine:
 
         shap = []
         for name, contrib in sorted(contributions.items(), key=lambda x: -x[1])[:6]:
-            pct = contrib / total
+            pct = float(contrib / total)
             if pct > 0.01:
                 shap.append({
-                    "label": name,
-                    "value": round(pct, 3),
-                    "color": color_map.get(name, "#6b7280"),
-                    "contribution_pct": round(pct * 100, 1),
+                    "label": str(name),
+                    "value": round(float(pct), 3),
+                    "color": str(color_map.get(name, "#6b7280")),
+                    "contribution_pct": round(float(pct * 100), 1),
                 })
 
         return shap

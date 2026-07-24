@@ -647,12 +647,12 @@ def _execute_inference_pipeline(db: Session) -> Any:
     # Average SHAP contributions
     global_shap = []
     for label, vals in all_shap.items():
-        avg_val = round(np.mean(vals), 2)
+        avg_val = round(float(np.mean(vals)), 2)
         global_shap.append({
-            "feature": label,
+            "feature": str(label),
             "mean_contribution_pct": avg_val,
-            "is_positive": avg_val >= 0,
-            "sample_count": len(vals),
+            "is_positive": bool(avg_val >= 0),
+            "sample_count": int(len(vals)),
         })
     global_shap.sort(key=lambda x: abs(x["mean_contribution_pct"]), reverse=True)
 
