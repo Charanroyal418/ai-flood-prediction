@@ -125,20 +125,8 @@ def _build_fallback_inference_payload(db: Session, err_msg: str) -> Dict[str, An
     }
 
 
-@router.get("/inference-cycle")
-def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
-    """
-    Execute one complete GDNN inference cycle.
-
-    Returns stage-by-stage results with real metrics from every
-    computation step. Cached for 25 seconds.
-    """
+def _execute_inference_pipeline(db: Session) -> Any:
     global _cycle_cache, _inference_count
-    now = time.time()
-
-    if _cycle_cache["payload"] is not None and (now - _cycle_cache["ts"]) < _CYCLE_CACHE_TTL:
-        return _cycle_cache["payload"]
-
     _inference_count += 1
     cycle_start = time.perf_counter()
     pipeline_logs: List[Dict] = []
@@ -147,8 +135,7 @@ def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
     def log(msg: str):
         pipeline_logs.append({"ts": _ts(), "message": msg})
 
-    try:
-        log("Inference cycle initiated")
+    log("Inference cycle initiated")
 
     # ══════════════════════════════════════════════════════════════════════
     # STAGE 1: Weather Ingestion (Open-Meteo API)
@@ -769,6 +756,24 @@ def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
 
     _cycle_cache = {"ts": time.time(), "payload": payload}
     return payload
+
+
+@router.get("/inference-cycle")
+def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
+    """
+    Execute one complete GDNN inference cycle.
+    Cached for 25 seconds. Returns fallback payload if pipeline fails.
+    """
+    global _cycle_cache
+    now = time.time()
+
+    if _cycle_cache["payload"] is not None and (now - _cycle_cache["ts"]) < _CYCLE_CACHE_TTL:
+        return _cycle_cache["payload"]
+
+    try:
+        payload = _execute_inference_pipeline(db)
+        _cycle_cache = {"ts": time.time(), "payload": payload}
+        return payload
     except Exception as err:
         logger.error(f"[InferenceCycle] Pipeline exception caught: {err}", exc_info=True)
         fallback = _build_fallback_inference_payload(db, str(err))
