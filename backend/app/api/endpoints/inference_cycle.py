@@ -772,19 +772,29 @@ def _execute_inference_pipeline(db: Session) -> Any:
 
 def sanitize_numpy(obj):
     if isinstance(obj, dict):
-        return {k: sanitize_numpy(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+        return {str(k): sanitize_numpy(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, set)):
         return [sanitize_numpy(v) for v in obj]
     elif isinstance(obj, tuple):
         return tuple(sanitize_numpy(v) for v in obj)
-    elif isinstance(obj, (np.bool_, bool)):
+    elif type(obj).__module__ == 'numpy' or 'numpy' in str(type(obj)):
+        type_str = str(type(obj)).lower()
+        if 'bool' in type_str:
+            return bool(obj)
+        elif 'int' in type_str:
+            return int(obj)
+        elif 'float' in type_str:
+            return float(obj)
+        elif hasattr(obj, 'tolist'):
+            return sanitize_numpy(obj.tolist())
+        else:
+            return str(obj)
+    elif isinstance(obj, (bool, np.bool_)):
         return bool(obj)
-    elif isinstance(obj, (np.integer, int)):
+    elif isinstance(obj, (int, np.integer)):
         return int(obj)
-    elif isinstance(obj, (np.floating, float)):
+    elif isinstance(obj, (float, np.floating)):
         return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return sanitize_numpy(obj.tolist())
     else:
         return obj
 
