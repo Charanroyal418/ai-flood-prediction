@@ -71,13 +71,26 @@ export default function PredictionEnginePage() {
   const [showLogs, setShowLogs] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading, isError, error, dataUpdatedAt } = useQuery<InferenceCycle>({
+  const { data, isLoading, isError, error, dataUpdatedAt, refetch } = useQuery<InferenceCycle>({
     queryKey: ["inference-cycle"],
     queryFn: async () => {
-      const res = await api.get("/predict/inference-cycle");
-      return res.data;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
+      try {
+        const res = await api.get("/predict/inference-cycle", { signal: controller.signal });
+        const raw = res.data;
+        const districtList = raw.districts || raw.stages?.gdnn_output?.district_ranking || [];
+        return {
+          ...raw,
+          districts: districtList,
+        };
+      } finally {
+        clearTimeout(timeoutId);
+      }
     },
     refetchInterval: 30000,
+    retry: 3,
+    retryDelay: 3000,
   });
 
   useEffect(() => {
@@ -120,13 +133,21 @@ export default function PredictionEnginePage() {
     );
   }
 
-  if (isError) {
+  if (isError && !data) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-slate-400">
-           <AlertTriangle className="w-12 h-12 text-red-500 mb-2" />
-           <p className="font-bold">Error loading prediction engine</p>
-           <p className="text-xs">{error?.message || "Check the backend connection."}</p>
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
+            <AlertTriangle className="w-7 h-7 text-red-500" />
+          </div>
+          <h2 className="text-lg font-heading font-bold text-slate-800">Prediction Engine Unavailable</h2>
+          <p className="text-xs text-slate-500">{error?.message || "Failed to establish connection with AI Prediction server."}</p>
+          <button
+            onClick={() => refetch()}
+            className="mt-2 flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold shadow-md shadow-violet-200 transition-all cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" /> Try Again
+          </button>
         </div>
       </div>
     );

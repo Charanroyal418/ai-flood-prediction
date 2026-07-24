@@ -699,6 +699,8 @@ def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "total_latency_ms": total_ms,
         "stages": stages,
+        "districts": district_results,
+        "metrics": stages.get("gdnn_output", {}),
         "model_status": model_status,
         "logs": pipeline_logs,
     }
