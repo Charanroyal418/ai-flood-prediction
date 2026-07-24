@@ -754,8 +754,28 @@ def _execute_inference_pipeline(db: Session) -> Any:
         "logs": pipeline_logs,
     }
 
-    _cycle_cache = {"ts": time.time(), "payload": payload}
-    return payload
+    clean_payload = sanitize_numpy(payload)
+    _cycle_cache = {"ts": time.time(), "payload": clean_payload}
+    return clean_payload
+
+
+def sanitize_numpy(obj):
+    if isinstance(obj, dict):
+        return {k: sanitize_numpy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_numpy(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(sanitize_numpy(v) for v in obj)
+    elif isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    elif isinstance(obj, (np.integer, int)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, float)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return sanitize_numpy(obj.tolist())
+    else:
+        return obj
 
 
 @router.get("/inference-cycle")
@@ -768,14 +788,15 @@ def run_inference_cycle(db: Session = Depends(deps.get_db)) -> Any:
     now = time.time()
 
     if _cycle_cache["payload"] is not None and (now - _cycle_cache["ts"]) < _CYCLE_CACHE_TTL:
-        return _cycle_cache["payload"]
+        return sanitize_numpy(_cycle_cache["payload"])
 
     try:
         payload = _execute_inference_pipeline(db)
-        _cycle_cache = {"ts": time.time(), "payload": payload}
-        return payload
+        clean_payload = sanitize_numpy(payload)
+        _cycle_cache = {"ts": time.time(), "payload": clean_payload}
+        return clean_payload
     except Exception as err:
         logger.error(f"[InferenceCycle] Pipeline exception caught: {err}", exc_info=True)
-        fallback = _build_fallback_inference_payload(db, str(err))
+        fallback = sanitize_numpy(_build_fallback_inference_payload(db, str(err)))
         _cycle_cache = {"ts": time.time(), "payload": fallback}
         return fallback
