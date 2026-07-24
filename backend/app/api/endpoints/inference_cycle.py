@@ -202,11 +202,11 @@ def _execute_inference_pipeline(db: Session) -> Any:
     log(f"Weather updated: {stations_count} stations, {api_latency_ms}ms API latency")
 
     # Compute weather aggregates
-    total_rainfall = sum(w["rainfall_mm"] for w in weather_records) if weather_records else 0
-    avg_temp = round(np.mean([w["temperature"] for w in weather_records]), 1) if weather_records else 0
-    avg_humidity = round(np.mean([w["humidity"] for w in weather_records]), 1) if weather_records else 0
-    avg_pressure = round(np.mean([w["pressure"] for w in weather_records]), 1) if weather_records else 0
-    avg_wind = round(np.mean([w["wind_speed"] for w in weather_records]), 1) if weather_records else 0
+    total_rainfall = float(sum(w["rainfall_mm"] for w in weather_records)) if weather_records else 0.0
+    avg_temp = round(float(np.mean([w["temperature"] for w in weather_records])), 1) if weather_records else 0.0
+    avg_humidity = round(float(np.mean([w["humidity"] for w in weather_records])), 1) if weather_records else 0.0
+    avg_pressure = round(float(np.mean([w["pressure"] for w in weather_records])), 1) if weather_records else 0.0
+    avg_wind = round(float(np.mean([w["wind_speed"] for w in weather_records])), 1) if weather_records else 0.0
 
     stages["weather_ingestion"] = {
         "status": "completed",
@@ -359,10 +359,10 @@ def _execute_inference_pipeline(db: Session) -> Any:
 
         # Compute normalization stats from the actual tensor
         H_np = H.detach().numpy()
-        feat_means = np.mean(H_np[:, -1, :], axis=0).tolist()
-        feat_stds = np.std(H_np[:, -1, :], axis=0).tolist()
-        feat_mins = np.min(H_np[:, -1, :], axis=0).tolist()
-        feat_maxs = np.max(H_np[:, -1, :], axis=0).tolist()
+        feat_means = [float(v) for v in np.mean(H_np[:, -1, :], axis=0)]
+        feat_stds = [float(v) for v in np.std(H_np[:, -1, :], axis=0)]
+        feat_mins = [float(v) for v in np.min(H_np[:, -1, :], axis=0)]
+        feat_maxs = [float(v) for v in np.max(H_np[:, -1, :], axis=0)]
 
         feature_stats = []
         for i, name in enumerate(feature_names):
@@ -589,8 +589,8 @@ def _execute_inference_pipeline(db: Session) -> Any:
 
     # Statewide stats
     all_scores = [d["risk_score"] for d in district_results]
-    statewide_prob = round(np.mean(all_scores), 1) if all_scores else 0
-    statewide_std = round(np.std(all_scores), 1) if all_scores else 0
+    statewide_prob = round(float(np.mean(all_scores)), 1) if all_scores else 0.0
+    statewide_std = round(float(np.std(all_scores)), 1) if all_scores else 0.0
 
     # Previous prediction for delta
     prev_inference = (
@@ -606,8 +606,8 @@ def _execute_inference_pipeline(db: Session) -> Any:
         "statewide_flood_probability": statewide_prob,
         "prediction_uncertainty": statewide_std,
         "model_confidence": round(
-            np.mean([d["confidence"] for d in district_results]), 3
-        ) if district_results else 0,
+            float(np.mean([d["confidence"] for d in district_results])), 3
+        ) if district_results else 0.0,
         "highest_risk": district_results[0] if district_results else None,
         "lowest_risk": district_results[-1] if district_results else None,
         "district_ranking": district_results,
