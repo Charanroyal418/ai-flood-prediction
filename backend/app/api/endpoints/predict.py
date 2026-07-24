@@ -147,6 +147,11 @@ def model_status():
         "version": "2.0.0"
     }
 
+@router.get("/inference-cycle")
+def get_inference_cycle_route(db: Session = Depends(get_db)):
+    from app.api.endpoints.inference_cycle import run_inference_cycle
+    return run_inference_cycle(db)
+
 import time
 import random
 from datetime import datetime
