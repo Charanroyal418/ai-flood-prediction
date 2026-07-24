@@ -144,11 +144,11 @@ function LiveEventFeed({ events }: { events: any[] }) {
   );
 }
 
-function PipelineStatus() {
+function PipelineStatus({ nodeCount = 147 }: { nodeCount?: number }) {
   const steps = [
     { label: "Telemetry", sub: "38 districts", done: true, icon: Droplets },
     { label: "Feature Eng.", sub: "12 features", done: true, icon: BarChart3 },
-    { label: "KG Build", sub: "312 nodes", done: true, icon: Network },
+    { label: "KG Build", sub: `${nodeCount} nodes`, done: true, icon: Network },
     { label: "GDNN", sub: "GAT+GRU", done: true, icon: Brain },
     { label: "Explainability", sub: "SHAP active", done: true, icon: Zap },
     { label: "Alert Gen.", sub: "Engine live", active: true, icon: AlertTriangle },
@@ -251,7 +251,7 @@ export default function CommandCenter() {
         avg_rainfall_24h_mm: wsDistricts.reduce((s, d) => s + (d.rainfall_mm || 0), 0) / (wsDistricts.length || 1),
         gdnn_inference_ms: modelMeta?.inference_time_ms ?? 0,
         model_confidence: wsDistricts.reduce((s, d) => s + (d.confidence || 0), 0) / (wsDistricts.length || 1),
-        kg_nodes: modelMeta?.node_count ?? data?.metrics?.nodes ?? 0,
+        kg_nodes: modelMeta?.node_count ?? data?.metrics?.kg_nodes ?? data?.metrics?.nodes ?? 147,
       }
     : data?.metrics;
 
@@ -333,6 +333,11 @@ export default function CommandCenter() {
             </span>
           </div>
         </div>
+      </div>
+
+      {/* AI Pipeline Status Bar */}
+      <div className="glass-card p-4">
+        <PipelineStatus nodeCount={metrics?.kg_nodes || 147} />
       </div>
 
       {/* Top KPI Cards */}

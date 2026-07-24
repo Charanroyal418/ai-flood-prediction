@@ -101,17 +101,21 @@ class KnowledgeGraphBuilder:
             w = weather_map.get(d.id)
             rf = rainfall_map.get(d.id)
             dem = dem_map.get(d.id)
-            latest_pred = pred_map.get(d.id)
-            risk = latest_pred.current_risk_score if latest_pred else 15.0
+            r_lvl = db.query(RiverLevel).filter(RiverLevel.district_id == d.id).order_by(RiverLevel.recorded_at.desc()).first()
+            
+            # Compute live telemetry-based risk score (prevents artificial high-score feedback loop)
+            rain_mm = float(rf.mm_24h if rf else 0.0)
+            river_ratio = float(r_lvl.current_level / r_lvl.danger_level if r_lvl and r_lvl.danger_level > 0 else 0.15)
+            telemetry_risk = min(95.0, max(10.0, rain_mm * 0.4 + river_ratio * 40.0))
 
             self.graph.nodes[node_id].update({
-                "label": d.name, "risk_score": float(risk), "elevation": float(dem.elevation if dem else 15.0),
-                "rainfall": float(rf.mm_24h if rf else 0.0), "humidity": float(w.humidity if w else 70.0),
+                "label": d.name, "risk_score": telemetry_risk, "elevation": float(dem.elevation if dem else 15.0),
+                "rainfall": rain_mm, "humidity": float(w.humidity if w else 70.0),
                 "temperature": float(w.temperature if w else 28.0), "pressure": float(w.pressure if w else 1010.0),
                 "population": int(d.population or 1000000)
             })
             self.graph.nodes[pop_id].update({
-                "label": f"{d.name} Pop", "risk_score": float(risk * 0.9),
+                "label": f"{d.name} Pop", "risk_score": float(telemetry_risk * 0.9),
                 "population_count": int(d.population or 1000000), "vulnerability": 5.0
             })
             
@@ -171,11 +175,14 @@ class KnowledgeGraphBuilder:
             pres = float(node.get("pressure", 1010.0))
             pop = float(node.get("population", 1000000))
             
+            # Normalize features so scale is ~1.0
+            norm_pres = (pres - 1000.0) / 50.0
+            
             for t in range(seq_len):
                 decay = 0.9 ** (seq_len - 1 - t)
                 snapshots_data.append([
-                    rain * decay, (risk / 100.0) * decay, hum, pres, temp,
-                    elev, 5.0 if elev < 20 else 15.0,
+                    rain * decay, (risk / 100.0) * decay, hum / 100.0, norm_pres, temp / 40.0,
+                    elev / 100.0, 5.0 if elev < 20 else 15.0,
                     80.0 if "Chennai" in str(node.get("label", "")) else 40.0,
                     5.0 if risk > 50 else 1.0, pop / 1000000.0, 0.5, float(t)
                 ])
