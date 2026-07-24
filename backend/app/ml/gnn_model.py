@@ -1,12 +1,15 @@
-import torch
-import torch.nn.functional as F
 try:
+    import torch
+    import torch.nn.functional as F
     from torch_geometric.nn import GATConv, global_mean_pool
+    torch_base = torch.nn.Module
 except ImportError:
-    # Fail gracefully if PyTorch Geometric isn't installed yet
+    torch = None
+    F = None
     GATConv = None
+    torch_base = object
 
-class TemporalFloodGNN(torch.nn.Module):
+class TemporalFloodGNN(torch_base):
     """
     Dynamic Graph Neural Network for Flood Prediction.
     Matches the PPT Architecture: Uses Graph Attention (GAT) for spatial propagation,
