@@ -486,41 +486,45 @@ def _execute_inference_pipeline(db: Session) -> Any:
     attention_stats = {"num_heads": 4, "sparsity": 0.0, "mean_alpha": 0.0}
 
     if attentions and len(attentions) > 0:
-        last_attn = attentions[-1]
-        attn_edge_idx, attn_alpha = last_attn
-        attn_alpha_np = attn_alpha.cpu().detach().numpy().flatten()
+        try:
+            last_attn = attentions[-1]
+            attn_edge_idx, attn_alpha = last_attn
+            attn_alpha_np = attn_alpha.cpu().detach().numpy().flatten()
 
-        num_attn_edges = attn_edge_idx.shape[1]
-        if attn_alpha_np.size > num_attn_edges:
-            heads = attn_alpha_np.size // num_attn_edges
-            attn_alpha_reshaped = attn_alpha_np.reshape(-1, heads)
-            attn_alpha_avg = attn_alpha_reshaped.mean(axis=1)
-            attention_stats["num_heads"] = int(heads)
-        else:
-            attn_alpha_avg = attn_alpha_np
-            attention_stats["num_heads"] = 1
+            num_attn_edges = attn_edge_idx.shape[1] if attn_edge_idx.ndim > 1 else 0
+            if num_attn_edges > 0 and attn_alpha_np.size >= num_attn_edges:
+                heads = max(1, attn_alpha_np.size // num_attn_edges)
+                attn_alpha_reshaped = attn_alpha_np.reshape(-1, heads)
+                attn_alpha_avg = attn_alpha_reshaped.mean(axis=1)
+                attention_stats["num_heads"] = int(heads)
+            else:
+                attn_alpha_avg = attn_alpha_np
+                attention_stats["num_heads"] = 1
 
-        attention_stats["mean_alpha"] = round(float(np.mean(attn_alpha_avg)), 4)
-        attention_stats["max_alpha"] = round(float(np.max(attn_alpha_avg)), 4)
-        attention_stats["min_alpha"] = round(float(np.min(attn_alpha_avg)), 4)
-        attention_stats["sparsity"] = round(
-            float(np.sum(attn_alpha_avg < 0.1) / len(attn_alpha_avg) * 100), 1
-        )
+            if len(attn_alpha_avg) > 0:
+                attention_stats["mean_alpha"] = round(float(np.mean(attn_alpha_avg)), 4)
+                attention_stats["max_alpha"] = round(float(np.max(attn_alpha_avg)), 4)
+                attention_stats["min_alpha"] = round(float(np.min(attn_alpha_avg)), 4)
+                attention_stats["sparsity"] = round(
+                    float(np.sum(attn_alpha_avg < 0.1) / max(1, len(attn_alpha_avg)) * 100), 1
+                )
 
-        # Top-5 influential edges
-        idx_to_node = {i: nid for i, nid in enumerate(kg_builder.node_ids)}
-        top_indices = np.argsort(attn_alpha_avg)[-5:][::-1]
-        for idx in top_indices:
-            if idx < num_attn_edges:
-                src = idx_to_node.get(int(attn_edge_idx[0, idx].item()), "?")
-                tgt = idx_to_node.get(int(attn_edge_idx[1, idx].item()), "?")
-                src_label = G.nodes[src].get("label", src) if src in G.nodes else src
-                tgt_label = G.nodes[tgt].get("label", tgt) if tgt in G.nodes else tgt
-                top_edges.append({
-                    "source": src_label,
-                    "target": tgt_label,
-                    "attention": round(float(attn_alpha_avg[idx]), 4),
-                })
+                # Top-5 influential edges
+                idx_to_node = {i: nid for i, nid in enumerate(kg_builder.node_ids)}
+                top_indices = np.argsort(attn_alpha_avg)[-5:][::-1]
+                for idx in top_indices:
+                    if idx < num_attn_edges:
+                        src = idx_to_node.get(int(attn_edge_idx[0, idx].item()), "?")
+                        tgt = idx_to_node.get(int(attn_edge_idx[1, idx].item()), "?")
+                        src_label = G.nodes[src].get("label", src) if src in G.nodes else src
+                        tgt_label = G.nodes[tgt].get("label", tgt) if tgt in G.nodes else tgt
+                        top_edges.append({
+                            "source": str(src_label),
+                            "target": str(tgt_label),
+                            "attention": round(float(attn_alpha_avg[idx]), 4),
+                        })
+        except Exception as e:
+            log(f"GAT attention extraction error: {str(e)[:60]}")
 
     stages["gat_attention"] = {
         "status": "completed",
@@ -549,7 +553,7 @@ def _execute_inference_pipeline(db: Session) -> Any:
     # ── Stage 10: GDNN Output ────────────────────────────────────────────
     # Extract district-level results
     district_results = []
-    result_map = {r["node_id"]: r for r in node_results}
+    result_map = {r["node_id"]: r for r in node_results if isinstance(r, dict) and "node_id" in r}
 
     try:
         db_districts = db.query(District).all()
@@ -564,25 +568,26 @@ def _execute_inference_pipeline(db: Session) -> Any:
         # Format SHAP values for the frontend
         shap_values = []
         reasoning_chain = []
-        if "shap_values" in r:
+        if isinstance(r.get("shap_values"), list):
             for sv in r["shap_values"]:
-                label = sv.get("label", "Unknown")
-                contrib = sv.get("contribution_pct", 0)
-                shap_values.append({"feature": label, "contribution": contrib})
-                reasoning_chain.append(f"{label} contributes {contrib}%")
+                if isinstance(sv, dict):
+                    label = sv.get("label", "Unknown")
+                    contrib = sv.get("contribution_pct", 0)
+                    shap_values.append({"feature": str(label), "contribution": float(contrib)})
+                    reasoning_chain.append(f"{label} contributes {contrib}%")
 
         district_results.append({
             "district_id": d.id,
             "district": d.name,
-            "risk_score": round(r["risk_score"], 1),
-            "risk_level": r["risk_level"],
-            "risk_color": r.get("risk_color", "#22c55e"),
-            "confidence": round(r["confidence"], 3),
+            "risk_score": round(float(r.get("risk_score", 0)), 1),
+            "risk_level": str(r.get("risk_level", "Low")),
+            "risk_color": str(r.get("risk_color", "#22c55e")),
+            "confidence": round(float(r.get("confidence", 0.8)), 3),
             "class_probabilities": r.get("class_probabilities", {}),
-            "inference_mode": r.get("inference_mode", "Physics"),
+            "inference_mode": str(r.get("inference_mode", "Physics")),
             "shap_values": shap_values,
             "reasoning_chain": reasoning_chain,
-            "inference_time_ms": round(gnn_total_ms / len(db_districts), 1),
+            "inference_time_ms": round(gnn_total_ms / max(1, len(db_districts)), 1),
         })
 
     district_results.sort(key=lambda x: x["risk_score"], reverse=True)
@@ -618,7 +623,7 @@ def _execute_inference_pipeline(db: Session) -> Any:
             "low": len([d for d in district_results if d["risk_level"] == "Low"]),
             "very_low": len([d for d in district_results if d["risk_level"] == "Very Low"]),
         },
-        "previous_inference_latency_ms": round(prev_latency, 1) if prev_latency else None,
+        "previous_inference_latency_ms": round(float(prev_latency), 1) if prev_latency else None,
     }
     log(f"GDNN output: statewide_prob={statewide_prob}%, highest={district_results[0]['district'] if district_results else 'N/A'}")
 
@@ -635,25 +640,27 @@ def _execute_inference_pipeline(db: Session) -> Any:
     for d in district_results:
         nid = f"d-{d['district_id']}"
         r = result_map.get(nid)
-        if r and r.get("shap_values"):
+        if r and isinstance(r.get("shap_values"), list):
             district_shap_map[d["district_id"]] = r["shap_values"]
             for sv in r["shap_values"]:
-                label = sv.get("label", sv.get("feature", "unknown"))
-                contribution = sv.get("contribution_pct", sv.get("value", 0) * 100)
-                if label not in all_shap:
-                    all_shap[label] = []
-                all_shap[label].append(contribution)
+                if isinstance(sv, dict):
+                    label = str(sv.get("label", sv.get("feature", "unknown")))
+                    contribution = float(sv.get("contribution_pct", sv.get("value", 0) * 100))
+                    if label not in all_shap:
+                        all_shap[label] = []
+                    all_shap[label].append(contribution)
 
     # Average SHAP contributions
     global_shap = []
     for label, vals in all_shap.items():
-        avg_val = round(float(np.mean(vals)), 2)
-        global_shap.append({
-            "feature": str(label),
-            "mean_contribution_pct": avg_val,
-            "is_positive": bool(avg_val >= 0),
-            "sample_count": int(len(vals)),
-        })
+        if vals:
+            avg_val = round(float(np.mean(vals)), 2)
+            global_shap.append({
+                "feature": str(label),
+                "mean_contribution_pct": avg_val,
+                "is_positive": bool(avg_val >= 0),
+                "sample_count": int(len(vals)),
+            })
     global_shap.sort(key=lambda x: abs(x["mean_contribution_pct"]), reverse=True)
 
     # Force plot data (baseline to prediction)
