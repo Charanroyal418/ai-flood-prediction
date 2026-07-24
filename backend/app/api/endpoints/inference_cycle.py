@@ -686,6 +686,10 @@ def _execute_inference_pipeline(db: Session) -> Any:
     total_ms = round((time.perf_counter() - cycle_start) * 1000, 1)
     log(f"Inference cycle complete: {total_ms}ms total")
 
+    # Sanitize all outputs with sanitize_numpy before DB commit
+    district_results = sanitize_numpy(district_results)
+    stages = sanitize_numpy(stages)
+
     # Persist inference record
     try:
         inf_log = ModelInference(
