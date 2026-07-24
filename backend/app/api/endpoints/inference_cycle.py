@@ -722,7 +722,26 @@ def _execute_inference_pipeline(db: Session) -> Any:
                 shap_values=d.get("shap_values", [])
             )
             db.add(pred)
-            
+
+        # Write fresh GAT attention propagation events to KnowledgeGraphEvents table
+        for edge in top_edges[:3]:
+            try:
+                src_name = str(edge.get("source", "")).replace("District ", "").strip()
+                tgt_name = str(edge.get("target", "")).replace("District ", "").strip()
+                attn_val = float(edge.get("attention", 0.1))
+                src_dist = db.query(District).filter(District.name.ilike(f"%{src_name}%")).first()
+                tgt_dist = db.query(District).filter(District.name.ilike(f"%{tgt_name}%")).first()
+                if src_dist and tgt_dist:
+                    kg_event = KnowledgeGraphEvents(
+                        source_district_id=src_dist.id,
+                        target_district_id=tgt_dist.id,
+                        description=f"Risk propagated from {src_dist.name} to {tgt_dist.name} due to river flow (attention_weight={attn_val:.3f})",
+                        weight=attn_val
+                    )
+                    db.add(kg_event)
+            except Exception:
+                pass
+
         db.commit()
     except Exception as e:
         logger.warning(f"[InferenceCycle] Failed to log inference: {e}")

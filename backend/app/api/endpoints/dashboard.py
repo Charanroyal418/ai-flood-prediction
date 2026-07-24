@@ -54,7 +54,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             continue
             
         color = "#3b82f6"
-        if p.current_risk_level == "Critical": color = "#ef4444"
+        if p.current_risk_level in ["Critical", "Severe"]: color = "#ef4444"
         elif p.current_risk_level == "High": color = "#f97316"
         elif p.current_risk_level == "Moderate": color = "#f59e0b"
         elif p.current_risk_level == "Low": color = "#22c55e"
@@ -77,7 +77,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "lon": lon,
             "population": d.population,
             "risk_score": p.current_risk_score,
-            "risk_level": p.current_risk_level,
+            "risk_level": "Critical" if p.current_risk_level == "Severe" else p.current_risk_level,
             "risk_color": color,
             "rainfall_mm": w.rainfall_mm,
             "humidity": w.humidity,
@@ -93,15 +93,14 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         
     districts_with_risk.sort(key=lambda x: x["risk_score"], reverse=True)
     
-    critical = [d for d in districts_with_risk if d["risk_level"] == "Critical"]
+    critical = [d for d in districts_with_risk if d["risk_level"] in ["Critical", "Severe"]]
     high = [d for d in districts_with_risk if d["risk_level"] == "High"]
     avg_risk = sum(d["risk_score"] for d in districts_with_risk) / len(districts_with_risk) if districts_with_risk else 0
     avg_rainfall = sum(d["rainfall_mm"] for d in districts_with_risk) / len(districts_with_risk) if districts_with_risk else 0
     
     # Active alerts
-    # An alert is considered active only if the district is currently in a "Critical" or "High" risk state.
-    # Otherwise, it is resolved.
-    active_district_ids = {d["id"] for d in districts_with_risk if d["risk_level"] in ["Critical", "High"]}
+    # An alert is considered active if the district is currently in a "Critical", "Severe", or "High" risk state.
+    active_district_ids = {d["id"] for d in districts_with_risk if d["risk_level"] in ["Critical", "Severe", "High"]}
     active_alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(100).all()
     
     alerts_data = []

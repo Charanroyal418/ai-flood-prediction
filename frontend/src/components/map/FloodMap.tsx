@@ -45,6 +45,14 @@ interface FloodMapProps {
   districts?: District[];
 }
 
+const getRiskColor = (score: number, level?: string) => {
+  if (score >= 80 || level === "Critical" || level === "Severe") return "#ef4444";
+  if (score >= 60 || level === "High") return "#f97316";
+  if (score >= 40 || level === "Moderate") return "#f59e0b";
+  if (score >= 20 || level === "Low") return "#22c55e";
+  return "#3b82f6";
+};
+
 export default function FloodMap({ districts = [] }: FloodMapProps) {
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<District | null>(null);
@@ -89,15 +97,17 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
 
           <LayersControl.Overlay checked name="District Risk Sensors (Heatmap)">
             <LayerGroup>
-        {districts.map((district) => (
+        {districts.map((district) => {
+          const markerColor = getRiskColor(district.risk_score, district.risk_level);
+          return (
           <CircleMarker
             key={district.id}
             center={[district.lat, district.lon]}
             radius={getRadius(district.risk_score)}
             pathOptions={{
-              fillColor: district.risk_color || RISK_COLORS[district.risk_level] || "#94a3b8",
-              fillOpacity: 0.75,
-              color: district.risk_color || RISK_COLORS[district.risk_level] || "#94a3b8",
+              fillColor: markerColor,
+              fillOpacity: 0.8,
+              color: markerColor,
               weight: 2,
               opacity: 1,
             }}
@@ -114,9 +124,9 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                   <span className="text-xs font-bold text-slate-800">{district.name}</span>
                   <span
                     className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
-                    style={{ background: district.risk_color }}
+                    style={{ background: markerColor }}
                   >
-                    {district.risk_level}
+                    {district.risk_score >= 80 ? "Critical" : district.risk_level}
                   </span>
                 </div>
                 <div className="mt-1.5 space-y-0.5">
@@ -193,7 +203,8 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
               </div>
             </Popup>
           </CircleMarker>
-        ))}
+        );
+        })}
             </LayerGroup>
           </LayersControl.Overlay>
         </LayersControl>

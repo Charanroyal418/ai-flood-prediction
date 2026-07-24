@@ -29,10 +29,10 @@ METRICS_PATH = os.path.join(MODEL_DIR, "gnn_metrics.json")
 # Risk level thresholds (5-class: Very Low, Low, Moderate, High, Severe)
 RISK_CLASS_MAP = {
     0: ("Very Low", "#22c55e"),
-    1: ("Low", "#84cc16"),
+    1: ("Low", "#3b82f6"),
     2: ("Moderate", "#f59e0b"),
     3: ("High", "#f97316"),
-    4: ("Severe", "#ef4444"),
+    4: ("Critical", "#ef4444"),
 }
 
 # Feature names (must match KG builder feature matrix)
