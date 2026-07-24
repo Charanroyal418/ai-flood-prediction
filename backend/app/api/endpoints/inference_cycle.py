@@ -39,6 +39,7 @@ from app.models.district import District
 from app.models.weather import Weather, Rainfall
 from app.models.river import RiverLevel
 from app.models.terrain import DemTile
+from app.models.alert import Alert
 from app.models.history import (
     WeatherHistory, PredictionHistory, ModelInference
 )

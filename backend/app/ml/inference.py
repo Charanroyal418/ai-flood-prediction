@@ -193,7 +193,9 @@ class GNNInferenceEngine:
                     attn_alpha_avg = attn_alpha
 
             results = []
-            for i, node_id in enumerate(node_ids):
+            max_idx = min(H.shape[0], len(node_ids))
+            for i in range(max_idx):
+                node_id = node_ids[i]
                 cls = pred_classes[i].item()
                 conf = confidence[i].item()
                 prob_vec = probs[i].tolist()
@@ -215,8 +217,8 @@ class GNNInferenceEngine:
                         best_edge_idx = in_edges[attn_alpha_avg[in_edges].argmax()]
                         src_node_idx = attn_edge_idx[0, best_edge_idx].item()
                         
-                        # Only explain if it's from another node (not self-loop)
-                        if src_node_idx != i:
+                        # Only explain if it's from another node (not self-loop) and index is valid
+                        if src_node_idx != i and 0 <= src_node_idx < len(node_ids):
                             src_node_id = node_ids[src_node_idx]
                             weight = attn_alpha_avg[best_edge_idx].item()
                             if weight > 0.05:  # Significant attention threshold
@@ -275,7 +277,9 @@ class GNNInferenceEngine:
         results = []
         H_np = H.detach().numpy()
 
-        for i, node_id in enumerate(node_ids):
+        max_idx = min(H_np.shape[0], len(node_ids))
+        for i in range(max_idx):
+            node_id = node_ids[i]
             # Last time step features
             feats = H_np[i, -1, :]  # [12]
 
