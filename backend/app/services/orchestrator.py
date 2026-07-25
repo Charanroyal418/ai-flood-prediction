@@ -271,49 +271,88 @@ class RealtimeOrchestrator:
                 summary["pipeline_error"] = "KG build failed"
                 return summary
 
-            # ─── STEP 4: Storm Simulation Override ────────────────────────
-            if active_storm:
-                import torch, random
-                from app.models.history import WeatherHistory
-                districts = self.db.query(District).all()
-                storm_targets = random.sample(
-                    [d for d in districts], min(5, len(districts))
-                )
-                storm_ids = {d.id for d in storm_targets}
-                logger.info(
-                    f"[Pipeline] Storm simulation: injecting heavy rain into "
-                    f"{[d.name for d in storm_targets]}"
-                )
+            # ─── STEP 4: Storm Simulation Override & Revert Handling ─────
+            COASTAL_CRITICAL_DISTRICTS = {
+                "Cuddalore", "Chennai", "Thiruvallur", "Kancheepuram", "Chengalpattu",
+                "Nagapattinam", "Thanjavur", "Villupuram", "Mayiladuthurai", "Tiruvarur",
+                "Kanyakumari", "Ramanathapuram", "Thoothukudi", "Tirunelveli", "Pudukkottai",
+                "Ariyalur", "Tiruchirappalli"
+            }
 
-                now_ts = datetime.now(timezone.utc)
-                for st_d in storm_targets:
-                    # Write extreme storm weather history to DB so live queries reflect storm telemetry
+            now_ts = datetime.now(timezone.utc)
+            districts = self.db.query(District).all()
+            from app.models.history import WeatherHistory
+            from app.models.river import RiverLevel
+
+            if active_storm:
+                logger.info("[Pipeline] Storm simulation: injecting extreme statewide cyclone telemetry")
+
+                for d in districts:
+                    is_coastal_critical = d.name in COASTAL_CRITICAL_DISTRICTS
+                    rain_mm = 245.5 if is_coastal_critical else 145.0
+                    r_lvl = 4.85 if is_coastal_critical else 4.15
+                    hum = 98.0 if is_coastal_critical else 95.0
+                    pres = 988.0 if is_coastal_critical else 992.0
+                    w_spd = 82.0 if is_coastal_critical else 60.0
+
                     w_storm = WeatherHistory(
-                        district_id=st_d.id,
-                        temperature=24.0,
-                        humidity=98.0,
-                        pressure=992.0,
-                        rainfall_mm=185.5,
-                        wind_speed=55.0,
+                        district_id=d.id,
+                        temperature=23.5 if is_coastal_critical else 25.0,
+                        humidity=hum,
+                        pressure=pres,
+                        rainfall_mm=rain_mm,
+                        wind_speed=w_spd,
                         recorded_at=now_ts
                     )
                     self.db.add(w_storm)
+
+                    # Update RiverLevel table so live dashboard endpoints return storm river telemetry
+                    rv_rec = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
+                    if rv_rec:
+                        rv_rec.current_level = r_lvl
+                        rv_rec.recorded_at = now_ts
+                    else:
+                        d_name_river = f"{d.name} River"
+                        self.db.add(RiverLevel(
+                            district_id=d.id,
+                            river_name=d_name_river,
+                            current_level=r_lvl,
+                            danger_level=5.0,
+                            flow_rate_cusecs=15000.0 if is_coastal_critical else 8000.0,
+                            recorded_at=now_ts
+                        ))
                 self.db.commit()
 
+                # Override GNN Feature Matrix H for all graph nodes
                 for i, nid in enumerate(node_ids):
                     if nid.startswith("d-"):
                         try:
-                            district_idx = int(nid.split("-")[1])
-                        except ValueError:
-                            continue
-                        if district_idx in storm_ids:
-                            # Override features with extreme storm values (normalized 0-1 scale)
-                            H[i, :, 0] = 1.0   # ~185mm rainfall scaled
-                            H[i, :, 1] = 0.92  # 92% river level ratio
-                            H[i, :, 2] = 0.98  # 98% humidity scaled (0.98)
-                            H[i, :, 3] = 0.0   # 992 hPa low pressure scaled
+                            d_idx = int(nid.split("-")[1])
+                            d_obj = next((d for d in districts if d.id == d_idx), None)
+                        except (ValueError, StopIteration):
+                            d_obj = None
+
+                        is_coastal = d_obj and d_obj.name in COASTAL_CRITICAL_DISTRICTS
+                        H[i, :, 0] = 1.0 if is_coastal else 0.82   # Rainfall feature
+                        H[i, :, 1] = 0.97 if is_coastal else 0.83  # River stage / risk ratio
+                        H[i, :, 2] = 0.98 if is_coastal else 0.95  # Humidity
+                        H[i, :, 3] = 0.0 if is_coastal else 0.1    # Low pressure
+                    elif nid.startswith(("rv-", "c-", "rs-", "dam-", "pop-")):
+                        H[i, :, 0] = 0.95
+                        H[i, :, 1] = 0.95
 
                 summary["steps_completed"].append("storm_simulation")
+            else:
+                # Clean revert handling when stopping simulation:
+                # Revert RiverLevel current_level back to authentic baseline (0.8m - 1.4m)
+                for d in districts:
+                    rv_rec = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
+                    if rv_rec:
+                        rv_rec.current_level = round(0.8 + (d.id % 5) * 0.15, 2)
+                        rv_rec.recorded_at = now_ts
+                # Clean up extreme simulated WeatherHistory entries to prevent baseline contamination
+                self.db.query(WeatherHistory).filter(WeatherHistory.rainfall_mm > 100.0).delete(synchronize_session=False)
+                self.db.commit()
 
             # ─── STEP 5: GNN Inference ────────────────────────────────────
             logger.info(

@@ -295,10 +295,12 @@ class GNNInferenceEngine:
 
             # --- Physics-based risk computation ---
             # Rainfall component (IMD: 64.5mm = heavy, 115.5mm = very heavy, 204.4mm = extreme)
-            r_score = min(40, (rainfall / 204.4) * 40)
+            r_mm = rainfall * 204.4 if rainfall <= 1.0 else rainfall
+            r_score = min(40.0, (r_mm / 204.4) * 40.0)
 
             # River level component
-            rv_score = river_risk * 25
+            rv_ratio = river_risk if river_risk <= 1.0 else river_risk / 100.0
+            rv_score = min(25.0, rv_ratio * 25.0)
 
             # Elevation component (low elevation = higher risk)
             elev_score = max(0, (20 - elevation) / 20) * 15
