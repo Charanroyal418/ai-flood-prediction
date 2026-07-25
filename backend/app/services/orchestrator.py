@@ -272,11 +272,13 @@ class RealtimeOrchestrator:
                 return summary
 
             # ─── STEP 4: Storm Simulation Override & Revert Handling ─────
-            COASTAL_CRITICAL_DISTRICTS = {
-                "Cuddalore", "Chennai", "Thiruvallur", "Kancheepuram", "Chengalpattu",
-                "Nagapattinam", "Thanjavur", "Villupuram", "Mayiladuthurai", "Tiruvarur",
-                "Kanyakumari", "Ramanathapuram", "Thoothukudi", "Tirunelveli", "Pudukkottai",
-                "Ariyalur", "Tiruchirappalli"
+            # Historical Storm Benchmark: Cyclone Michaung 2023 & 2015 Chennai Floods (350mm - 450mm coastal rainfall)
+            PRIMARY_CYCLONE_DISTRICTS = {
+                "Chennai", "Tiruvallur", "Kancheepuram", "Chengalpattu", "Cuddalore",
+                "Nagapattinam", "Mayiladuthurai", "Thanjavur", "Tiruvarur", "Villupuram"
+            }
+            BUFFER_STORM_DISTRICTS = {
+                "Ranipet", "Vellore", "Thiruvannamalai", "Tirupattur", "Kallakurichi", "Ariyalur"
             }
 
             now_ts = datetime.now(timezone.utc)
@@ -285,19 +287,34 @@ class RealtimeOrchestrator:
             from app.models.river import RiverLevel
 
             if active_storm:
-                logger.info("[Pipeline] Storm simulation: injecting extreme statewide cyclone telemetry")
+                logger.info("[Pipeline] Storm simulation: injecting realistic Cyclone Michaung spatial storm telemetry")
 
                 for d in districts:
-                    is_coastal_critical = d.name in COASTAL_CRITICAL_DISTRICTS
-                    rain_mm = 245.5 if is_coastal_critical else 145.0
-                    r_lvl = 4.85 if is_coastal_critical else 4.15
-                    hum = 98.0 if is_coastal_critical else 95.0
-                    pres = 988.0 if is_coastal_critical else 992.0
-                    w_spd = 82.0 if is_coastal_critical else 60.0
+                    is_primary = d.name in PRIMARY_CYCLONE_DISTRICTS
+                    is_buffer = d.name in BUFFER_STORM_DISTRICTS
+
+                    if is_primary:
+                        rain_mm = 385.0 + (d.id % 5) * 12.0   # 385mm - 433mm extreme rainfall
+                        r_lvl = 4.88                          # 97.6% of danger level (5.0m)
+                        hum = 98.0
+                        pres = 984.0
+                        w_spd = 95.0
+                    elif is_buffer:
+                        rain_mm = 145.0 + (d.id % 4) * 8.0    # 145mm - 169mm heavy rainfall
+                        r_lvl = 4.15                          # 83% of danger level
+                        hum = 94.0
+                        pres = 992.0
+                        w_spd = 55.0
+                    else:
+                        rain_mm = 15.0 + (d.id % 3) * 5.0     # 15mm - 25mm mild rainfall
+                        r_lvl = 1.10                          # 22% of danger level
+                        hum = 75.0
+                        pres = 1006.0
+                        w_spd = 18.0
 
                     w_storm = WeatherHistory(
                         district_id=d.id,
-                        temperature=23.5 if is_coastal_critical else 25.0,
+                        temperature=23.0 if is_primary else (25.0 if is_buffer else 28.0),
                         humidity=hum,
                         pressure=pres,
                         rainfall_mm=rain_mm,
@@ -312,18 +329,17 @@ class RealtimeOrchestrator:
                         rv_rec.current_level = r_lvl
                         rv_rec.recorded_at = now_ts
                     else:
-                        d_name_river = f"{d.name} River"
                         self.db.add(RiverLevel(
                             district_id=d.id,
-                            river_name=d_name_river,
-                            station_name=f"{d.name} Station",
+                            river_name=f"{d.name} River",
+                            station_name=f"{d.name} Telemetry Station",
                             current_level=r_lvl,
                             danger_level=5.0,
                             recorded_at=now_ts
                         ))
                 self.db.commit()
 
-                # Override GNN Feature Matrix H for all graph nodes
+                # Override GNN Feature Matrix H for graph nodes according to spatial clusters
                 for i, nid in enumerate(node_ids):
                     if nid.startswith("d-"):
                         try:
@@ -332,13 +348,23 @@ class RealtimeOrchestrator:
                         except (ValueError, StopIteration):
                             d_obj = None
 
-                        is_coastal = d_obj and d_obj.name in COASTAL_CRITICAL_DISTRICTS
-                        H[i, :, 0] = 1.0 if is_coastal else 0.82   # Rainfall feature
-                        H[i, :, 1] = 0.97 if is_coastal else 0.83  # River stage / risk ratio
-                        H[i, :, 2] = 0.98 if is_coastal else 0.95  # Humidity
-                        H[i, :, 3] = 0.0 if is_coastal else 0.1    # Low pressure
-                    elif nid.startswith(("rv-", "c-", "rs-", "dam-", "pop-")):
-                        H[i, :, 0] = 0.95
+                        if d_obj and d_obj.name in PRIMARY_CYCLONE_DISTRICTS:
+                            H[i, :, 0] = 1.00  # Extreme rainfall
+                            H[i, :, 1] = 0.98  # Severe river flood ratio
+                            H[i, :, 2] = 0.98  # Humidity
+                            H[i, :, 3] = 0.00  # Low pressure
+                        elif d_obj and d_obj.name in BUFFER_STORM_DISTRICTS:
+                            H[i, :, 0] = 0.65  # Heavy rainfall
+                            H[i, :, 1] = 0.72  # High river ratio
+                            H[i, :, 2] = 0.94  # High humidity
+                            H[i, :, 3] = 0.20  # Medium low pressure
+                        else:
+                            H[i, :, 0] = 0.12  # Normal rain
+                            H[i, :, 1] = 0.18  # Normal river ratio
+                            H[i, :, 2] = 0.75  # Normal humidity
+                            H[i, :, 3] = 0.50  # Normal pressure
+                    elif nid.startswith(("rv-", "c-", "rs-", "dam-")):
+                        H[i, :, 0] = 0.92
                         H[i, :, 1] = 0.95
 
                 summary["steps_completed"].append("storm_simulation")
@@ -351,7 +377,7 @@ class RealtimeOrchestrator:
                         rv_rec.current_level = round(0.8 + (d.id % 5) * 0.15, 2)
                         rv_rec.recorded_at = now_ts
                 # Clean up extreme simulated WeatherHistory entries to prevent baseline contamination
-                self.db.query(WeatherHistory).filter(WeatherHistory.rainfall_mm > 100.0).delete(synchronize_session=False)
+                self.db.query(WeatherHistory).filter(WeatherHistory.rainfall_mm > 80.0).delete(synchronize_session=False)
                 self.db.commit()
 
             # ─── STEP 5: GNN Inference ────────────────────────────────────
