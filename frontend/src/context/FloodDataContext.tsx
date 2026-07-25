@@ -23,6 +23,7 @@ import React, {
   useMemo,
 } from "react";
 import { useWebSocket, WsConnectionStatus } from "@/lib/useWebSocket";
+import api from "@/lib/api";
 
 // ─── Type Definitions ────────────────────────────────────────────────────────
 
@@ -94,6 +95,8 @@ interface FloodDataState {
   alerts: Alert[];
   // Model metadata
   modelMeta: ModelMeta | null;
+  // Simulation State
+  stormSimulationActive: boolean;
   // Last pipeline update timestamp
   lastUpdated: string | null;
   // Connection status per channel
@@ -107,6 +110,7 @@ interface FloodDataState {
   totalEdges: number;
   // Actions
   triggerPipeline: (storm?: boolean) => void;
+  toggleStormSimulation: (active?: boolean) => Promise<void>;
   requestSnapshot: () => void;
 }
 
@@ -120,6 +124,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [kgEdges, setKgEdges] = useState<KgEdge[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [modelMeta, setModelMeta] = useState<ModelMeta | null>(null);
+  const [stormSimulationActive, setStormSimulationActive] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   // ─── Dashboard Channel ─────────────────────────────────────────────
@@ -134,10 +139,14 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         if (data.model_meta) {
           setModelMeta(data.model_meta as ModelMeta);
         }
+        if (data.storm_simulation_active !== undefined) {
+          setStormSimulationActive(Boolean(data.storm_simulation_active));
+        } else if (data.storm_simulation !== undefined) {
+          setStormSimulationActive(Boolean(data.storm_simulation));
+        }
         if (data.recent_alerts && Array.isArray(data.recent_alerts)) {
           setAlerts((prev) => {
             const incoming = data.recent_alerts as Alert[];
-            // Merge with existing, keeping most recent 50
             const merged = [...incoming, ...prev].slice(0, 50);
             return merged;
           });
@@ -199,6 +208,25 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     [sendDashboard]
   );
 
+  const toggleStormSimulation = useCallback(
+    async (active?: boolean) => {
+      const targetState = active !== undefined ? active : !stormSimulationActive;
+      setStormSimulationActive(targetState);
+      try {
+        const res = await api.post(`/dashboard/simulate-storm?active=${targetState}`);
+        if (res.data?.storm_simulation_active !== undefined) {
+          setStormSimulationActive(res.data.storm_simulation_active);
+        }
+      } catch (err) {
+        console.error("Failed to toggle storm simulation:", err);
+      }
+      if (dashboardStatus === "connected") {
+        sendDashboard({ action: "trigger_pipeline", storm: targetState });
+      }
+    },
+    [stormSimulationActive, dashboardStatus, sendDashboard]
+  );
+
   const requestSnapshot = useCallback(() => {
     sendDashboard({ action: "get_snapshot" });
   }, [sendDashboard]);
@@ -207,13 +235,13 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const criticalCount = useMemo(
     () =>
       districts.filter((d) =>
-        ["Severe", "High"].includes(d.risk_level)
+        ["Critical", "Severe"].includes(d.risk_level)
       ).length,
     [districts]
   );
 
   const highCount = useMemo(
-    () => districts.filter((d) => d.risk_level === "Moderate").length,
+    () => districts.filter((d) => d.risk_level === "High").length,
     [districts]
   );
 
@@ -223,6 +251,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     kgEdges,
     alerts,
     modelMeta,
+    stormSimulationActive,
     lastUpdated,
     dashboardStatus,
     kgStatus,
@@ -232,6 +261,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     totalNodes: kgNodes.length,
     totalEdges: kgEdges.length,
     triggerPipeline,
+    toggleStormSimulation,
     requestSnapshot,
   };
 

@@ -10,24 +10,30 @@ def generate_pseudo_training_data(num_samples=200):
     X_list = []
     y_list = []
     
-    for _ in range(num_samples):
-        rain_mult = torch.rand(1).item() * 2.9 + 0.1
-        river_mult = torch.rand(1).item() * 2.9 + 0.1
+    for s_idx in range(num_samples):
+        # Vary environmental conditions smoothly from low/normal to extreme
+        rain_scale = (s_idx % 10) / 9.0  # 0.0 to 1.0
+        river_scale = (s_idx // 10) / 19.0  # 0.0 to 1.0
         
         x_sample = x_base.clone()
-        x_sample[:, :, 0] *= rain_mult
-        x_sample[:, :, 1] *= river_mult
+        x_sample[:, :, 0] = torch.clamp(torch.rand(x_sample.size(0), x_sample.size(1)) * rain_scale * 1.2, 0.0, 1.0)
+        x_sample[:, :, 1] = torch.clamp(torch.rand(x_sample.size(0), x_sample.size(1)) * river_scale * 1.2, 0.0, 1.0)
         
         y_sample = torch.zeros(x_sample.size(0), dtype=torch.long)
         for i in range(x_sample.size(0)):
-            r_score = min(40.0, (x_sample[i, -1, 0].item() / 204.4) * 40.0)
-            rv_score = x_sample[i, -1, 1].item() * 25.0
-            elev_score = max(0.0, (20.0 - x_sample[i, -1, 5].item()) / 20.0) * 15.0
+            r_val = x_sample[i, -1, 0].item() * 100.0
+            rv_val = x_sample[i, -1, 1].item() * 100.0
+            elev_val = x_sample[i, -1, 5].item() * 100.0
+            
+            r_score = min(40.0, (r_val / 100.0) * 40.0)
+            rv_score = (rv_val / 100.0) * 35.0
+            elev_score = max(0.0, (25.0 - elev_val) / 25.0) * 25.0
+            
             risk_raw = r_score + rv_score + elev_score
-            if risk_raw >= 80: cls = 4
-            elif risk_raw >= 60: cls = 3
-            elif risk_raw >= 40: cls = 2
-            elif risk_raw >= 20: cls = 1
+            if risk_raw >= 70: cls = 4
+            elif risk_raw >= 50: cls = 3
+            elif risk_raw >= 30: cls = 2
+            elif risk_raw >= 15: cls = 1
             else: cls = 0
             y_sample[i] = cls
             
@@ -41,13 +47,39 @@ def generate_calibration_data():
     X_calib = []
     y_calib = []
     
-    # 6 historical real-world flood events (e.g. Chennai 2015)
-    for _ in range(6):
+    # Calibration snapshots representing clear weather, moderate rain, and heavy storm
+    scenarios = [
+        (0.05, 0.1), # Clear
+        (0.15, 0.2), # Light rain
+        (0.35, 0.4), # Moderate storm
+        (0.65, 0.7), # Heavy storm
+        (0.90, 0.9), # Extreme storm
+        (0.10, 0.8), # River swell
+    ]
+    
+    for rain_f, river_f in scenarios:
         x_sample = x_base.clone()
-        x_sample[:, :, 0] = torch.rand(x_sample.size(0), x_sample.size(1)) * 100 + 150 # Extreme rain
-        x_sample[:, :, 1] = torch.rand(x_sample.size(0), x_sample.size(1)) * 0.5 + 0.5 # High river
+        x_sample[:, :, 0] = torch.clamp(torch.rand(x_sample.size(0), x_sample.size(1)) * 0.2 + rain_f, 0.0, 1.0)
+        x_sample[:, :, 1] = torch.clamp(torch.rand(x_sample.size(0), x_sample.size(1)) * 0.2 + river_f, 0.0, 1.0)
         
-        y_sample = torch.ones(x_sample.size(0), dtype=torch.long) * 4 # Class 4 (Severe)
+        y_sample = torch.zeros(x_sample.size(0), dtype=torch.long)
+        for i in range(x_sample.size(0)):
+            r_val = x_sample[i, -1, 0].item() * 100.0
+            rv_val = x_sample[i, -1, 1].item() * 100.0
+            elev_val = x_sample[i, -1, 5].item() * 100.0
+            
+            r_score = min(40.0, (r_val / 100.0) * 40.0)
+            rv_score = (rv_val / 100.0) * 35.0
+            elev_score = max(0.0, (25.0 - elev_val) / 25.0) * 25.0
+            
+            risk_raw = r_score + rv_score + elev_score
+            if risk_raw >= 70: cls = 4
+            elif risk_raw >= 50: cls = 3
+            elif risk_raw >= 30: cls = 2
+            elif risk_raw >= 15: cls = 1
+            else: cls = 0
+            y_sample[i] = cls
+
         X_calib.append(x_sample)
         y_calib.append(y_sample)
         

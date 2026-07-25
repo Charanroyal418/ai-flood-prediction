@@ -109,7 +109,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     # Active alerts
     # An alert is considered active if the district is currently in a "Critical", "Severe", or "High" risk state.
     active_district_ids = {d["id"] for d in districts_with_risk if d["risk_level"] in ["Critical", "Severe", "High"]}
-    active_alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(100).all()
+    active_alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(200).all()
     
     alerts_data = []
     seen_districts = set()
@@ -122,7 +122,6 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         
         d_name = next((d["name"] for d in districts_with_risk if d["id"] == a.district_id), "Unknown")
         
-        # Extract rainfall from alert message if present (e.g. for simulated storms)
         match = re.search(r"due to ([\d.]+)mm rainfall", a.message)
         if match:
             rainfall_val = float(match.group(1))
@@ -132,15 +131,34 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         
         alerts_data.append({
             "id": f"alert-{a.id}",
+            "district_id": a.district_id,
             "district": d_name,
             "level": a.level,
-            "severity": "Red" if a.level == "Critical" else "Orange",
+            "severity": "Red" if a.level in ["Critical", "Severe"] else "Orange",
             "message": a.message,
             "suggested_response": a.suggested_response,
             "created_at": a.created_at.isoformat(),
             "confidence": a.confidence if a.confidence is not None else 0.94,
             "rainfall_mm": rainfall_val,
         })
+
+    # For any active district that doesn't have an explicit DB alert, add active alert entry
+    for d in districts_with_risk:
+        if d["id"] in active_district_ids and d["id"] not in seen_districts:
+            top_reason = d["shap_values"][0]["label"] if d.get("shap_values") else "High risk telemetry"
+            alerts_data.append({
+                "id": f"alert-synth-{d['id']}",
+                "district_id": d["id"],
+                "district": d["name"],
+                "level": d["risk_level"],
+                "severity": "Red" if d["risk_level"] in ["Critical", "Severe"] else "Orange",
+                "message": f"[{d['risk_level']}] Flood risk in {d['name']}: Score {d['risk_score']:.0f}/100. Primary driver: {top_reason}.",
+                "suggested_response": "Immediate evacuation of flood-prone zones. Open relief camps." if d["risk_level"] in ["Critical", "Severe"] else "Monitor water levels. Pre-position rescue teams.",
+                "created_at": now.isoformat(),
+                "confidence": d.get("ai_confidence", 0.94),
+                "rainfall_mm": d.get("rainfall_mm", 0.0),
+            })
+            seen_districts.add(d["id"])
         
     # Latest Knowledge Graph Events
     kg_events = db.query(KnowledgeGraphEvents).order_by(KnowledgeGraphEvents.created_at.desc()).limit(10).all()
@@ -176,6 +194,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         for day in days_ordered:
             weekly_forecast.append({"day": day, "rainfall": 0.0})
 
+    from app.services.orchestrator import get_storm_simulation_active
     return {
         "status": "online",
         "timestamp": last_updated_ts,
@@ -190,6 +209,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "gdnn_inference_ms": inf.inference_time_ms if inf else 0,
             "kg_nodes": inf.node_count if inf else 0,
             "kg_edges": inf.edge_count if inf else 0,
+            "storm_simulation_active": get_storm_simulation_active(),
         },
         "districts": districts_with_risk,
         "top_risk_districts": districts_with_risk[:5],
@@ -207,12 +227,22 @@ def get_all_alerts(db: Session = Depends(deps.get_db)) -> Any:
     return get_dashboard_live(db)["alerts"]
 
 @router.post("/simulate-storm")
-def simulate_storm_event(db: Session = Depends(deps.get_db)) -> Any:
-    """Manually trigger the orchestrator with heavy storm simulation."""
-    from app.services.orchestrator import RealtimeOrchestrator
+def simulate_storm_event(active: bool = None, db: Session = Depends(deps.get_db)) -> Any:
+    """Toggle or explicitly set heavy storm simulation state."""
+    from app.services.orchestrator import RealtimeOrchestrator, get_storm_simulation_active, set_storm_simulation_active
+    if active is None:
+        new_state = set_storm_simulation_active(not get_storm_simulation_active())
+    else:
+        new_state = set_storm_simulation_active(active)
+        
     orchestrator = RealtimeOrchestrator(db)
-    orchestrator.run_pipeline(simulate_storm=True)
-    return {"status": "success", "message": "Heavy storm simulated successfully."}
+    summary = orchestrator.run_pipeline(simulate_storm=new_state)
+    return {
+        "status": "success",
+        "storm_simulation_active": new_state,
+        "message": f"Storm simulation is now {'active' if new_state else 'inactive'}.",
+        "summary": summary
+    }
 
 @router.get("/history")
 def get_historical_flood_events() -> Any:

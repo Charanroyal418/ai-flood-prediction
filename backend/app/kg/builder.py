@@ -181,10 +181,18 @@ class KnowledgeGraphBuilder:
             for t in range(seq_len):
                 decay = 0.9 ** (seq_len - 1 - t)
                 snapshots_data.append([
-                    rain * decay, (risk / 100.0) * decay, hum / 100.0, norm_pres, temp / 40.0,
-                    elev / 100.0, 5.0 if elev < 20 else 15.0,
-                    80.0 if "Chennai" in str(node.get("label", "")) else 40.0,
-                    5.0 if risk > 50 else 1.0, pop / 1000000.0, 0.5, float(t)
+                    min(1.0, (rain / 100.0)) * decay,
+                    min(1.0, max(0.0, risk / 100.0)) * decay,
+                    min(1.0, max(0.0, hum / 100.0)),
+                    min(1.0, max(0.0, norm_pres)),
+                    min(1.0, max(0.0, temp / 40.0)),
+                    min(1.0, max(0.0, elev / 100.0)),
+                    (5.0 if elev < 20 else 15.0) / 30.0,
+                    (80.0 if "Chennai" in str(node.get("label", "")) else 40.0) / 100.0,
+                    (5.0 if risk > 50 else 1.0) / 10.0,
+                    min(1.0, max(0.0, pop / 10000000.0)),
+                    0.5,
+                    float(t) / max(1.0, float(seq_len - 1))
                 ])
 
             for t in range(seq_len):

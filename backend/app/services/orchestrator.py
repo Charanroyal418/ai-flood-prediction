@@ -44,8 +44,34 @@ from app.models.history import (
 
 logger = logging.getLogger(__name__)
 
+# Persistent Simulation State with Safeguard
+_STORM_SIMULATION_ACTIVE: bool = False
+_STORM_SIMULATION_ACTIVATED_AT: Optional[datetime] = None
+STORM_SIMULATION_MAX_DURATION_MINUTES: int = 10
+
+def get_storm_simulation_active() -> bool:
+    global _STORM_SIMULATION_ACTIVE, _STORM_SIMULATION_ACTIVATED_AT
+    if _STORM_SIMULATION_ACTIVE and _STORM_SIMULATION_ACTIVATED_AT:
+        elapsed = (datetime.now(timezone.utc) - _STORM_SIMULATION_ACTIVATED_AT).total_seconds() / 60.0
+        if elapsed > STORM_SIMULATION_MAX_DURATION_MINUTES:
+            logger.info(f"[Orchestrator] Storm simulation auto-expired after {elapsed:.1f} minutes.")
+            _STORM_SIMULATION_ACTIVE = False
+            _STORM_SIMULATION_ACTIVATED_AT = None
+    return _STORM_SIMULATION_ACTIVE
+
+def set_storm_simulation_active(active: bool) -> bool:
+    global _STORM_SIMULATION_ACTIVE, _STORM_SIMULATION_ACTIVATED_AT
+    _STORM_SIMULATION_ACTIVE = active
+    if active:
+        _STORM_SIMULATION_ACTIVATED_AT = datetime.now(timezone.utc)
+    else:
+        _STORM_SIMULATION_ACTIVATED_AT = None
+    logger.info(f"[Orchestrator] Storm simulation state set to: {active}")
+    return _STORM_SIMULATION_ACTIVE
+
 # Risk level -> alert severity mapping
 RISK_SEVERITY = {
+    "Critical": "Extreme",
     "Severe": "Extreme",
     "High": "High",
     "Moderate": "Advisory",
@@ -88,20 +114,26 @@ class RealtimeOrchestrator:
         self.db = db
         self._gpm_fpi_cache: Dict[int, float] = {}  # district_id -> flood potential
 
-    def run_pipeline(self, simulate_storm: bool = False) -> Dict[str, Any]:
+    def run_pipeline(self, simulate_storm: Optional[bool] = None) -> Dict[str, Any]:
         """
         Execute the full pipeline. Returns a summary dict.
         """
+        if simulate_storm is not None:
+            set_storm_simulation_active(simulate_storm)
+            
+        active_storm = get_storm_simulation_active()
+
         start_ts = time.perf_counter()
         wall_start = datetime.now(timezone.utc)
         logger.info(
             f"[Pipeline] === Tick START {wall_start.isoformat()} "
-            f"(storm_sim={simulate_storm}) ==="
+            f"(storm_sim_active={active_storm}) ==="
         )
 
         summary = {
             "timestamp": wall_start.isoformat(),
-            "storm_simulation": simulate_storm,
+            "storm_simulation": active_storm,
+            "storm_simulation_active": active_storm,
             "steps_completed": [],
             "districts_processed": 0,
             "alerts_generated": 0,
@@ -240,8 +272,9 @@ class RealtimeOrchestrator:
                 return summary
 
             # ─── STEP 4: Storm Simulation Override ────────────────────────
-            if simulate_storm:
+            if active_storm:
                 import torch, random
+                from app.models.history import WeatherHistory
                 districts = self.db.query(District).all()
                 storm_targets = random.sample(
                     [d for d in districts], min(5, len(districts))
@@ -252,6 +285,21 @@ class RealtimeOrchestrator:
                     f"{[d.name for d in storm_targets]}"
                 )
 
+                now_ts = datetime.now(timezone.utc)
+                for st_d in storm_targets:
+                    # Write extreme storm weather history to DB so live queries reflect storm telemetry
+                    w_storm = WeatherHistory(
+                        district_id=st_d.id,
+                        temperature=24.0,
+                        humidity=98.0,
+                        pressure=992.0,
+                        rainfall_mm=185.5,
+                        wind_speed=55.0,
+                        recorded_at=now_ts
+                    )
+                    self.db.add(w_storm)
+                self.db.commit()
+
                 for i, nid in enumerate(node_ids):
                     if nid.startswith("d-"):
                         try:
@@ -259,9 +307,11 @@ class RealtimeOrchestrator:
                         except ValueError:
                             continue
                         if district_idx in storm_ids:
-                            # Override rainfall feature with extreme value
-                            H[i, :, 0] = 2.0   # ~200mm scaled
-                            H[i, :, 2] = 98.0  # 98% humidity
+                            # Override features with extreme storm values (normalized 0-1 scale)
+                            H[i, :, 0] = 1.0   # ~185mm rainfall scaled
+                            H[i, :, 1] = 0.92  # 92% river level ratio
+                            H[i, :, 2] = 0.98  # 98% humidity scaled (0.98)
+                            H[i, :, 3] = 0.0   # 992 hPa low pressure scaled
 
                 summary["steps_completed"].append("storm_simulation")
 
@@ -519,29 +569,82 @@ class RealtimeOrchestrator:
         try:
             import asyncio
             from app.services.ws_manager import ws_manager
+            from app.models.river import RiverLevel
+            from app.models.history import WeatherHistory
+
+            # Get latest weather per district
+            all_w = self.db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(200).all()
+            w_map = {}
+            for w in all_w:
+                if w.district_id not in w_map:
+                    w_map[w.district_id] = w
+            
+            # Get latest river levels per district
+            all_r = self.db.query(RiverLevel).order_by(RiverLevel.recorded_at.desc()).limit(200).all()
+            r_map = {}
+            for r in all_r:
+                if r.district_id not in r_map:
+                    r_map[r.district_id] = r
 
             # Build broadcast payload
             district_updates = []
             for d in districts:
                 node_id = f"d-{d.id}"
                 r = result_map.get(node_id, {})
+                w = w_map.get(d.id)
+                r_lvl = r_map.get(d.id)
+                
+                lon, lat = 0.0, 0.0
+                if d.geom_json and "coordinates" in d.geom_json:
+                    lon, lat = d.geom_json["coordinates"]
+                
+                score = r.get("risk_score", 0)
+                lvl = r.get("risk_level", "Very Low")
+                
                 district_updates.append({
+                    "id": d.id,
                     "district_id": d.id,
+                    "name": d.name,
                     "district_name": d.name,
-                    "risk_score": r.get("risk_score", 0),
-                    "risk_level": r.get("risk_level", "Very Low"),
+                    "lat": lat,
+                    "lon": lon,
+                    "population": d.population,
+                    "risk_score": score,
+                    "risk_level": "Critical" if lvl == "Severe" else lvl,
                     "risk_color": r.get("risk_color", "#22c55e"),
+                    "rainfall_mm": w.rainfall_mm if w else 0.0,
+                    "humidity": w.humidity if w else 0.0,
+                    "temperature": w.temperature if w else 0.0,
+                    "pressure": w.pressure if w else 0.0,
+                    "wind_speed": w.wind_speed if w else 0.0,
+                    "river_level_m": r_lvl.current_level if r_lvl else 0.0,
+                    "river_danger_m": r_lvl.danger_level if r_lvl else 5.0,
+                    "flood_probability": score / 100.0,
                     "confidence": r.get("confidence", 0.82),
+                    "ai_confidence": r.get("confidence", 0.82),
                     "shap_values": r.get("shap_values", []),
                 })
 
+            is_storm = get_storm_simulation_active()
             dashboard_msg = {
                 "type": "PIPELINE_UPDATE",
                 "timestamp": summary["timestamp"],
                 "inference_mode": summary["inference_mode"],
+                "storm_simulation_active": is_storm,
                 "districts": district_updates,
                 "alerts_generated": alerts_generated,
                 "latency_ms": summary.get("latency_ms", 0),
+                "metrics": {
+                    "avg_risk_score": round(sum(d["risk_score"] for d in district_updates) / (len(district_updates) or 1), 1),
+                    "active_alerts_count": len([d for d in district_updates if d["risk_level"] in ["Critical", "Severe", "High"]]),
+                    "critical_districts": len([d for d in district_updates if d["risk_level"] in ["Critical", "Severe"]]),
+                    "high_risk_districts": len([d for d in district_updates if d["risk_level"] == "High"]),
+                    "avg_rainfall_24h_mm": round(sum(d["rainfall_mm"] for d in district_updates) / (len(district_updates) or 1), 1),
+                    "districts_monitored": len(district_updates),
+                    "model_confidence": 0.94,
+                    "gdnn_inference_ms": summary.get("latency_ms", 0),
+                    "storm_simulation_active": is_storm,
+                }
             }
 
             kg_msg = {

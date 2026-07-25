@@ -199,18 +199,20 @@ export default function CommandCenter() {
     dashboardStatus,
     criticalCount,
     highCount,
+    stormSimulationActive,
+    toggleStormSimulation,
     triggerPipeline,
   } = useFloodData();
 
-  // ─── Fallback: REST API for initial load ─────────────────────────
+  // ─── Live Telemetry: REST API polling & sync ─────────────────────────
   const { data, isLoading, dataUpdatedAt } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
       const res = await api.get("/dashboard/live");
       return res.data;
     },
-    // Only poll when WS is not connected
-    refetchInterval: dashboardStatus === "connected" ? false : 30_000,
+    refetchInterval: 15_000,
+    staleTime: 0,
   });
 
   // Supabase Realtime subscription (kept for redundancy)
@@ -263,31 +265,25 @@ export default function CommandCenter() {
     : (data?.top_risk_districts || []);
 
   const alerts = hasWsData
-    ? wsAlerts.slice(0, 3).map(a => ({ ...a, district: `District #${a.district_id}` }))
+    ? wsAlerts.slice(0, 3).map(a => ({
+        ...a,
+        district: (a as any).district || wsDistricts.find(d => d.district_id === a.district_id)?.district_name || `District #${a.district_id}`
+      }))
     : (data?.alerts || []);
 
   const events = data?.events || [];
 
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTick(p => p + 1), 5000);
-    return () => clearInterval(t);
-  }, []);
+  const isStormActive = stormSimulationActive || Boolean(data?.metrics?.storm_simulation_active);
 
   const [simulating, setSimulating] = useState(false);
   const handleSimulate = async () => {
     setSimulating(true);
     try {
-      if (dashboardStatus === "connected") {
-        triggerPipeline(true);
-        setTimeout(() => setSimulating(false), 3000);
-      } else {
-        await api.post("/predict/inference-cycle"); // Trigger inference cycle
-        queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
-        setSimulating(false);
-      }
+      await toggleStormSimulation(!isStormActive);
+      queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
     } catch (err) {
       console.error(err);
+    } finally {
       setSimulating(false);
     }
   };
@@ -300,6 +296,22 @@ export default function CommandCenter() {
 
   return (
     <div className="space-y-6">
+      {/* Persistent Storm Simulation Active Banner */}
+      {isStormActive && (
+        <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white px-4 py-3 rounded-xl flex items-center justify-between shadow-lg border border-red-500/50">
+          <div className="flex items-center gap-2 text-xs font-bold">
+            <AlertTriangle className="w-4 h-4 text-amber-200 flex-shrink-0 animate-bounce" />
+            <span>⚠️ SIMULATED STORM SCENARIO ACTIVE — Dashboard data reflects injected extreme storm telemetry, not live weather feeds.</span>
+          </div>
+          <button
+            onClick={() => toggleStormSimulation(false)}
+            className="bg-white text-red-700 hover:bg-red-50 text-xs font-bold px-3 py-1 rounded-lg transition-colors shadow-sm flex-shrink-0 ml-3"
+          >
+            Stop Simulation & Revert to Live
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -310,12 +322,18 @@ export default function CommandCenter() {
           <button
             onClick={handleSimulate}
             disabled={simulating}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 shadow-md flex items-center gap-1.5 ${
-              simulating ? "opacity-60 cursor-wait" : ""
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shadow-md ${
+              isStormActive
+                ? "bg-red-600 hover:bg-red-700 text-white ring-2 ring-red-400 animate-pulse shadow-red-200"
+                : "bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 text-white"
+            } ${simulating ? "opacity-60 cursor-wait" : ""}`}
           >
-            <Zap className={`w-3.5 h-3.5 ${simulating ? "animate-bounce" : ""}`} />
-            {simulating ? "Simulating..." : "Simulate Storm"}
+            <Zap className={`w-3.5 h-3.5 ${simulating || isStormActive ? "animate-bounce" : ""}`} />
+            {simulating
+              ? "Updating..."
+              : isStormActive
+              ? "Simulating Storm — click to stop"
+              : "Simulate Storm"}
           </button>
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <div className="relative w-2 h-2">
