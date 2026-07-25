@@ -217,14 +217,13 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         if (res.data?.storm_simulation_active !== undefined) {
           setStormSimulationActive(res.data.storm_simulation_active);
         }
+        return res.data;
       } catch (err) {
         console.error("Failed to toggle storm simulation:", err);
-      }
-      if (dashboardStatus === "connected") {
-        sendDashboard({ action: "trigger_pipeline", storm: targetState });
+        throw err;
       }
     },
-    [stormSimulationActive, dashboardStatus, sendDashboard]
+    [stormSimulationActive]
   );
 
   const requestSnapshot = useCallback(() => {

@@ -205,7 +205,7 @@ export default function CommandCenter() {
   } = useFloodData();
 
   // ─── Live Telemetry: REST API polling & sync ─────────────────────────
-  const { data, isLoading, dataUpdatedAt } = useQuery({
+  const { data, isLoading, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
       const res = await api.get("/dashboard/live");
@@ -280,7 +280,8 @@ export default function CommandCenter() {
     setSimulating(true);
     try {
       await toggleStormSimulation(!isStormActive);
-      queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
+      await refetch();
     } catch (err) {
       console.error(err);
     } finally {

@@ -142,137 +142,11 @@ class RealtimeOrchestrator:
         }
 
         try:
-            # ─── STEP 1: Weather ETL ──────────────────────────────────────
-            logger.info("[Pipeline] Step 1: Weather ETL")
-            try:
-                weather_etl = WeatherETL(self.db)
-                weather_etl.execute()
-                summary["steps_completed"].append("weather_etl")
-                logger.info(
-                    f"[Pipeline] Weather ETL done: {weather_etl.records_processed} records"
-                )
-            except Exception as e:
-                logger.error(f"[Pipeline] Weather ETL failed: {e}")
-                summary["errors"].append(f"weather_etl: {e}")
+            now_ts = datetime.now(timezone.utc)
+            districts = self.db.query(District).all()
+            from app.models.history import WeatherHistory
+            from app.models.river import RiverLevel
 
-            # ─── STEP 2: NASA GPM Satellite Rainfall ─────────────────────
-            logger.info("[Pipeline] Step 2: NASA GPM Satellite Rainfall")
-            try:
-                gpm_etl = NasaGPMETL(self.db)
-                fpi_records = gpm_etl.get_flood_potential_summary()
-                self._gpm_fpi_cache = {
-                    r["district_id"]: r["flood_potential_index"]
-                    for r in fpi_records
-                }
-                summary["steps_completed"].append("nasa_gpm_etl")
-                logger.info(
-                    f"[Pipeline] GPM ETL done: {len(fpi_records)} districts with FPI"
-                )
-            except Exception as e:
-                logger.error(f"[Pipeline] GPM ETL failed: {e}")
-                summary["errors"].append(f"nasa_gpm_etl: {e}")
-                self._gpm_fpi_cache = {}
-
-            # ─── STEP 2B: River Telemetry ETL ────────────────────────────
-            logger.info("[Pipeline] Step 2B: River Telemetry")
-            try:
-                river_etl = RiverETL(self.db)
-                river_etl.execute()
-                summary["steps_completed"].append("river_etl")
-                logger.info(f"[Pipeline] River ETL done: {river_etl.records_processed} records")
-            except Exception as e:
-                logger.error(f"[Pipeline] River ETL failed: {e}")
-                summary["errors"].append(f"river_etl: {e}")
-
-            # ─── STEP 2.5: Snapshot Generation ──────────────────────────
-            logger.info("[Pipeline] Step 2.5: Node Feature Snapshot Generation")
-            try:
-                from app.models.history import NodeFeatureSnapshot, WeatherHistory
-                from app.models.river import RiverLevel
-                from app.models.terrain import DemTile
-                from app.services.hydrology import GEOM_PARAMS
-                from app.api.endpoints.ml import get_model
-                import pandas as pd
-                
-                xgb_model = get_model()
-                
-                dem_tiles = self.db.query(DemTile).all()
-                dem_map = {t.district_id: t for t in dem_tiles}
-                
-                districts = self.db.query(District).all()
-                for d in districts:
-                    w = self.db.query(WeatherHistory).filter_by(district_id=d.id).order_by(WeatherHistory.recorded_at.desc()).first()
-                    r = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
-                    
-                    dem = dem_map.get(d.id)
-                    elevation = float(dem.elevation) if dem and dem.elevation else 15.0
-                    geom = GEOM_PARAMS.get(d.name, (elevation, 5.0, 0.5))
-                    actual_slope = geom[1]
-                    
-                    river_risk = 0.0
-                    if r and r.danger_level and r.danger_level > 0:
-                        river_risk = max(0.0, min(1.0, r.current_level / r.danger_level))
-                        
-                    rainfall = w.rainfall_mm if w else 0.0
-                    
-                    xgb_prob = river_risk
-                    if xgb_model is not None:
-                        try:
-                            # Using dynamic metrics per district
-                            feats = pd.DataFrame([{
-                                "elevation_m": elevation,
-                                "distance_to_river_m": 2500.0 if r else 8000.0,
-                                "rainfall_24h_mm": rainfall,
-                                "soil_moisture_index": min(0.9, 0.4 + (rainfall / 150.0)),
-                                "slope_degrees": actual_slope
-                            }])
-                            xgb_prob = xgb_model.predict_proba(feats)[0][1]
-                        except Exception as e:
-                            logger.error(f"XGBoost fallback: {e}")
-                    
-                    snap = NodeFeatureSnapshot(
-                        district_id=d.id,
-                        rainfall=rainfall,
-                        risk_score=xgb_prob * 100.0,
-                        humidity=w.humidity if w else 70.0,
-                        pressure=w.pressure if w else 1010.0,
-                        temperature=w.temperature if w else 28.0,
-                        elevation=elevation,
-                        slope=actual_slope,
-                        urban_drainage=80.0 if "Chennai" in d.name else 40.0,
-                        historical_floods=2.0,
-                        population=d.population or 1000000.0,
-                        land_cover=0.8
-                    )
-                    self.db.add(snap)
-                self.db.commit()
-                summary["steps_completed"].append("snapshot_generation")
-            except Exception as e:
-                logger.error(f"[Pipeline] Snapshot generation failed: {e}")
-                summary["errors"].append(f"snapshot_generation: {e}")
-                self.db.rollback()
-
-            # ─── STEP 3: Build Knowledge Graph ────────────────────────────
-            logger.info("[Pipeline] Step 3: Knowledge Graph Update")
-            try:
-                H, edge_index = kg_builder.fetch_graph_snapshot(
-                    db=self.db, seq_len=3
-                )
-                node_ids = kg_builder.node_ids
-                summary["steps_completed"].append("kg_update")
-                logger.info(
-                    f"[Pipeline] KG built: {H.shape[0]} nodes, "
-                    f"{edge_index.shape[1]} edges"
-                )
-            except Exception as e:
-                logger.error(f"[Pipeline] KG build failed: {e}")
-                summary["errors"].append(f"kg_update: {e}")
-                # Cannot proceed without graph
-                summary["pipeline_error"] = "KG build failed"
-                return summary
-
-            # ─── STEP 4: Storm Simulation Override & Revert Handling ─────
-            # Historical Storm Benchmark: Cyclone Michaung 2023 & 2015 Chennai Floods (350mm - 450mm coastal rainfall)
             PRIMARY_CYCLONE_DISTRICTS = {
                 "Chennai", "Tiruvallur", "Kancheepuram", "Chengalpattu", "Cuddalore",
                 "Nagapattinam", "Mayiladuthurai", "Thanjavur", "Tiruvarur", "Villupuram"
@@ -281,14 +155,9 @@ class RealtimeOrchestrator:
                 "Ranipet", "Vellore", "Thiruvannamalai", "Tirupattur", "Kallakurichi", "Ariyalur"
             }
 
-            now_ts = datetime.now(timezone.utc)
-            districts = self.db.query(District).all()
-            from app.models.history import WeatherHistory
-            from app.models.river import RiverLevel
-
+            # ─── STEP 1: Telemetry Ingestion (Storm Simulation or Live ETL) ───
             if active_storm:
-                logger.info("[Pipeline] Storm simulation: injecting realistic Cyclone Michaung spatial storm telemetry")
-
+                logger.info("[Pipeline] Step 1: Ingesting extreme Cyclone Michaung storm telemetry into DB feature tables")
                 for d in districts:
                     is_primary = d.name in PRIMARY_CYCLONE_DISTRICTS
                     is_buffer = d.name in BUFFER_STORM_DISTRICTS
@@ -323,7 +192,6 @@ class RealtimeOrchestrator:
                     )
                     self.db.add(w_storm)
 
-                    # Update RiverLevel table so live dashboard endpoints return storm river telemetry
                     rv_rec = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
                     if rv_rec:
                         rv_rec.current_level = r_lvl
@@ -338,8 +206,128 @@ class RealtimeOrchestrator:
                             recorded_at=now_ts
                         ))
                 self.db.commit()
+                summary["steps_completed"].append("storm_telemetry_injection")
+            else:
+                logger.info("[Pipeline] Step 1: Reverting DB telemetry & executing live Weather & River ETL")
+                for d in districts:
+                    rv_rec = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
+                    if rv_rec:
+                        rv_rec.current_level = round(0.8 + (d.id % 5) * 0.15, 2)
+                        rv_rec.recorded_at = now_ts
+                self.db.query(WeatherHistory).filter(WeatherHistory.rainfall_mm > 80.0).delete(synchronize_session=False)
+                self.db.commit()
 
-                # Override GNN Feature Matrix H for graph nodes according to spatial clusters
+                try:
+                    weather_etl = WeatherETL(self.db)
+                    weather_etl.execute()
+                    summary["steps_completed"].append("weather_etl")
+                except Exception as e:
+                    logger.error(f"[Pipeline] Weather ETL failed: {e}")
+                    summary["errors"].append(f"weather_etl: {e}")
+
+                try:
+                    river_etl = RiverETL(self.db)
+                    river_etl.execute()
+                    summary["steps_completed"].append("river_etl")
+                except Exception as e:
+                    logger.error(f"[Pipeline] River ETL failed: {e}")
+                    summary["errors"].append(f"river_etl: {e}")
+
+            # ─── STEP 2: NASA GPM Satellite Rainfall ─────────────────────
+            logger.info("[Pipeline] Step 2: NASA GPM Satellite Rainfall")
+            try:
+                gpm_etl = NasaGPMETL(self.db)
+                fpi_records = gpm_etl.get_flood_potential_summary()
+                self._gpm_fpi_cache = {
+                    r["district_id"]: r["flood_potential_index"]
+                    for r in fpi_records
+                }
+                summary["steps_completed"].append("nasa_gpm_etl")
+            except Exception as e:
+                logger.error(f"[Pipeline] GPM ETL failed: {e}")
+                summary["errors"].append(f"nasa_gpm_etl: {e}")
+                self._gpm_fpi_cache = {}
+
+            # ─── STEP 2.5: Snapshot Generation ──────────────────────────
+            logger.info("[Pipeline] Step 2.5: Node Feature Snapshot Generation")
+            try:
+                from app.models.history import NodeFeatureSnapshot
+                from app.models.terrain import DemTile
+                from app.services.hydrology import GEOM_PARAMS
+                from app.api.endpoints.ml import get_model
+                import pandas as pd
+                
+                xgb_model = get_model()
+                dem_tiles = self.db.query(DemTile).all()
+                dem_map = {t.district_id: t for t in dem_tiles}
+                
+                for d in districts:
+                    w = self.db.query(WeatherHistory).filter_by(district_id=d.id).order_by(WeatherHistory.recorded_at.desc()).first()
+                    r = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
+                    
+                    dem = dem_map.get(d.id)
+                    elevation = float(dem.elevation) if dem and dem.elevation else 15.0
+                    geom = GEOM_PARAMS.get(d.name, (elevation, 5.0, 0.5))
+                    actual_slope = geom[1]
+                    
+                    river_risk = 0.0
+                    if r and r.danger_level and r.danger_level > 0:
+                        river_risk = max(0.0, min(1.0, r.current_level / r.danger_level))
+                        
+                    rainfall = w.rainfall_mm if w else 0.0
+                    
+                    xgb_prob = river_risk
+                    if xgb_model is not None:
+                        try:
+                            feats = pd.DataFrame([{
+                                "elevation_m": elevation,
+                                "distance_to_river_m": 2500.0 if r else 8000.0,
+                                "rainfall_24h_mm": rainfall,
+                                "soil_moisture_index": min(0.9, 0.4 + (rainfall / 150.0)),
+                                "slope_degrees": actual_slope
+                            }])
+                            xgb_prob = xgb_model.predict_proba(feats)[0][1]
+                        except Exception as e:
+                            logger.error(f"XGBoost fallback: {e}")
+                    
+                    snap = NodeFeatureSnapshot(
+                        district_id=d.id,
+                        rainfall=rainfall,
+                        risk_score=xgb_prob * 100.0,
+                        humidity=w.humidity if w else 70.0,
+                        pressure=w.pressure if w else 1010.0,
+                        temperature=w.temperature if w else 28.0,
+                        elevation=elevation,
+                        slope=actual_slope,
+                        urban_drainage=80.0 if "Chennai" in d.name else 40.0,
+                        historical_floods=2.0,
+                        population=d.population or 1000000.0,
+                        land_cover=0.8
+                    )
+                    self.db.add(snap)
+                self.db.commit()
+                summary["steps_completed"].append("snapshot_generation")
+            except Exception as e:
+                logger.error(f"[Pipeline] Snapshot generation failed: {e}")
+                summary["errors"].append(f"snapshot_generation: {e}")
+                self.db.rollback()
+
+            # ─── STEP 3: Build Knowledge Graph ────────────────────────────
+            logger.info("[Pipeline] Step 3: Knowledge Graph Update (reads latest DB features)")
+            try:
+                H, edge_index = kg_builder.fetch_graph_snapshot(
+                    db=self.db, seq_len=3
+                )
+                node_ids = kg_builder.node_ids
+                summary["steps_completed"].append("kg_update")
+            except Exception as e:
+                logger.error(f"[Pipeline] KG build failed: {e}")
+                summary["errors"].append(f"kg_update: {e}")
+                summary["pipeline_error"] = "KG build failed"
+                return summary
+
+            if active_storm:
+                # Ensure Feature Matrix H matches spatial storm targets
                 for i, nid in enumerate(node_ids):
                     if nid.startswith("d-"):
                         try:
@@ -368,17 +356,6 @@ class RealtimeOrchestrator:
                         H[i, :, 1] = 0.95
 
                 summary["steps_completed"].append("storm_simulation")
-            else:
-                # Clean revert handling when stopping simulation:
-                # Revert RiverLevel current_level back to authentic baseline (0.8m - 1.4m)
-                for d in districts:
-                    rv_rec = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
-                    if rv_rec:
-                        rv_rec.current_level = round(0.8 + (d.id % 5) * 0.15, 2)
-                        rv_rec.recorded_at = now_ts
-                # Clean up extreme simulated WeatherHistory entries to prevent baseline contamination
-                self.db.query(WeatherHistory).filter(WeatherHistory.rainfall_mm > 80.0).delete(synchronize_session=False)
-                self.db.commit()
 
             # ─── STEP 5: GNN Inference ────────────────────────────────────
             logger.info(
