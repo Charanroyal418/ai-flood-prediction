@@ -316,9 +316,9 @@ class RealtimeOrchestrator:
                         self.db.add(RiverLevel(
                             district_id=d.id,
                             river_name=d_name_river,
+                            station_name=f"{d.name} Station",
                             current_level=r_lvl,
                             danger_level=5.0,
-                            flow_rate_cusecs=15000.0 if is_coastal_critical else 8000.0,
                             recorded_at=now_ts
                         ))
                 self.db.commit()
