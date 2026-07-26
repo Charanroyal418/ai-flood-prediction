@@ -1,9 +1,10 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "FloodSense AI"
     API_V1_STR: str = "/api/v1"
-    DATABASE_URL: str
+    DATABASE_URL: str = "sqlite:///./floodsense.db"
     SECRET_KEY: str = "supersecretkey_please_change_in_production_tn_flood_ai"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
 

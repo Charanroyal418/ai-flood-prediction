@@ -347,9 +347,14 @@ class GNNInferenceEngine:
                 "inference_mode": "Physics",
             })
 
+        # Compute deterministic physics embeddings [num_nodes, 32] from feature matrix H
+        feats_last = H_np[:, -1, :]  # [num_nodes, 12]
+        # Project 12 features to 32 dimensions deterministically
+        proj_matrix = np.sin(np.outer(np.arange(1, 13), np.arange(1, 33)))
+        embeddings = np.tanh(np.dot(feats_last, proj_matrix))
         return {
             "nodes": results,
-            "embeddings": np.random.randn(len(node_ids), 32), # Mock embeddings
+            "embeddings": embeddings,
             "attentions": []
         }
 

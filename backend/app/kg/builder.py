@@ -95,13 +95,19 @@ class KnowledgeGraphBuilder:
             if p.district_id not in pred_map:
                 pred_map[p.district_id] = p
 
+        all_r_lvls = db.query(RiverLevel).order_by(RiverLevel.recorded_at.desc()).limit(200).all()
+        river_map = {}
+        for r in all_r_lvls:
+            if r.district_id not in river_map:
+                river_map[r.district_id] = r
+
         for d in districts:
             node_id = f"d-{d.id}"
             pop_id = f"pop-{d.id}"
             w = weather_map.get(d.id)
             rf = rainfall_map.get(d.id)
             dem = dem_map.get(d.id)
-            r_lvl = db.query(RiverLevel).filter(RiverLevel.district_id == d.id).order_by(RiverLevel.recorded_at.desc()).first()
+            r_lvl = river_map.get(d.id)
             
             # Compute live telemetry-based risk score (prevents artificial high-score feedback loop)
             rain_mm = float(rf.mm_24h if rf else 0.0)

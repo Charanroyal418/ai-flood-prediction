@@ -94,7 +94,7 @@ class WeatherETL(BaseETLPipeline):
         )
         
         try:
-            response = self.session.get(url, timeout=15)
+            response = self.session.get(url, timeout=1.5)
             response.raise_for_status()
             data = response.json()
             

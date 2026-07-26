@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy.orm import Session
-import app.db.base
-from app.db.session import SessionLocal
+from app.db.base import Base
+from app.db.session import SessionLocal, engine
 from app.models.district import District
 from app.etl.weather import TN_DISTRICTS
 
@@ -9,6 +9,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def seed_districts():
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         if db.query(District).count() == 0:

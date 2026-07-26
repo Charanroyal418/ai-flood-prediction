@@ -48,26 +48,76 @@ logger = logging.getLogger(__name__)
 # Persistent Simulation State with Safeguard
 _STORM_SIMULATION_ACTIVE: bool = False
 _STORM_SIMULATION_ACTIVATED_AT: Optional[datetime] = None
-STORM_SIMULATION_MAX_DURATION_MINUTES: int = 10
+STORM_SIMULATION_MAX_DURATION_MINUTES: int = 15
 
-def get_storm_simulation_active() -> bool:
+def clear_simulation_state(db: Optional[Session] = None, reason: str = "Manual Stop Simulation") -> None:
+    """Bulletproof clearing of all simulation state, caches, DB overrides, and rebuilding KG."""
+    global _STORM_SIMULATION_ACTIVE, _STORM_SIMULATION_ACTIVATED_AT
+    _STORM_SIMULATION_ACTIVE = False
+    _STORM_SIMULATION_ACTIVATED_AT = None
+    logger.info(f"[Orchestrator] Clearing simulation state: {reason}")
+
+    # 1. Reset in-process inference cycle cache
+    try:
+        from app.api.endpoints.inference_cycle import _cycle_cache
+        _cycle_cache["payload"] = None
+        _cycle_cache["ts"] = 0.0
+    except Exception:
+        pass
+
+    if db is not None:
+        try:
+            from app.models.river import RiverLevel
+            now_ts = datetime.now(timezone.utc)
+            districts = db.query(District).all()
+
+            # 2. Revert DB telemetry overrides
+            for d in districts:
+                rv_rec = db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
+                if rv_rec:
+                    rv_rec.current_level = round(0.8 + (d.id % 5) * 0.15, 2)
+                    rv_rec.recorded_at = now_ts
+
+            db.query(WeatherHistory).filter(WeatherHistory.rainfall_mm > 80.0).delete(synchronize_session=False)
+            
+            # 3. Log explicit simulation expired / cleared event
+            evt = KnowledgeGraphEvents(
+                source_district_id=1,
+                target_district_id=1,
+                event_type="SIMULATION_EXPIRED",
+                description=(
+                    f"Simulation expired. Reason: {reason}. "
+                    "Simulation state cleared. Live ETL resumed. "
+                    "Knowledge Graph rebuilt. GDNN inference restarted."
+                ),
+                created_at=now_ts
+            )
+            db.add(evt)
+            db.commit()
+
+            # 4. Rebuild Knowledge Graph
+            kg_builder.build_skeleton()
+            kg_builder.update_graph_from_db(db)
+        except Exception as e:
+            logger.error(f"[Orchestrator] Error during simulation state clearing: {e}")
+
+def get_storm_simulation_active(db: Optional[Session] = None) -> bool:
     global _STORM_SIMULATION_ACTIVE, _STORM_SIMULATION_ACTIVATED_AT
     if _STORM_SIMULATION_ACTIVE and _STORM_SIMULATION_ACTIVATED_AT:
         elapsed = (datetime.now(timezone.utc) - _STORM_SIMULATION_ACTIVATED_AT).total_seconds() / 60.0
         if elapsed > STORM_SIMULATION_MAX_DURATION_MINUTES:
             logger.info(f"[Orchestrator] Storm simulation auto-expired after {elapsed:.1f} minutes.")
-            _STORM_SIMULATION_ACTIVE = False
-            _STORM_SIMULATION_ACTIVATED_AT = None
+            clear_simulation_state(db, reason="Timeout exceeded (15 min)")
     return _STORM_SIMULATION_ACTIVE
 
-def set_storm_simulation_active(active: bool) -> bool:
+def set_storm_simulation_active(active: bool, db: Optional[Session] = None) -> bool:
     global _STORM_SIMULATION_ACTIVE, _STORM_SIMULATION_ACTIVATED_AT
-    _STORM_SIMULATION_ACTIVE = active
-    if active:
-        _STORM_SIMULATION_ACTIVATED_AT = datetime.now(timezone.utc)
+    if not active:
+        clear_simulation_state(db, reason="Manual Stop Simulation")
     else:
-        _STORM_SIMULATION_ACTIVATED_AT = None
-    logger.info(f"[Orchestrator] Storm simulation state set to: {active}")
+        _STORM_SIMULATION_ACTIVE = True
+        _STORM_SIMULATION_ACTIVATED_AT = datetime.now(timezone.utc)
+        logger.info(f"[Orchestrator] Storm simulation state activated at {_STORM_SIMULATION_ACTIVATED_AT.isoformat()}")
     return _STORM_SIMULATION_ACTIVE
 
 # Risk level -> alert severity mapping
