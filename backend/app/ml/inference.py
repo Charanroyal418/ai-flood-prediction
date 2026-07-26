@@ -35,6 +35,19 @@ RISK_CLASS_MAP = {
     4: ("Critical", "#ef4444"),
 }
 
+def get_risk_level_and_color(risk_score: float) -> Tuple[str, str]:
+    if risk_score >= 80.0:
+        return "Critical", "#ef4444"
+    elif risk_score >= 60.0:
+        return "High", "#f97316"
+    elif risk_score >= 40.0:
+        return "Moderate", "#f59e0b"
+    elif risk_score >= 20.0:
+        return "Low", "#22c55e"
+    else:
+        return "Safe", "#3b82f6"
+
+
 # Feature names (must match KG builder feature matrix)
 FEATURE_NAMES = [
     "Rainfall",
@@ -203,7 +216,7 @@ class GNNInferenceEngine:
                 # Risk score: weighted average of class probabilities (0-100 scale)
                 risk_score = sum(c * prob_vec[c] * 25 for c in range(5))
 
-                label, color = RISK_CLASS_MAP[cls]
+                label, color = get_risk_level_and_color(risk_score)
 
                 # Extract SHAP based on feature gradients or input feature values weighted by first layer GAT
                 shap = self._compute_shap(H[i, -1, :].tolist(), risk_score)
@@ -315,19 +328,7 @@ class GNNInferenceEngine:
             risk_raw = r_score + rv_score + elev_score + hist_score + hum_boost
             risk_score = min(99.0, max(1.0, risk_raw))
 
-            # Map to risk class
-            if risk_score >= 80:
-                cls = 4
-            elif risk_score >= 60:
-                cls = 3
-            elif risk_score >= 40:
-                cls = 2
-            elif risk_score >= 20:
-                cls = 1
-            else:
-                cls = 0
-
-            label, color = RISK_CLASS_MAP[cls]
+            label, color = get_risk_level_and_color(risk_score)
             shap = self._compute_shap(feats.tolist(), risk_score)
 
             results.append({

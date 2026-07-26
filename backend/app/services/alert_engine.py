@@ -21,36 +21,39 @@ class AlertEngine:
         # 1. AI Predictions
         recent_predictions = db.query(PredictionHistory).filter(PredictionHistory.created_at >= recent_threshold).all()
         for pred in recent_predictions:
-            if pred.current_risk_score >= 76: # High or Severe
+            if pred.current_risk_score >= 60.0:
+                is_crit = pred.current_risk_score >= 80.0
                 AlertEngine._create_alert_if_needed(
                     db,
                     district_id=pred.district_id,
-                    level="Critical" if pred.current_risk_score >= 91 else "Warning",
-                    severity="Severe" if pred.current_risk_score >= 91 else "High",
-                    reason=f"AI predicted flood risk score: {pred.current_risk_score:.1f}. Reasons: {json.dumps(pred.shap_values)}"
+                    level="Critical" if is_crit else "High",
+                    severity="Severe" if is_crit else "High",
+                    reason=f"AI predicted elevated flood risk score: {pred.current_risk_score:.1f}/100."
                 )
                 
         # 2. River Levels
         recent_rivers = db.query(RiverLevel).filter(RiverLevel.recorded_at >= recent_threshold).all()
         for river in recent_rivers:
-            if river.current_level >= river.danger_level:
+            if river.current_level >= 0.8 * river.danger_level:
+                is_crit = river.current_level >= river.danger_level
                 AlertEngine._create_alert_if_needed(
                     db,
                     district_id=river.district_id,
-                    level="Critical",
-                    severity="Severe",
-                    reason=f"River {river.river_name} ({river.station_name}) exceeded danger level. Current: {river.current_level}m, Danger: {river.danger_level}m"
+                    level="Critical" if is_crit else "High",
+                    severity="Severe" if is_crit else "High",
+                    reason=f"River {river.river_name} ({river.station_name}) level elevated: {river.current_level}m (Danger: {river.danger_level}m)"
                 )
                 
         # 3. Rainfall
         recent_rain = db.query(Rainfall).filter(Rainfall.recorded_at >= recent_threshold).all()
         for rain in recent_rain:
-            if rain.mm_24h > 150: # Threshold for severe rain
+            if rain.mm_24h >= 100: # Heavy/Extreme rainfall threshold
+                is_crit = rain.mm_24h >= 200
                 AlertEngine._create_alert_if_needed(
                     db,
                     district_id=rain.district_id,
-                    level="Warning" if rain.mm_24h < 250 else "Critical",
-                    severity="High" if rain.mm_24h < 250 else "Severe",
+                    level="Critical" if is_crit else "High",
+                    severity="Severe" if is_crit else "High",
                     reason=f"Heavy rainfall detected: {rain.mm_24h}mm in last 24h"
                 )
                 

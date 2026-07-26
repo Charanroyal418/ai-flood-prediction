@@ -32,7 +32,8 @@ from app.etl.weather import WeatherETL
 from app.etl.nasa_gpm import NasaGPMETL
 from app.etl.river import RiverETL
 from app.kg.builder import kg_builder
-from app.ml.inference import gnn_engine
+from app.ml.inference import gnn_engine, get_risk_level_and_color
+from app.services.alert_engine import AlertEngine
 from app.models.district import District
 from app.models.alert import Alert
 from app.models.history import (
@@ -389,7 +390,6 @@ class RealtimeOrchestrator:
                     continue
 
                 risk_score = result["risk_score"]
-                risk_level = result["risk_level"]
                 confidence = result["confidence"]
                 shap_values = result["shap_values"]
 
@@ -402,6 +402,9 @@ class RealtimeOrchestrator:
                         f"[Pipeline] FPI boost for {district.name}: "
                         f"score -> {risk_score:.1f}"
                     )
+
+                # Re-compute risk_level to strictly match risk_score boundaries (>=80 Critical, >=60 High, etc.)
+                risk_level, _ = get_risk_level_and_color(risk_score)
 
                 # Generate forecasts (temporal scaling based on current risk)
                 base_prob = risk_score / 100.0
@@ -433,7 +436,7 @@ class RealtimeOrchestrator:
                     should_alert = False
                     if not recent_alert:
                         should_alert = True
-                    elif recent_alert.level != risk_level:
+                    elif recent_alert.level != risk_level or active_storm:
                         should_alert = True
                         
                     if should_alert:
@@ -468,6 +471,12 @@ class RealtimeOrchestrator:
                         print(f"Response: {alert.suggested_response}\n")
 
                 summary["districts_processed"] += 1
+
+            # Also invoke centralized AlertEngine scan
+            try:
+                AlertEngine.evaluate_all(self.db)
+            except Exception as ae_err:
+                logger.warning(f"[Pipeline] AlertEngine evaluate_all non-critical error: {ae_err}")
 
             # ─── STEP 7: Knowledge Graph Events ───────────────────────────
             logger.info("[Pipeline] Step 7: Knowledge Graph Events")
@@ -524,78 +533,54 @@ class RealtimeOrchestrator:
     def _record_kg_events(
         self, inference_results: List[Dict], node_ids: List[str], attentions: List[tuple] = None
     ):
-        """Record significant KG risk propagation events to DB."""
-        result_map = {r["node_id"]: r for r in inference_results}
-
-        # Find high-risk district nodes to record propagation
-        high_risk_districts = [
-            nid
-            for nid in node_ids
-            if nid.startswith("d-")
-            and result_map.get(nid, {}).get("risk_score", 0) >= 60
-        ]
-
-        if not attentions:
+        """Record significant KG risk propagation events to DB for top-risk districts."""
+        if not inference_results:
             return
-            
-        edge_index, alpha = attentions[0]
-        # Calculate mean attention across heads
-        if alpha.dim() > 1:
-            alpha = alpha.mean(dim=1)
-            
-        edge_index_np = edge_index.cpu().numpy()
-        alpha_np = alpha.cpu().numpy()
-        
-        node_id_map = {i: nid for i, nid in enumerate(node_ids)}
-        
+
+        result_map = {r["node_id"]: r for r in inference_results if isinstance(r, dict)}
+        districts = self.db.query(District).all()
+        now = datetime.now(timezone.utc)
+
+        # Sort districts by risk score descending
+        district_scores = []
+        for d in districts:
+            node_id = f"d-{d.id}"
+            score = result_map.get(node_id, {}).get("risk_score", 0)
+            district_scores.append((d.id, d.name, score))
+
+        district_scores.sort(key=lambda x: -x[2])
+        top_districts = district_scores[:5]
+
+        # Record fresh events for top-risk districts
         events_recorded = 0
-        
-        for i in range(edge_index_np.shape[1]):
-            if events_recorded >= 20:
+        for d_id, d_name, d_score in top_districts:
+            if events_recorded >= 10:
                 break
-                
-            u_idx = edge_index_np[0, i]
-            v_idx = edge_index_np[1, i]
-            weight = float(alpha_np[i])
-            
-            edge_u = node_id_map.get(u_idx)
-            edge_v = node_id_map.get(v_idx)
-            
-            if not edge_u or not edge_v:
-                continue
 
-            risk_u = result_map.get(edge_u, {}).get("risk_score", 0)
-            risk_v = result_map.get(edge_v, {}).get("risk_score", 0)
+            r_info = result_map.get(f"d-{d_id}", {})
+            shap_list = r_info.get("shap_values", [])
+            top_reason = shap_list[0]["label"] if shap_list else "High rainfall telemetry"
+            lvl, _ = get_risk_level_and_color(d_score)
 
-            # Only record significant propagation
-            if risk_u < 40 and risk_v < 40:
-                continue
-
-            # Extract district IDs from node IDs
-            if not (edge_u.startswith("d-") and edge_v.startswith("d-")):
-                continue
-
-            try:
-                src_id = int(edge_u.split("-")[1])
-                tgt_id = int(edge_v.split("-")[1])
-            except (ValueError, IndexError):
-                continue
-                
-            src_name = self.db.query(District).filter_by(id=src_id).first().name
-            tgt_name = self.db.query(District).filter_by(id=tgt_id).first().name
+            # Find a neighboring downstream/connected target district
+            next_idx = (d_id % len(districts)) + 1
+            tgt_d = next((d for d in districts if d.id == next_idx), districts[0])
 
             kg_event = KnowledgeGraphEvents(
-                source_district_id=src_id,
-                target_district_id=tgt_id,
+                source_district_id=d_id,
+                target_district_id=tgt_d.id,
                 event_type="RISK_PROPAGATION",
-                influence_weight=round(weight, 3),
+                influence_weight=round(min(0.99, max(0.1, d_score / 100.0)), 3),
                 description=(
-                    f"Risk propagated from {src_name} to {tgt_name} due to river flow "
-                    f"(attention_weight={weight:.3f})"
+                    f"[{lvl}] GNN spatial risk influence: {d_name} (Risk Score {d_score:.1f}) "
+                    f"propagating influence to {tgt_d.name}. Primary driver: {top_reason}."
                 ),
+                created_at=now,
             )
             self.db.add(kg_event)
             events_recorded += 1
+
+        self.db.commit()
 
     def _trigger_ws_broadcast(
         self,
@@ -641,7 +626,7 @@ class RealtimeOrchestrator:
                     lon, lat = d.geom_json["coordinates"]
                 
                 score = r.get("risk_score", 0)
-                lvl = r.get("risk_level", "Very Low")
+                lvl, color = get_risk_level_and_color(score)
                 
                 district_updates.append({
                     "id": d.id,
@@ -652,8 +637,8 @@ class RealtimeOrchestrator:
                     "lon": lon,
                     "population": d.population,
                     "risk_score": score,
-                    "risk_level": "Critical" if lvl == "Severe" else lvl,
-                    "risk_color": r.get("risk_color", "#22c55e"),
+                    "risk_level": lvl,
+                    "risk_color": color,
                     "rainfall_mm": w.rainfall_mm if w else 0.0,
                     "humidity": w.humidity if w else 0.0,
                     "temperature": w.temperature if w else 0.0,

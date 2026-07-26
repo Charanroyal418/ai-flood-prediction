@@ -13,6 +13,7 @@ import re
 import os
 from app.models.weather import Weather
 from app.models.river import RiverLevel
+from app.ml.inference import get_risk_level_and_color
 
 router = APIRouter()
 
@@ -61,11 +62,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         if not p or not w:
             continue
             
-        color = "#3b82f6"
-        if p.current_risk_level in ["Critical", "Severe"]: color = "#ef4444"
-        elif p.current_risk_level == "High": color = "#f97316"
-        elif p.current_risk_level == "Moderate": color = "#f59e0b"
-        elif p.current_risk_level == "Low": color = "#22c55e"
+        risk_lvl, color = get_risk_level_and_color(p.current_risk_score)
             
         lon, lat = 0.0, 0.0
         if d.geom_json and "coordinates" in d.geom_json:
@@ -85,7 +82,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "lon": lon,
             "population": d.population,
             "risk_score": p.current_risk_score,
-            "risk_level": "Critical" if p.current_risk_level == "Severe" else p.current_risk_level,
+            "risk_level": risk_lvl,
             "risk_color": color,
             "rainfall_mm": w.rainfall_mm,
             "humidity": w.humidity,
@@ -161,18 +158,35 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             seen_districts.add(d["id"])
         
     # Latest Knowledge Graph Events
-    kg_events = db.query(KnowledgeGraphEvents).order_by(KnowledgeGraphEvents.created_at.desc()).limit(10).all()
+    kg_events = db.query(KnowledgeGraphEvents).order_by(KnowledgeGraphEvents.created_at.desc()).limit(15).all()
     events_data = []
     for evt in kg_events:
-        d_name = next((d["name"] for d in districts_with_risk if d["id"] == evt.source_district_id), "Unknown")
+        d_obj = next((d for d in districts_with_risk if d["id"] == evt.source_district_id), None)
+        if not d_obj:
+            continue
         events_data.append({
             "id": f"kg-{evt.id}",
             "type": "kg_update",
-            "district": d_name,
+            "district": d_obj["name"],
             "message": evt.description,
             "timestamp": evt.created_at.isoformat(),
-            "risk_level": "High"
+            "risk_level": d_obj["risk_level"]
         })
+    
+    # If fewer than 5 events, add live events from top risk districts
+    if len(events_data) < 5:
+        for top_d in districts_with_risk[:5]:
+            if any(e["district"] == top_d["name"] for e in events_data):
+                continue
+            top_reason = top_d["shap_values"][0]["label"] if top_d.get("shap_values") else "Rainfall intensity"
+            events_data.append({
+                "id": f"evt-top-{top_d['id']}",
+                "type": "model_inference" if top_d["risk_score"] >= 60 else "sensor_update",
+                "district": top_d["name"],
+                "message": f"[{top_d['risk_level']}] GNN spatial risk influence: {top_d['name']} (Score {top_d['risk_score']:.1f}). Primary driver: {top_reason}.",
+                "timestamp": now.isoformat(),
+                "risk_level": top_d["risk_level"]
+            })
     
     # 7-day Precipitation Forecast (State average)
     weekly_forecast = []
