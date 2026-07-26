@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import health, spatial, ml, dashboard, system, predict, admin, kg, district, ws, inference_cycle
+from app.api.endpoints import health, spatial, ml, dashboard, system, predict, admin, kg, district, ws, inference_cycle, performance
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -13,4 +13,5 @@ api_router.include_router(system.router, prefix="/system", tags=["system"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(kg.router, prefix="/kg", tags=["knowledge_graph"])
 api_router.include_router(ws.router, prefix="/ws", tags=["websocket"])
+api_router.include_router(performance.router, prefix="/performance", tags=["performance"])
 

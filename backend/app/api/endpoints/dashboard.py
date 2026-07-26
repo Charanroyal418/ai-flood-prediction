@@ -15,14 +15,25 @@ from app.models.weather import Weather
 from app.models.river import RiverLevel
 from app.ml.inference import get_risk_level_and_color
 
+import time
+
 router = APIRouter()
+
+_dash_live_cache = {"ts": 0, "data": None}
+_DASH_CACHE_TTL = 10.0
 
 @router.get("/live")
 def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     """
     Unified live data endpoint for the dashboard.
     Returns real-time data from the GDNN inference and weather ETL.
+    Cached in RAM for 10 seconds for sub-millisecond response.
     """
+    global _dash_live_cache
+    now_t = time.time()
+    if _dash_live_cache["data"] is not None and (now_t - _dash_live_cache["ts"]) < _DASH_CACHE_TTL:
+        return _dash_live_cache["data"]
+
     now = datetime.now(timezone.utc)
     
     # Get latest inference metrics
@@ -232,7 +243,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             weekly_forecast.append({"day": day, "rainfall": 0.0})
 
     from app.services.orchestrator import get_storm_simulation_active
-    return {
+    res = {
         "status": "online",
         "timestamp": last_updated_ts,
         "metrics": {
@@ -254,6 +265,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         "events": events_data,
         "weekly_forecast": weekly_forecast,
     }
+    _dash_live_cache = {"ts": time.time(), "data": res}
+    return res
 
 @router.get("/districts")
 def get_all_districts(db: Session = Depends(deps.get_db)) -> Any:

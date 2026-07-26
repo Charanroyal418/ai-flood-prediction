@@ -88,23 +88,18 @@ export default function PredictionEnginePage() {
   const { data, isLoading, isError, error, dataUpdatedAt, refetch } = useQuery<InferenceCycle>({
     queryKey: ["inference-cycle"],
     queryFn: async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000);
-      try {
-        const res = await api.get("/predict/inference-cycle", { signal: controller.signal });
-        const raw = res.data;
-        const districtList = raw.districts || raw.stages?.gdnn_output?.district_ranking || [];
-        return {
-          ...raw,
-          districts: districtList,
-        };
-      } finally {
-        clearTimeout(timeoutId);
-      }
+      const res = await api.get("/predict/inference-cycle");
+      const raw = res.data;
+      const districtList = raw.districts || raw.stages?.gdnn_output?.district_ranking || [];
+      return {
+        ...raw,
+        districts: districtList,
+      };
     },
-    refetchInterval: 30000,
-    retry: 3,
-    retryDelay: 3000,
+    refetchInterval: 20000,
+    staleTime: 15000,
+    refetchOnWindowFocus: false,
+    retry: 2,
   });
 
   useEffect(() => {

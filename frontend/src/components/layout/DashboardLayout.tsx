@@ -47,6 +47,7 @@ const navSections = [
       { name: "Historical Intelligence", href: "/dashboard/history", icon: History, description: "Trend analysis" },
       { name: "Alert Center", href: "/dashboard/alerts", icon: Bell, description: "Active alerts", badge: true },
       { name: "System Health", href: "/dashboard/system", icon: Activity, description: "Platform status" },
+      { name: "Performance Monitor", href: "/dashboard/performance", icon: Zap, description: "Latency & metrics" },
     ],
   },
 ];

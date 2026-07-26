@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, JSON, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
@@ -8,9 +8,12 @@ from app.models.district import District
 
 class WeatherHistory(Base):
     __tablename__ = "weather_history"
+    __table_args__ = (
+        Index("idx_weather_district_time", "district_id", "recorded_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    district_id = Column(Integer, ForeignKey("districts.id"))
+    district_id = Column(Integer, ForeignKey("districts.id"), index=True)
     temperature = Column(Float)
     humidity = Column(Float)
     pressure = Column(Float)
@@ -20,15 +23,18 @@ class WeatherHistory(Base):
     cloud_cover = Column(Float)
     weather_code = Column(Integer)
     rain_probability = Column(Float)
-    recorded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    recorded_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
     district = relationship("District")
 
 class PredictionHistory(Base):
     __tablename__ = "prediction_history"
+    __table_args__ = (
+        Index("idx_pred_district_time", "district_id", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    district_id = Column(Integer, ForeignKey("districts.id"))
+    district_id = Column(Integer, ForeignKey("districts.id"), index=True)
     
     # Current state
     current_risk_score = Column(Float)
@@ -45,7 +51,7 @@ class PredictionHistory(Base):
     
     # SHAP Contributions (Stored as JSON)
     shap_values = Column(JSON)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
     district = relationship("District", back_populates="predictions")
 
 class ModelInference(Base):

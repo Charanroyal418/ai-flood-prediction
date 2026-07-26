@@ -15,21 +15,22 @@ scheduler = BackgroundScheduler()
 def job_run_orchestrator():
     db = SessionLocal()
     try:
+        from app.services.orchestrator import RealtimeOrchestrator
         orc = RealtimeOrchestrator(db)
         orc.run_pipeline()
     except Exception as e:
-        logger.error(f"Pipeline error: {e}")
+        logger.error(f"Pipeline background execution error: {e}")
     finally:
         db.close()
 
 def init_scheduler():
     if not scheduler.running:
-        logger.info("Initializing APScheduler for Real-Time Pipeline...")
+        logger.info("Initializing APScheduler for Real-Time Pipeline (20s interval)...")
         
-        # Add Jobs (Tick every 15 minutes)
+        # Add Jobs (Tick every 20 seconds)
         scheduler.add_job(
             job_run_orchestrator,
-            trigger=IntervalTrigger(minutes=15),
+            trigger=IntervalTrigger(seconds=20),
             id="realtime_pipeline",
             name="End-to-End Flood Intelligence Pipeline",
             replace_existing=True
