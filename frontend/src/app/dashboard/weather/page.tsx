@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { useFloodData } from "@/context/FloodDataContext";
 import { 
   CloudRain, Thermometer, Wind, Droplets, MapPin, 
   Mountain, Waves, Activity, AlertTriangle, Zap
@@ -51,6 +52,8 @@ const getTopology = (districtName: string) => {
 };
 
 function WeatherIntelligenceCard({ district, index }: { district: any; index: number }) {
+  const { mode, stormSimulationActive } = useFloodData();
+  const isStormActive = stormSimulationActive || mode === "SIMULATION";
   const topo = getTopology(district.name);
   const isHeavyRain = district.rainfall_mm > 50;
 
@@ -60,28 +63,43 @@ function WeatherIntelligenceCard({ district, index }: { district: any; index: nu
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="glass-card p-5 relative overflow-hidden"
+      className={`glass-card p-5 relative overflow-hidden transition-colors ${
+        isStormActive ? "border-amber-200 bg-amber-50/20" : ""
+      }`}
     >
-      {/* Background Warning Gradient if Heavy Rain */}
-      {isHeavyRain && (
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 pointer-events-none" />
+      {/* Background Warning Gradient if Heavy Rain or Storm */}
+      {(isHeavyRain || isStormActive) && (
+        <div className={`absolute inset-0 pointer-events-none ${
+          isStormActive ? "bg-gradient-to-br from-amber-500/10 to-orange-500/10" : "bg-gradient-to-br from-indigo-500/5 to-purple-500/5"
+        }`} />
       )}
       
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex justify-between items-start mb-4 relative z-10">
         <div>
-          <h3 className="text-lg font-heading font-bold text-slate-800">{district.name}</h3>
-          <p className="text-xs text-slate-500 font-medium tracking-wide">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-heading font-bold text-slate-800">{district.name}</h3>
+            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+              isStormActive
+                ? "bg-amber-500 text-white border-amber-600 shadow-sm"
+                : "bg-emerald-50 text-emerald-700 border-emerald-100"
+            }`}>
+              {isStormActive ? "Simulation Input" : "Live Observation"}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 font-medium tracking-wide mt-0.5">
             {topo.basin}
           </p>
         </div>
         <div className="text-right">
-          <span className="text-xl font-bold font-mono text-indigo-600">{district.rainfall_mm}</span>
+          <span className={`text-xl font-bold font-mono ${isStormActive ? "text-amber-600" : "text-indigo-600"}`}>
+            {district.rainfall_mm}
+          </span>
           <span className="text-xs text-slate-500 ml-1">mm/24h</span>
         </div>
       </div>
 
       {/* Weather Metrics */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-4 relative z-10">
         <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
           <Thermometer className="w-4 h-4 text-orange-500" />
           <span className="text-xs font-bold text-slate-700">{district.temperature}°C</span>
@@ -97,7 +115,7 @@ function WeatherIntelligenceCard({ district, index }: { district: any; index: nu
       </div>
 
       {/* Spatial / Topological Metrics for GDNN */}
-      <div className="pt-3 border-t border-slate-100 space-y-2">
+      <div className="pt-3 border-t border-slate-100 space-y-2 relative z-10">
         <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">GDNN Spatial Inputs</p>
         
         <div className="flex justify-between items-center text-[11px]">
@@ -109,17 +127,9 @@ function WeatherIntelligenceCard({ district, index }: { district: any; index: nu
         
         <div className="flex justify-between items-center text-[11px]">
           <span className="flex items-center gap-1.5 text-slate-600">
-            <Waves className="w-3.5 h-3.5 text-slate-400" /> Drainage Score
+            <Waves className="w-3.5 h-3.5 text-slate-400" /> Drainage Capacity
           </span>
-          <span className="flex items-center gap-2">
-            <span className="font-bold text-slate-800">{topo.drainage_score}/100</span>
-            <div className="w-12 h-1.5 bg-slate-200 rounded-full">
-              <div 
-                className={`h-full rounded-full ${topo.drainage_score < 40 ? 'bg-red-400' : 'bg-green-400'}`} 
-                style={{ width: `${topo.drainage_score}%` }} 
-              />
-            </div>
-          </span>
+          <span className="font-bold text-slate-800">{topo.drainage_score}/100</span>
         </div>
       </div>
 
@@ -136,6 +146,9 @@ function WeatherIntelligenceCard({ district, index }: { district: any; index: nu
 
 export default function WeatherCenter() {
   const queryClient = useQueryClient();
+  const { mode, stormSimulationActive, toggleStormSimulation } = useFloodData();
+  const isStormActive = stormSimulationActive || mode === "SIMULATION";
+
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", "live"],
     queryFn: async () => (await api.get("/dashboard/live")).data,
@@ -146,8 +159,8 @@ export default function WeatherCenter() {
   const handleSimulate = async () => {
     setSimulating(true);
     try {
-      await api.post("/dashboard/simulate-storm");
-      queryClient.invalidateQueries({ queryKey: ["dashboard", "live"] });
+      await toggleStormSimulation(!isStormActive);
+      await queryClient.invalidateQueries({ queryKey: ["dashboard", "live"] });
     } catch (err) {
       console.error(err);
     } finally {
@@ -201,12 +214,14 @@ export default function WeatherCenter() {
         <button
           onClick={handleSimulate}
           disabled={simulating}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 shadow-md flex items-center gap-1.5 ${
-            simulating ? "opacity-60 cursor-wait" : ""
-          }`}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-md flex items-center gap-1.5 cursor-pointer ${
+            isStormActive
+              ? "bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700"
+              : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+          } ${simulating ? "opacity-60 cursor-wait" : ""}`}
         >
-          <Zap className={`w-3.5 h-3.5 ${simulating ? "animate-bounce" : ""}`} />
-          {simulating ? "Simulating..." : "Simulate Storm"}
+          <Zap className={`w-3.5 h-3.5 ${simulating ? "animate-spin" : ""}`} />
+          {simulating ? "Updating..." : isStormActive ? "Stop Simulation & Restore Live" : "Trigger Storm Simulation"}
         </button>
       </div>
 

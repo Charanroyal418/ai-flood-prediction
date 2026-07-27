@@ -242,7 +242,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         for day in days_ordered:
             weekly_forecast.append({"day": day, "rainfall": 0.0})
 
-    from app.services.orchestrator import get_storm_simulation_active
+    from app.services.orchestrator import get_storm_simulation_active, get_storm_simulation_meta
+    sim_meta = get_storm_simulation_meta()
     res = {
         "status": "online",
         "timestamp": last_updated_ts,
@@ -257,8 +258,9 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "gdnn_inference_ms": inf.inference_time_ms if inf else 0,
             "kg_nodes": inf.node_count if inf else 0,
             "kg_edges": inf.edge_count if inf else 0,
-            "storm_simulation_active": get_storm_simulation_active(),
+            "storm_simulation_active": sim_meta["active"],
         },
+        "storm_simulation": sim_meta,
         "districts": districts_with_risk,
         "top_risk_districts": districts_with_risk[:5],
         "alerts": alerts_data,
@@ -279,7 +281,7 @@ def get_all_alerts(db: Session = Depends(deps.get_db)) -> Any:
 @router.post("/simulate-storm")
 def simulate_storm_event(active: bool = None, db: Session = Depends(deps.get_db)) -> Any:
     """Toggle or explicitly set heavy storm simulation state."""
-    from app.services.orchestrator import RealtimeOrchestrator, get_storm_simulation_active, set_storm_simulation_active
+    from app.services.orchestrator import RealtimeOrchestrator, get_storm_simulation_active, set_storm_simulation_active, get_storm_simulation_meta
     if active is None:
         new_state = set_storm_simulation_active(not get_storm_simulation_active(db), db)
     else:
@@ -287,12 +289,33 @@ def simulate_storm_event(active: bool = None, db: Session = Depends(deps.get_db)
         
     orchestrator = RealtimeOrchestrator(db)
     summary = orchestrator.run_pipeline(simulate_storm=new_state)
+    sim_meta = get_storm_simulation_meta()
     return {
         "status": "success",
         "storm_simulation_active": new_state,
+        "storm_simulation": sim_meta,
         "message": f"Storm simulation is now {'active' if new_state else 'inactive'}.",
         "summary": summary
     }
+
+@router.get("/audit-logs")
+def get_simulation_audit_logs(db: Session = Depends(deps.get_db)) -> Any:
+    """Returns simulation audit logs from KnowledgeGraphEvents."""
+    events = db.query(KnowledgeGraphEvents).filter(
+        KnowledgeGraphEvents.event_type.in_(["SIMULATION_STARTED", "SIMULATION_EXPIRED"])
+    ).order_by(KnowledgeGraphEvents.created_at.desc()).limit(50).all()
+    
+    return [
+        {
+            "id": evt.id,
+            "event_type": evt.event_type,
+            "description": evt.description,
+            "timestamp": evt.created_at.isoformat(),
+            "simulation_id": "SIM-20260727-001",
+            "scenario": "Cyclone Michaung",
+        }
+        for evt in events
+    ]
 
 @router.get("/history")
 def get_historical_flood_events() -> Any:

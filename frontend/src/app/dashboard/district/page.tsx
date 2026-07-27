@@ -24,7 +24,11 @@ const RISK_BG: Record<string, string> = {
   Safe: "bg-blue-50 text-blue-700 border-blue-100",
 };
 
+import { useFloodData } from "@/context/FloodDataContext";
+
 function DistrictDetailPanel({ district }: { district: any }) {
+  const { mode, stormSimulationActive } = useFloodData();
+  const isStormActive = stormSimulationActive || mode === "SIMULATION";
   const riskPct = district.risk_score;
 
   const radarOption = {
@@ -67,10 +71,17 @@ function DistrictDetailPanel({ district }: { district: any }) {
       className="space-y-4"
     >
       {/* Header card */}
-      <div className="glass-card p-5">
+      <div className={`glass-card p-5 border transition-colors ${isStormActive ? "bg-amber-50/20 border-amber-200" : ""}`}>
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-xl font-heading font-bold text-slate-800">{district.name}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-heading font-bold text-slate-800">{district.name}</h2>
+              {isStormActive && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-500 text-white uppercase tracking-wider shadow-sm">
+                  Simulated Analytics
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-400 mt-0.5">
               {district.coastal ? "Coastal District" : "Inland District"} · Pop: {district.population?.toLocaleString("en-IN")}
             </p>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { useFloodData } from "@/context/FloodDataContext";
 import ReactFlow, {
   Node, Edge, Background, Controls,
   useNodesState, useEdgesState,
@@ -393,14 +394,24 @@ export default function DynamicKnowledgeGraph() {
     return factors;
   };
 
+  const { mode, stormSimulationActive } = useFloodData();
+  const isStormActive = stormSimulationActive || mode === "SIMULATION";
+
   return (
     <div className="space-y-5 h-[calc(100vh-6rem)] pb-6 flex flex-col">
       {/* Top Header Controls */}
       <div className="flex justify-between items-center flex-wrap gap-4 flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-slate-800 flex items-center gap-2">
-            <Network className="w-6 h-6 text-violet-600" /> Dynamic Knowledge Graph Engine
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-heading font-bold text-slate-800 flex items-center gap-2">
+              <Network className="w-6 h-6 text-violet-600" /> Dynamic Knowledge Graph Engine
+            </h1>
+            {isStormActive && (
+              <span className="px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-bold uppercase tracking-wider shadow-sm animate-pulse">
+                🟠 SIMULATED GRAPH PROPAGATION
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">How flood risk spreads between districts in Tamil Nadu.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -447,8 +458,13 @@ export default function DynamicKnowledgeGraph() {
         <div className="col-span-12 lg:col-span-6 glass-card overflow-hidden relative flex flex-col border border-slate-200 shadow-lg rounded-2xl bg-white">
           
           <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-2 rounded-lg border border-slate-200 shadow-sm pointer-events-none">
-             <p className="text-xs font-bold text-slate-800">Node-Link Knowledge Graph</p>
-             <p className="text-[10px] text-slate-500">Nodes clustered by Basin Community</p>
+             <p className="text-xs font-bold text-slate-800 flex items-center gap-2">
+               Node-Link Knowledge Graph
+               {isStormActive && <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />}
+             </p>
+             <p className="text-[10px] text-slate-500">
+               {isStormActive ? "Simulated Downstream Risk Propagation Active" : "Nodes clustered by Basin Community"}
+             </p>
           </div>
 
           <div className="absolute top-4 right-4 z-10 flex gap-2">

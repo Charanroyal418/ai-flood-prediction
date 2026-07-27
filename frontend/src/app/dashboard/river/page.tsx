@@ -7,7 +7,11 @@ import dynamicImport from "next/dynamic";
 const ReactECharts = dynamicImport(() => import("echarts-for-react"), { ssr: false });
 import { Waves, AlertTriangle, TrendingUp, RefreshCw, Activity } from "lucide-react";
 
+import { useFloodData } from "@/context/FloodDataContext";
+
 function RiverCard({ river, index }: { river: any; index: number }) {
+  const { mode, stormSimulationActive } = useFloodData();
+  const isStormActive = stormSimulationActive || mode === "SIMULATION";
   const overflowPct = river.overflow_pct || 0;
   const isCritical = river.status === "Critical";
   const isWarning = river.status === "Warning";
@@ -18,12 +22,21 @@ function RiverCard({ river, index }: { river: any; index: number }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
       whileHover={{ y: -2 }}
-      className="glass-card p-5"
+      className={`glass-card p-5 border transition-colors ${
+        isStormActive ? "bg-amber-50/20 border-amber-200" : ""
+      }`}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          <p className="text-sm font-heading font-bold text-slate-800">{river.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-heading font-bold text-slate-800">{river.name}</p>
+            {isStormActive && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-white uppercase tracking-wider">
+                Simulated Wave
+              </span>
+            )}
+          </div>
           <p className="text-[10px] text-slate-400 mt-0.5">{river.station}</p>
         </div>
         <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
@@ -38,7 +51,7 @@ function RiverCard({ river, index }: { river: any; index: number }) {
       {/* Level gauge */}
       <div className="relative mb-4">
         <div className="flex justify-between text-[10px] text-slate-400 mb-1.5">
-          <span>Current Level</span>
+          <span>{isStormActive ? "Simulated Water Level" : "Current Level"}</span>
           <span className="font-semibold text-slate-700">{river.current_m}m / {river.danger_m}m danger</span>
         </div>
         <div className="w-full bg-slate-100 rounded-full h-3 relative overflow-hidden">
@@ -72,11 +85,11 @@ function RiverCard({ river, index }: { river: any; index: number }) {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-2">
         <div className="bg-blue-50 rounded-xl p-2.5 text-center">
-          <p className="text-[9px] text-blue-400 font-semibold uppercase">Current</p>
+          <p className="text-[9px] text-blue-400 font-semibold uppercase">{isStormActive ? "Simulated Level" : "Current"}</p>
           <p className="text-sm font-heading font-bold text-blue-700">{river.current_m}m</p>
         </div>
         <div className="bg-red-50 rounded-xl p-2.5 text-center">
-          <p className="text-[9px] text-red-400 font-semibold uppercase">Danger</p>
+          <p className="text-[9px] text-red-400 font-semibold uppercase">Danger Threshold</p>
           <p className="text-sm font-heading font-bold text-red-700">{river.danger_m}m</p>
         </div>
       </div>

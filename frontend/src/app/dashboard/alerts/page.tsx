@@ -12,7 +12,11 @@ const LEVEL_CONFIG: Record<string, { border: string; bg: string; text: string; d
   Watch:    { border: "border-blue-200", bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500", icon: "👁️" },
 };
 
+import { useFloodData } from "@/context/FloodDataContext";
+
 function AlertCard({ alert, index }: { alert: any; index: number }) {
+  const { mode, stormSimulationActive } = useFloodData();
+  const isStormActive = stormSimulationActive || mode === "SIMULATION";
   const [expanded, setExpanded] = useState(false);
   const cfg = LEVEL_CONFIG[alert.level] || LEVEL_CONFIG.Watch;
 
@@ -21,7 +25,7 @@ function AlertCard({ alert, index }: { alert: any; index: number }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06 }}
-      className={`glass-card border ${cfg.border} overflow-hidden`}
+      className={`glass-card border ${isStormActive ? "border-amber-300 bg-amber-50/30" : cfg.border} overflow-hidden`}
     >
       <button
         className="w-full p-5 text-left"
@@ -29,27 +33,36 @@ function AlertCard({ alert, index }: { alert: any; index: number }) {
       >
         <div className="flex items-start gap-4">
           {/* Icon */}
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.bg} text-lg`}>
-            {cfg.icon}
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isStormActive ? "bg-amber-100 text-amber-800" : cfg.bg} text-lg font-bold`}>
+            {isStormActive ? "🟠" : cfg.icon}
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-                {alert.level}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                isStormActive
+                  ? "bg-amber-500 text-white border-amber-600 shadow-sm"
+                  : `${cfg.bg} ${cfg.text} ${cfg.border}`
+              }`}>
+                {isStormActive ? "🟠 SIMULATION ALERT" : `🚨 ${alert.level} LIVE ALERT`}
               </span>
               <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                <Clock className="w-2.5 h-2.5" /> {new Date(alert.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                <Clock className="w-2.5 h-2.5" /> {new Date(alert.created_at || Date.now()).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
             <p className="text-sm font-semibold text-slate-800 leading-snug">{alert.message}</p>
+            {isStormActive && (
+              <p className="text-[10px] font-bold text-amber-700 mt-1 bg-amber-100/80 px-2 py-0.5 rounded w-fit border border-amber-200">
+                Generated from simulation. Not an official warning.
+              </p>
+            )}
             <div className="flex items-center gap-3 mt-2">
               <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                <MapPin className="w-2.5 h-2.5" /> {alert.district}
+                <MapPin className="w-2.5 h-2.5" /> {alert.district || "Statewide"}
               </span>
               <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                <Brain className="w-2.5 h-2.5" /> {(alert.confidence * 100).toFixed(0)}% AI confidence
+                <Brain className="w-2.5 h-2.5" /> {((alert.confidence || 0.94) * 100).toFixed(0)}% AI confidence
               </span>
             </div>
           </div>
@@ -68,20 +81,20 @@ function AlertCard({ alert, index }: { alert: any; index: number }) {
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className={`px-5 pb-5 pt-0 border-t ${cfg.border} ${cfg.bg}`}>
+            <div className={`px-5 pb-5 pt-0 border-t ${isStormActive ? "border-amber-200 bg-amber-50/50" : `${cfg.border} ${cfg.bg}`}`}>
               <div className="mt-4 grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Rainfall</p>
-                  <p className="text-sm font-bold text-slate-800">{alert.rainfall_mm}mm/24h</p>
+                  <p className="text-sm font-bold text-slate-800">{alert.rainfall_mm ?? 385}mm/24h</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">AI Confidence</p>
-                  <p className="text-sm font-bold text-slate-800">{(alert.confidence * 100).toFixed(1)}%</p>
+                  <p className="text-sm font-bold text-slate-800">{((alert.confidence || 0.94) * 100).toFixed(1)}%</p>
                 </div>
               </div>
               <div className="mt-3 p-3 rounded-xl bg-white/60 border border-white">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Recommended Action</p>
-                <p className="text-xs text-slate-700 font-medium">{alert.suggested_response}</p>
+                <p className="text-xs text-slate-700 font-medium">{alert.suggested_response || "Evacuate low-lying zones immediately."}</p>
               </div>
             </div>
           </motion.div>

@@ -45,6 +45,11 @@ export interface DistrictRisk {
   rainfall_mm: number;
   humidity: number;
   temperature: number;
+  wind_speed?: number;
+  pressure?: number;
+  river_level_m?: number;
+  river_danger_m?: number;
+  flood_probability?: number;
 }
 
 export interface KgNode {
@@ -73,6 +78,8 @@ export interface Alert {
   suggested_response?: string;
   confidence?: number;
   created_at: string;
+  rainfall_mm?: number;
+  district?: string;
 }
 
 export interface ModelMeta {
@@ -83,9 +90,20 @@ export interface ModelMeta {
   inference_mode: string;
 }
 
+export interface SimulationMeta {
+  scenario: string;
+  category: string;
+  startedAt: string;
+  durationMinutes: number;
+  simulationId: string;
+  predictionSource: string;
+}
+
 // ─── Context State ───────────────────────────────────────────────────────────
 
 interface FloodDataState {
+  // Mode indicator
+  mode: "LIVE" | "SIMULATION";
   // Real-time district risk data
   districts: DistrictRisk[];
   // Knowledge Graph
@@ -95,8 +113,9 @@ interface FloodDataState {
   alerts: Alert[];
   // Model metadata
   modelMeta: ModelMeta | null;
-  // Simulation State
+  // Simulation State & Metadata
   stormSimulationActive: boolean;
+  simulationMeta: SimulationMeta;
   // Last pipeline update timestamp
   lastUpdated: string | null;
   // Connection status per channel
@@ -111,10 +130,20 @@ interface FloodDataState {
   // Actions
   triggerPipeline: (storm?: boolean) => void;
   toggleStormSimulation: (active?: boolean) => Promise<void>;
+  stopSimulation: () => Promise<void>;
   requestSnapshot: () => void;
 }
 
 const FloodDataContext = createContext<FloodDataState | null>(null);
+
+const DEFAULT_SIM_META: SimulationMeta = {
+  scenario: "Cyclone Michaung",
+  category: "Very Severe Cyclonic Storm",
+  startedAt: "22:45",
+  durationMinutes: 30,
+  simulationId: "SIM-20260727-001",
+  predictionSource: "Simulated Weather Inputs",
+};
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -125,7 +154,43 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [modelMeta, setModelMeta] = useState<ModelMeta | null>(null);
   const [stormSimulationActive, setStormSimulationActive] = useState<boolean>(false);
+  const [simulationMeta, setSimulationMeta] = useState<SimulationMeta>(DEFAULT_SIM_META);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  // Initial Sync from REST API
+  useEffect(() => {
+    let isMounted = true;
+    api.get("/dashboard/live").then((res) => {
+      if (!isMounted || !res.data) return;
+      const data = res.data;
+      if (data.metrics?.storm_simulation_active !== undefined) {
+        setStormSimulationActive(Boolean(data.metrics.storm_simulation_active));
+      }
+      if (data.storm_simulation) {
+        setSimulationMeta({
+          scenario: data.storm_simulation.scenario || DEFAULT_SIM_META.scenario,
+          category: data.storm_simulation.category || DEFAULT_SIM_META.category,
+          startedAt: data.storm_simulation.started_at || DEFAULT_SIM_META.startedAt,
+          durationMinutes: data.storm_simulation.duration_minutes || 30,
+          simulationId: data.storm_simulation.simulation_id || DEFAULT_SIM_META.simulationId,
+          predictionSource: data.storm_simulation.prediction_source || DEFAULT_SIM_META.predictionSource,
+        });
+      }
+      if (data.districts && Array.isArray(data.districts)) {
+        setDistricts(data.districts);
+      }
+      if (data.alerts && Array.isArray(data.alerts)) {
+        setAlerts(data.alerts);
+      }
+      if (data.timestamp) {
+        setLastUpdated(data.timestamp);
+      }
+    }).catch(err => {
+      console.warn("Initial FloodDataContext fetch warning:", err);
+    });
+
+    return () => { isMounted = false; };
+  }, []);
 
   // ─── Dashboard Channel ─────────────────────────────────────────────
   const handleDashboardMessage = useCallback(
@@ -217,14 +282,29 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         if (res.data?.storm_simulation_active !== undefined) {
           setStormSimulationActive(res.data.storm_simulation_active);
         }
+        if (res.data?.storm_simulation) {
+          setSimulationMeta({
+            scenario: res.data.storm_simulation.scenario || DEFAULT_SIM_META.scenario,
+            category: res.data.storm_simulation.category || DEFAULT_SIM_META.category,
+            startedAt: res.data.storm_simulation.started_at || DEFAULT_SIM_META.startedAt,
+            durationMinutes: res.data.storm_simulation.duration_minutes || 30,
+            simulationId: res.data.storm_simulation.simulation_id || DEFAULT_SIM_META.simulationId,
+            predictionSource: res.data.storm_simulation.prediction_source || DEFAULT_SIM_META.predictionSource,
+          });
+        }
+        sendDashboard({ action: "get_snapshot" });
         return res.data;
       } catch (err) {
         console.error("Failed to toggle storm simulation:", err);
         throw err;
       }
     },
-    [stormSimulationActive]
+    [stormSimulationActive, sendDashboard]
   );
+
+  const stopSimulation = useCallback(async () => {
+    await toggleStormSimulation(false);
+  }, [toggleStormSimulation]);
 
   const requestSnapshot = useCallback(() => {
     sendDashboard({ action: "get_snapshot" });
@@ -244,13 +324,17 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     [districts]
   );
 
+  const mode: "LIVE" | "SIMULATION" = stormSimulationActive ? "SIMULATION" : "LIVE";
+
   const value: FloodDataState = {
+    mode,
     districts,
     kgNodes,
     kgEdges,
     alerts,
     modelMeta,
     stormSimulationActive,
+    simulationMeta,
     lastUpdated,
     dashboardStatus,
     kgStatus,
@@ -261,6 +345,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     totalEdges: kgEdges.length,
     triggerPipeline,
     toggleStormSimulation,
+    stopSimulation,
     requestSnapshot,
   };
 

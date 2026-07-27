@@ -48,7 +48,28 @@ logger = logging.getLogger(__name__)
 # Persistent Simulation State with Safeguard
 _STORM_SIMULATION_ACTIVE: bool = False
 _STORM_SIMULATION_ACTIVATED_AT: Optional[datetime] = None
-STORM_SIMULATION_MAX_DURATION_MINUTES: int = 15
+STORM_SIMULATION_MAX_DURATION_MINUTES: int = 30
+
+_STORM_SIMULATION_META: Dict[str, Any] = {
+    "scenario": "Cyclone Michaung",
+    "category": "Very Severe Cyclonic Storm",
+    "started_at": None,
+    "duration_minutes": 30,
+    "simulation_id": "SIM-20260727-001",
+    "prediction_source": "Simulated Weather Inputs",
+}
+
+def get_storm_simulation_meta() -> Dict[str, Any]:
+    global _STORM_SIMULATION_ACTIVE, _STORM_SIMULATION_ACTIVATED_AT, _STORM_SIMULATION_META
+    active = get_storm_simulation_active()
+    started_str = _STORM_SIMULATION_ACTIVATED_AT.strftime("%H:%M") if _STORM_SIMULATION_ACTIVATED_AT else "N/A"
+    return {
+        **_STORM_SIMULATION_META,
+        "active": active,
+        "mode": "SIMULATION" if active else "LIVE",
+        "started_at": started_str,
+        "prediction_source": "Simulated Weather Inputs" if active else "Open-Meteo + WRIS",
+    }
 
 def clear_simulation_state(db: Optional[Session] = None, reason: str = "Manual Stop Simulation") -> None:
     """Bulletproof clearing of all simulation state, caches, DB overrides, and rebuilding KG."""
@@ -57,11 +78,18 @@ def clear_simulation_state(db: Optional[Session] = None, reason: str = "Manual S
     _STORM_SIMULATION_ACTIVATED_AT = None
     logger.info(f"[Orchestrator] Clearing simulation state: {reason}")
 
-    # 1. Reset in-process inference cycle cache
+    # 1. Reset in-process inference cycle cache & dashboard live cache
     try:
         from app.api.endpoints.inference_cycle import _cycle_cache
         _cycle_cache["payload"] = None
         _cycle_cache["ts"] = 0.0
+    except Exception:
+        pass
+
+    try:
+        from app.api.endpoints.dashboard import _dash_live_cache
+        _dash_live_cache["data"] = None
+        _dash_live_cache["ts"] = 0.0
     except Exception:
         pass
 
@@ -107,7 +135,7 @@ def get_storm_simulation_active(db: Optional[Session] = None) -> bool:
         elapsed = (datetime.now(timezone.utc) - _STORM_SIMULATION_ACTIVATED_AT).total_seconds() / 60.0
         if elapsed > STORM_SIMULATION_MAX_DURATION_MINUTES:
             logger.info(f"[Orchestrator] Storm simulation auto-expired after {elapsed:.1f} minutes.")
-            clear_simulation_state(db, reason="Timeout exceeded (15 min)")
+            clear_simulation_state(db, reason="Timeout exceeded (30 min)")
     return _STORM_SIMULATION_ACTIVE
 
 def set_storm_simulation_active(active: bool, db: Optional[Session] = None) -> bool:
@@ -118,6 +146,24 @@ def set_storm_simulation_active(active: bool, db: Optional[Session] = None) -> b
         _STORM_SIMULATION_ACTIVE = True
         _STORM_SIMULATION_ACTIVATED_AT = datetime.now(timezone.utc)
         logger.info(f"[Orchestrator] Storm simulation state activated at {_STORM_SIMULATION_ACTIVATED_AT.isoformat()}")
+
+        if db is not None:
+            try:
+                evt = KnowledgeGraphEvents(
+                    source_district_id=1,
+                    target_district_id=1,
+                    event_type="SIMULATION_STARTED",
+                    description=(
+                        "Storm Simulation SIM-20260727-001 (Cyclone Michaung - Very Severe Cyclonic Storm) activated. "
+                        "Simulated weather inputs injected across all telemetry pipelines."
+                    ),
+                    created_at=_STORM_SIMULATION_ACTIVATED_AT
+                )
+                db.add(evt)
+                db.commit()
+            except Exception as e:
+                logger.error(f"[Orchestrator] Error logging simulation start event: {e}")
+
     return _STORM_SIMULATION_ACTIVE
 
 # Risk level -> alert severity mapping

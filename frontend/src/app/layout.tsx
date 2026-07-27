@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "FloodSense AI — Tamil Nadu Flood Intelligence Platform",
   description: "Intelligent Prediction of Flood Disaster Risk Levels Based on Knowledge Graph and Graph Dynamic Neural Networks. Real-time AI monitoring for Tamil Nadu.",

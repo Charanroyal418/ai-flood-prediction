@@ -52,10 +52,14 @@ const navSections = [
   },
 ];
 
+import GlobalSimulationBanner from "@/components/layout/GlobalSimulationBanner";
+import { useFloodData } from "@/context/FloodDataContext";
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const { mode, stormSimulationActive, lastUpdated } = useFloodData();
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -72,6 +76,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const alertCount = liveData?.metrics?.active_alerts_count ?? 0;
 
   if (!mounted) return null;
+
+  const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#FAFBFF]">
@@ -100,27 +106,33 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 className="ml-3 overflow-hidden"
               >
                 <p className="text-sm font-heading font-bold text-slate-800 leading-tight whitespace-nowrap">FloodSense AI</p>
-                <p className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Tamil Nadu · GDNN v2</p>
+                <p className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Tamil Nadu · EOC Platform</p>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-        {/* Live status pill */}
+        {/* Live / Simulation status pill */}
         <AnimatePresence>
           {!collapsed && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="mx-4 mt-4 px-3 py-2 rounded-xl bg-green-50 border border-green-100 flex items-center gap-2 relative z-10"
+              className={`mx-4 mt-4 px-3 py-2 rounded-xl border flex items-center gap-2 relative z-10 transition-colors ${
+                isStormActive
+                  ? "bg-amber-50 border-amber-200 text-amber-800"
+                  : "bg-emerald-50 border-emerald-100 text-emerald-700"
+              }`}
             >
               <div className="relative flex-shrink-0">
-                <div className="w-2 h-2 rounded-full bg-green-500" />
-                <div className="absolute inset-0 w-2 h-2 rounded-full bg-green-400 animate-ping opacity-75" />
+                <div className={`w-2 h-2 rounded-full ${isStormActive ? "bg-amber-500" : "bg-emerald-500"}`} />
+                <div className={`absolute inset-0 w-2 h-2 rounded-full animate-ping opacity-75 ${isStormActive ? "bg-amber-400" : "bg-emerald-400"}`} />
               </div>
-              <span className="text-[11px] font-semibold text-green-700">Live · All Systems Online</span>
-              <Zap className="w-3 h-3 text-green-500 ml-auto" />
+              <span className="text-[11px] font-bold">
+                {isStormActive ? "🟠 STORM SIMULATION ACTIVE" : "🟢 LIVE · All Systems Online"}
+              </span>
+              <Zap className={`w-3 h-3 ml-auto ${isStormActive ? "text-amber-500" : "text-emerald-500"}`} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -233,7 +245,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   exit={{ opacity: 0 }}
                 >
                   <p className="text-xs font-semibold text-slate-700 whitespace-nowrap">Tamil Nadu SDMA</p>
-                  <p className="text-[10px] text-slate-400 whitespace-nowrap">State Command</p>
+                  <p className="text-[10px] text-slate-400 whitespace-nowrap">State EOC Command</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -247,24 +259,31 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <header className="h-14 bg-white/80 backdrop-blur-xl border-b border-purple-50 flex items-center px-6 gap-4 flex-shrink-0 z-10">
           <div className="flex-1 flex items-center gap-3">
             <div className="flex items-center gap-2 text-xs text-slate-500">
-              <Circle className="w-2 h-2 fill-green-500 text-green-500" />
+              <Circle className={`w-2 h-2 fill-current ${isStormActive ? "text-amber-500" : "text-emerald-500"}`} />
               <span className="font-medium">Backend Connected</span>
             </div>
             <div className="h-4 w-px bg-slate-200" />
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <span>Last update:</span>
-              <span className="font-semibold text-slate-700">{new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+              <span>Last Updated:</span>
+              <span className="font-semibold text-slate-700">{lastUpdated ? new Date(lastUpdated).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-100 text-xs font-semibold text-violet-700">
-              GDNN v2 · Active
+              Data Source: {isStormActive ? "Simulated Weather Inputs" : "Open-Meteo + WRIS"}
             </div>
-            <div className="px-3 py-1.5 rounded-lg bg-green-50 border border-green-100 text-xs font-semibold text-green-700">
-              Tamil Nadu · Live
+            <div className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+              isStormActive
+                ? "bg-amber-500 text-white border-amber-600 shadow-sm animate-pulse"
+                : "bg-emerald-50 text-emerald-700 border-emerald-100"
+            }`}>
+              {isStormActive ? "🟠 STORM SIMULATION ACTIVE" : "🟢 LIVE"}
             </div>
           </div>
         </header>
+
+        {/* EOC Global Banner across all pages */}
+        <GlobalSimulationBanner />
 
         <main className="flex-1 overflow-y-auto no-scrollbar">
           <AnimatePresence mode="wait">
