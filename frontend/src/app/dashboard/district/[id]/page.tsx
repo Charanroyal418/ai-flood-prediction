@@ -12,7 +12,7 @@ const ReactECharts = dynamicImport(() => import("echarts-for-react"), { ssr: fal
 export default function DistrictDrilldown() {
   const params = useParams();
   const router = useRouter();
-  const id = params.id as string;
+  const id = (params?.id as string) || "";
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({

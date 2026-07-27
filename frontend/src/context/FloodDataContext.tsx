@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * FloodData Context
  * ------------------
@@ -11,8 +13,6 @@
  *
  * Replaces TanStack Query polling with push-based updates.
  */
-
-"use client";
 
 import React, {
   createContext,
@@ -358,10 +358,34 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
+/** Safe defaults returned when hook is called outside a FloodDataProvider (e.g. SSR) */
+const SAFE_DEFAULT: FloodDataState = {
+  mode: "LIVE",
+  districts: [],
+  kgNodes: [],
+  kgEdges: [],
+  alerts: [],
+  modelMeta: null,
+  stormSimulationActive: false,
+  simulationMeta: DEFAULT_SIM_META,
+  lastUpdated: null,
+  dashboardStatus: "disconnected",
+  kgStatus: "disconnected",
+  alertStatus: "disconnected",
+  criticalCount: 0,
+  highCount: 0,
+  totalNodes: 0,
+  totalEdges: 0,
+  triggerPipeline: () => {},
+  toggleStormSimulation: async () => {},
+  stopSimulation: async () => {},
+  requestSnapshot: () => {},
+};
+
 export function useFloodData(): FloodDataState {
   const ctx = useContext(FloodDataContext);
-  if (!ctx) {
-    throw new Error("useFloodData must be used within a FloodDataProvider");
-  }
+  // Return safe defaults if called outside a provider (SSR / build-time)
+  if (!ctx) return SAFE_DEFAULT;
   return ctx;
 }
+

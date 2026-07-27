@@ -147,6 +147,21 @@ def set_storm_simulation_active(active: bool, db: Optional[Session] = None) -> b
         _STORM_SIMULATION_ACTIVATED_AT = datetime.now(timezone.utc)
         logger.info(f"[Orchestrator] Storm simulation state activated at {_STORM_SIMULATION_ACTIVATED_AT.isoformat()}")
 
+        # INSTANTLY CLEAR ALL CACHES SO APIS SERVE SIMULATION DATA
+        try:
+            from app.api.endpoints.inference_cycle import _cycle_cache
+            _cycle_cache["payload"] = None
+            _cycle_cache["ts"] = 0.0
+        except Exception:
+            pass
+
+        try:
+            from app.api.endpoints.dashboard import _dash_live_cache
+            _dash_live_cache["data"] = None
+            _dash_live_cache["ts"] = 0.0
+        except Exception:
+            pass
+
         if db is not None:
             try:
                 evt = KnowledgeGraphEvents(
@@ -614,6 +629,15 @@ class RealtimeOrchestrator:
             # ─── STEP 9: WebSocket Broadcast ──────────────────────────────
             # Run async broadcast in a new event loop if called from sync context
             self._trigger_ws_broadcast(result_map, districts, alerts_generated, summary)
+
+            # ─── STEP 10: UPDATE GLOBAL INFERENCE CACHE ──────────────────────────────
+            # This ensures /predict/inference-cycle serves this new state immediately
+            try:
+                from app.api.endpoints.inference_cycle import _cycle_cache
+                _cycle_cache["payload"] = sanitize_numpy(stages)
+                _cycle_cache["ts"] = time.time()
+            except Exception:
+                pass
 
             return summary
 

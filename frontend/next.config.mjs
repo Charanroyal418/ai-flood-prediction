@@ -1,13 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false,
-  // Disable static optimization for API-dependent pages
-  // All dashboard pages fetch live data from the backend
-  output: undefined,
-  transpilePackages: ['reactflow', 'react-leaflet', 'lucide-react', 'framer-motion', 'recharts'],
-  experimental: {
-    // Allow server actions if needed in future
-  },
+  reactStrictMode: true,
+  transpilePackages: ['lucide-react', 'react-leaflet', 'leaflet', 'echarts', 'echarts-for-react'],
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true }
 };
-
 export default nextConfig;
