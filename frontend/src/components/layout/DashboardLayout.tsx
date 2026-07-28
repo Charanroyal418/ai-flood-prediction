@@ -20,9 +20,11 @@ import {
   ShieldCheck,
   Zap,
   Circle,
+  ShieldAlert,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 const navSections = [
   {
@@ -48,6 +50,13 @@ const navSections = [
       { name: "Alert Center", href: "/dashboard/alerts", icon: Bell, description: "Active alerts", badge: true },
       { name: "System Health", href: "/dashboard/system", icon: Activity, description: "Platform status" },
       { name: "Performance Monitor", href: "/dashboard/performance", icon: Zap, description: "Latency & metrics" },
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      { name: "Admin Panel", href: "/dashboard/admin", icon: ShieldAlert, description: "System control" },
+      { name: "Realtime Monitor", href: "/dashboard/realtime", icon: Activity, description: "Live stream" },
     ],
   },
 ];
@@ -231,9 +240,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           )}
         </button>
 
-        {/* User footer */}
-        <div className={`p-3 border-t border-purple-50/80 relative z-10 ${collapsed ? "flex justify-center" : ""}`}>
-          <div className={`flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer ${collapsed ? "justify-center" : ""}`}>
+        {/* User footer + Theme Toggle */}
+        <div className={`p-3 border-t border-purple-50/80 dark:border-slate-800 relative z-10 ${collapsed ? "flex flex-col items-center gap-2" : ""}`}>
+          <div className={`flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${collapsed ? "justify-center" : ""}`}>
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               TN
             </div>
@@ -244,12 +253,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                 >
-                  <p className="text-xs font-semibold text-slate-700 whitespace-nowrap">Tamil Nadu SDMA</p>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">Tamil Nadu SDMA</p>
                   <p className="text-[10px] text-slate-400 whitespace-nowrap">State EOC Command</p>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
+          {/* Theme toggle below user info */}
+          {!collapsed && (
+            <div className="flex items-center justify-between px-2 mt-2">
+              <span className="text-[10px] text-slate-400 font-medium">Theme</span>
+              <ThemeToggle />
+            </div>
+          )}
+          {collapsed && <ThemeToggle />}
         </div>
       </motion.nav>
 

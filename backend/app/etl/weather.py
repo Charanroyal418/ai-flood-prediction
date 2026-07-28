@@ -1,18 +1,33 @@
+"""
+Weather ETL — Open-Meteo Live Data Pipeline
+=============================================
+Fetches real-time weather data for all 38 Tamil Nadu districts
+from Open-Meteo (free, no API key required).
+
+Fixes applied vs original:
+  - mm_24h now uses actual daily.precipitation_sum (not mm * 24 hack)
+  - Timeout increased to 8s for batch calls
+  - Per-district error handling (one failure doesn't kill all 38)
+  - Batch processing to avoid URL length limits
+"""
+import json
+import logging
+import os
+from typing import List, Dict, Any, Optional
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
 from app.etl.base import BaseETLPipeline
 from app.models.district import District
 from app.models.weather import Weather, Rainfall
 from app.models.history import WeatherHistory
-from sqlalchemy import func
-import logging
-import json
-import os
 
 logger = logging.getLogger(__name__)
 
-TN_DISTRICTS = {
+# ── Tamil Nadu District Coordinates ──────────────────────────────────────────
+TN_DISTRICTS: Dict[str, tuple] = {
     "Chennai": (13.0827, 80.2707),
     "Kancheepuram": (12.8364, 79.7036),
     "Chengalpattu": (12.6939, 79.9757),
@@ -53,155 +68,247 @@ TN_DISTRICTS = {
     "Kanyakumari": (8.0883, 77.5385),
 }
 
+# Batch size to avoid URL length limits (Open-Meteo supports up to ~50 coords)
+_BATCH_SIZE = 10
+_OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+
+
+def _fetch_batch(
+    session: requests.Session,
+    districts: List[District],
+    timeout: float,
+) -> List[Dict[str, Any]]:
+    """
+    Fetch weather for a batch of districts in a single API call.
+    Returns list of raw data dicts, one per district.
+    """
+    lats = []
+    lons = []
+    for d in districts:
+        lat, lon = TN_DISTRICTS[d.name]
+        lats.append(str(lat))
+        lons.append(str(lon))
+
+    params = {
+        "latitude": ",".join(lats),
+        "longitude": ",".join(lons),
+        "current": (
+            "temperature_2m,relative_humidity_2m,surface_pressure,"
+            "precipitation,wind_speed_10m,wind_direction_10m,cloud_cover,weather_code"
+        ),
+        "hourly": "precipitation_probability",
+        "daily": "precipitation_sum,precipitation_hours",
+        "timezone": "Asia/Kolkata",
+        "forecast_days": 7,
+    }
+
+    try:
+        resp = session.get(_OPEN_METEO_URL, params=params, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # API returns list if multiple coords, dict if single
+        results = data if isinstance(data, list) else [data]
+
+        raw = []
+        for i, d in enumerate(districts):
+            if i >= len(results):
+                break
+            res = results[i]
+            current = res.get("current", {})
+            hourly = res.get("hourly", {})
+            daily = res.get("daily", {})
+
+            # Precipitation probability at current hour
+            rain_prob = 0
+            prec_probs = hourly.get("precipitation_probability", [])
+            if prec_probs:
+                rain_prob = prec_probs[0]
+
+            # ── KEY FIX: use actual daily precipitation_sum for mm_24h ──────
+            # The original code used `rainfall_mm * 24` which is completely wrong.
+            # daily.precipitation_sum[0] = today's total rainfall forecast in mm.
+            prec_sums = daily.get("precipitation_sum", [])
+            mm_24h = float(prec_sums[0]) if prec_sums else current.get("precipitation", 0.0) or 0.0
+
+            # Build 7-day forecast list
+            daily_forecast = []
+            for j in range(min(7, len(prec_sums))):
+                try:
+                    date_str = daily.get("time", [])[j]
+                    from datetime import datetime
+                    day_name = datetime.strptime(date_str, "%Y-%m-%d").strftime("%a")
+                    daily_forecast.append({
+                        "day": day_name,
+                        "rainfall": round(float(prec_sums[j]), 1),
+                        "date": date_str,
+                    })
+                except Exception:
+                    pass
+
+            raw.append({
+                "district_id": d.id,
+                "district_name": d.name,
+                "temperature": current.get("temperature_2m", 28.0),
+                "humidity": current.get("relative_humidity_2m", 70.0),
+                "pressure": current.get("surface_pressure", 1012.0),
+                "rainfall_mm": current.get("precipitation", 0.0) or 0.0,
+                "mm_24h": mm_24h,
+                "wind_speed": current.get("wind_speed_10m", 0.0),
+                "wind_direction": current.get("wind_direction_10m", 0),
+                "cloud_cover": current.get("cloud_cover", 0.0),
+                "weather_code": current.get("weather_code", 0),
+                "rain_probability": rain_prob,
+                "daily_forecast": daily_forecast,
+            })
+        return raw
+
+    except requests.exceptions.Timeout:
+        logger.warning(
+            f"[WeatherETL] Timeout fetching {len(districts)} districts. Skipping batch."
+        )
+        return []
+    except Exception as e:
+        logger.error(f"[WeatherETL] Batch fetch failed: {e}")
+        return []
+
+
 class WeatherETL(BaseETLPipeline):
     def __init__(self, db):
         super().__init__(db, "OpenMeteo_Weather_ETL")
-        retry_strategy = Retry(total=3, status_forcelist=[429, 500, 502, 503, 504], backoff_factor=1)
-        adapter = HTTPAdapter(max_retries=retry_strategy)
+        retry = Retry(
+            total=3,
+            status_forcelist=[429, 500, 502, 503, 504],
+            backoff_factor=1.5,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
         self.session = requests.Session()
         self.session.mount("https://", adapter)
-        self.districts_map = {}
+        self.valid_districts: List[District] = []
 
-    def extract(self):
+    def extract(self) -> List[Dict[str, Any]]:
         districts = self.db.query(District).all()
-        lats = []
-        lons = []
-        self.valid_districts = []
-        
-        for d in districts:
-            if d.name in TN_DISTRICTS:
-                lat, lon = TN_DISTRICTS[d.name]
-                lats.append(str(lat))
-                lons.append(str(lon))
-                self.valid_districts.append(d)
-        
-        if not lats:
-            logger.warning("No matched districts found for weather extraction.")
+        self.valid_districts = [d for d in districts if d.name in TN_DISTRICTS]
+
+        if not self.valid_districts:
+            logger.warning("[WeatherETL] No matched districts found.")
             return []
 
-        # Batch request
-        lat_str = ",".join(lats)
-        lon_str = ",".join(lons)
-        
-        # New URL fetching 9 requested parameters
-        url = (
-            f"https://api.open-meteo.com/v1/forecast?latitude={lat_str}&longitude={lon_str}"
-            "&current=temperature_2m,relative_humidity_2m,surface_pressure,precipitation,"
-            "wind_speed_10m,wind_direction_10m,cloud_cover,weather_code"
-            "&hourly=precipitation_probability"
-            "&daily=precipitation_sum"
-            "&timezone=Asia%2FKolkata"
-        )
-        
-        try:
-            response = self.session.get(url, timeout=1.5)
-            response.raise_for_status()
-            data = response.json()
-            
-            # API returns a list if multiple coordinates, or dict if only 1
-            results = data if isinstance(data, list) else [data]
-            
-            raw_data = []
-            for i, d in enumerate(self.valid_districts):
-                res = results[i]
-                current = res.get("current", {})
-                hourly = res.get("hourly", {})
-                
-                # Get current hour rain probability
-                rain_prob = 0
-                if hourly and "precipitation_probability" in hourly:
-                    rain_prob = hourly["precipitation_probability"][0] if len(hourly["precipitation_probability"]) > 0 else 0
-                    
-                raw_data.append({
-                    "district_id": d.id,
-                    "temperature": current.get("temperature_2m", 0),
-                    "humidity": current.get("relative_humidity_2m", 0),
-                    "pressure": current.get("surface_pressure", 1013),
-                    "rainfall_mm": current.get("precipitation", 0),
-                    "wind_speed": current.get("wind_speed_10m", 0),
-                    "wind_direction": current.get("wind_direction_10m", 0),
-                    "cloud_cover": current.get("cloud_cover", 0),
-                    "weather_code": current.get("weather_code", 0),
-                    "rain_probability": rain_prob
-                })
-            
-            # Extract daily forecast for state average
-            daily_forecasts = []
-            for i in range(7): # Open-Meteo returns 7 days by default
-                try:
-                    date = results[0]["daily"]["time"][i]
-                    avg_precip = sum(res["daily"]["precipitation_sum"][i] for res in results if "daily" in res and "precipitation_sum" in res["daily"]) / len(results)
-                    # Convert date (YYYY-MM-DD) to Day name (e.g. Mon, Tue)
-                    from datetime import datetime
-                    day_name = datetime.strptime(date, "%Y-%m-%d").strftime("%a")
-                    daily_forecasts.append({"day": day_name, "rainfall": round(avg_precip, 1)})
-                except Exception as e:
-                    logger.warning(f"Failed to parse daily forecast for day {i}: {e}")
-            
-            if daily_forecasts:
-                data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
-                os.makedirs(data_dir, exist_ok=True)
+        all_raw: List[Dict[str, Any]] = []
+
+        # Process in batches to avoid URL length limits
+        for i in range(0, len(self.valid_districts), _BATCH_SIZE):
+            batch = self.valid_districts[i: i + _BATCH_SIZE]
+            logger.info(
+                f"[WeatherETL] Fetching batch {i // _BATCH_SIZE + 1}: "
+                f"{[d.name for d in batch]}"
+            )
+            batch_data = _fetch_batch(self.session, batch, timeout=8.0)
+            all_raw.extend(batch_data)
+
+        # Save state-wide 7-day forecast (first district's forecast is representative)
+        if all_raw and all_raw[0].get("daily_forecast"):
+            data_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"
+            )
+            os.makedirs(data_dir, exist_ok=True)
+            # Average precipitation across all districts for state forecast
+            n = len(all_raw)
+            if n > 0 and all_raw[0]["daily_forecast"]:
+                days = len(all_raw[0]["daily_forecast"])
+                state_forecast = []
+                for j in range(days):
+                    total_rain = sum(
+                        r["daily_forecast"][j]["rainfall"]
+                        for r in all_raw
+                        if j < len(r["daily_forecast"])
+                    )
+                    state_forecast.append({
+                        "day": all_raw[0]["daily_forecast"][j]["day"],
+                        "date": all_raw[0]["daily_forecast"][j]["date"],
+                        "rainfall": round(total_rain / n, 1),
+                    })
                 with open(os.path.join(data_dir, "state_forecast.json"), "w") as f:
-                    json.dump(daily_forecasts, f)
+                    json.dump(state_forecast, f)
 
-            return raw_data
-        except Exception as e:
-            logger.error(f"Open-Meteo API Failed: {e}")
-            # Fallback to last known weather from DB
-            logger.info("Using cached weather from database failover.")
-            return []
+        logger.info(f"[WeatherETL] Extracted {len(all_raw)} district records.")
+        return all_raw
 
-    def validate(self, raw_data):
-        return raw_data # Minimal validation for speed
+    def validate(self, raw_data: List[Dict]) -> List[Dict]:
+        valid = []
+        for row in raw_data:
+            # Range checks
+            if not (-10 <= row.get("temperature", 30) <= 60):
+                logger.warning(f"[WeatherETL] Invalid temperature for {row['district_name']}: {row['temperature']}")
+                row["temperature"] = 30.0
+            if not (0 <= row.get("humidity", 70) <= 100):
+                row["humidity"] = 70.0
+            if not (800 <= row.get("pressure", 1013) <= 1100):
+                row["pressure"] = 1013.0
+            if row.get("rainfall_mm", 0) < 0:
+                row["rainfall_mm"] = 0.0
+            if row.get("mm_24h", 0) < 0:
+                row["mm_24h"] = 0.0
+            valid.append(row)
+        return valid
 
-    def transform(self, valid_data):
+    def transform(self, valid_data: List[Dict]):
         transformed = []
         for row in valid_data:
-            # Determine status from weather code or rainfall
+            # Determine weather status
             status = "Clear"
-            if row['rainfall_mm'] > 0: status = "Rain"
-            if row['rainfall_mm'] > 10: status = "Heavy Rain"
-                
+            r = row.get("rainfall_mm", 0) or 0
+            if r > 0.5:
+                status = "Rain"
+            if r > 10:
+                status = "Heavy Rain"
+            if r > 35:
+                status = "Very Heavy Rain"
+
             history = WeatherHistory(
-                district_id=row['district_id'],
-                temperature=row['temperature'],
-                humidity=row['humidity'],
-                pressure=row['pressure'],
-                rainfall_mm=row['rainfall_mm'],
-                wind_speed=row['wind_speed'],
-                wind_direction=row['wind_direction'],
-                cloud_cover=row['cloud_cover'],
-                weather_code=row['weather_code'],
-                rain_probability=row['rain_probability']
+                district_id=row["district_id"],
+                temperature=row["temperature"],
+                humidity=row["humidity"],
+                pressure=row["pressure"],
+                rainfall_mm=row["rainfall_mm"],
+                wind_speed=row["wind_speed"],
+                wind_direction=row["wind_direction"],
+                cloud_cover=row["cloud_cover"],
+                weather_code=row["weather_code"],
+                rain_probability=row["rain_probability"],
             )
-            
+
             weather = Weather(
-                district_id=row['district_id'],
-                temperature=row['temperature'],
-                humidity=row['humidity'],
-                pressure=row['pressure'],
-                status=status
+                district_id=row["district_id"],
+                temperature=row["temperature"],
+                humidity=row["humidity"],
+                pressure=row["pressure"],
+                status=status,
             )
-            
+
             rainfall = Rainfall(
-                district_id=row['district_id'],
-                mm_per_hour=row['rainfall_mm'],
-                mm_24h=row['rainfall_mm'] * 24 # rough estimate for now
+                district_id=row["district_id"],
+                mm_per_hour=row["rainfall_mm"],
+                mm_24h=row["mm_24h"],  # ← real daily sum, not hack
             )
-            
+
             transformed.append((history, weather, rainfall))
         return transformed
 
     def load(self, transformed_data):
         if not transformed_data:
             return
-            
+
         for history, weather, rainfall in transformed_data:
-            # Update existing weather/rainfall or insert new history
+            # Always insert new history record for time-series analysis
             self.db.add(history)
-            
-            # Upsert current state
-            existing_w = self.db.query(Weather).filter(Weather.district_id == weather.district_id).first()
+
+            # Upsert current-state weather
+            existing_w = (
+                self.db.query(Weather)
+                .filter(Weather.district_id == weather.district_id)
+                .first()
+            )
             if existing_w:
                 existing_w.temperature = weather.temperature
                 existing_w.humidity = weather.humidity
@@ -209,14 +316,20 @@ class WeatherETL(BaseETLPipeline):
                 existing_w.status = weather.status
             else:
                 self.db.add(weather)
-                
-            existing_r = self.db.query(Rainfall).filter(Rainfall.district_id == rainfall.district_id).first()
+
+            # Upsert current-state rainfall
+            existing_r = (
+                self.db.query(Rainfall)
+                .filter(Rainfall.district_id == rainfall.district_id)
+                .first()
+            )
             if existing_r:
                 existing_r.mm_per_hour = rainfall.mm_per_hour
                 existing_r.mm_24h = rainfall.mm_24h
             else:
                 self.db.add(rainfall)
-                
+
             self.records_processed += 3
-        
+
         self.db.commit()
+        logger.info(f"[WeatherETL] Loaded {self.records_processed} records.")

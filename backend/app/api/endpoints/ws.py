@@ -64,9 +64,15 @@ async def _get_dashboard_snapshot(db: Session) -> dict:
             "Very Low": "#22c55e",
         }
 
+        lon, lat = 0.0, 0.0
+        if d.geom_json and "coordinates" in d.geom_json:
+            lon, lat = d.geom_json["coordinates"]
+
         district_list.append({
             "district_id": d.id,
             "district_name": d.name,
+            "lat": lat,
+            "lon": lon,
             "risk_score": latest_pred.current_risk_score,
             "risk_level": latest_pred.current_risk_level,
             "risk_color": color_map.get(latest_pred.current_risk_level, "#22c55e"),

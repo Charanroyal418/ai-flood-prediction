@@ -15,7 +15,9 @@ Responsibilities:
 import os
 import json
 import logging
+import math
 from typing import Dict, List, Tuple, Optional, Any
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -331,17 +333,31 @@ class GNNInferenceEngine:
             label, color = get_risk_level_and_color(risk_score)
             shap = self._compute_shap(feats.tolist(), risk_score)
 
+            # Compute physics confidence from score distance to nearest threshold
+            # Thresholds: 20, 40, 60, 80 — confidence is higher when far from a boundary
+            thresholds = [20.0, 40.0, 60.0, 80.0]
+            distances = [abs(risk_score - t) for t in thresholds]
+            min_dist = min(distances)
+            # Physics confidence: 0.70–0.88 based on boundary distance
+            phys_conf = round(min(0.88, 0.70 + (min_dist / 20.0) * 0.18), 3)
+
+            # Deterministic class probabilities based on risk score
+            cls = min(4, int(risk_score / 20))
+            prob_vec = [0.0] * 5
+            for c in range(5):
+                center = c * 25.0
+                prob_vec[c] = max(0.0, 1.0 - abs(risk_score - center) / 25.0)
+            total_p = sum(prob_vec) or 1.0
+            prob_vec = [round(p / total_p, 3) for p in prob_vec]
+
             results.append({
                 "node_id": node_id,
                 "risk_score": round(risk_score, 1),
                 "risk_level": label,
                 "risk_color": color,
-                "confidence": 0.82,  # physics model uncertainty
+                "confidence": phys_conf,
                 "class_probabilities": {
-                    RISK_CLASS_MAP[c][0]: round(
-                        1.0 if c == cls else max(0, 0.1 - abs(c - cls) * 0.03), 3
-                    )
-                    for c in range(5)
+                    RISK_CLASS_MAP[c][0]: prob_vec[c] for c in range(5)
                 },
                 "shap_values": shap,
                 "inference_mode": "Physics",

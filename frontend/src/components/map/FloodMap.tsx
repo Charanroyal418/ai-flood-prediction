@@ -53,6 +53,52 @@ const getRiskColor = (score: number, level?: string) => {
   return "#3b82f6";
 };
 
+const TN_COORDINATES: Record<string, [number, number]> = {
+  "Chennai": [13.0827, 80.2707],
+  "Kancheepuram": [12.8364, 79.7036],
+  "Kanchipuram": [12.8364, 79.7036],
+  "Chengalpattu": [12.6939, 79.9757],
+  "Thiruvallur": [13.1436, 79.9142],
+  "Tiruvallur": [13.1436, 79.9142],
+  "Cuddalore": [11.7480, 79.7714],
+  "Villupuram": [11.9401, 79.4861],
+  "Viluppuram": [11.9401, 79.4861],
+  "Kallakurichi": [11.7383, 78.9639],
+  "Vellore": [12.9165, 79.1325],
+  "Ranipet": [12.9274, 79.3333],
+  "Tirupattur": [12.4934, 78.5661],
+  "Tirupathur": [12.4934, 78.5661],
+  "Tiruvannamalai": [12.2253, 79.0747],
+  "Salem": [11.6643, 78.1460],
+  "Namakkal": [11.2189, 78.1674],
+  "Dharmapuri": [12.1211, 78.1582],
+  "Krishnagiri": [12.5186, 78.2137],
+  "Coimbatore": [11.0168, 76.9558],
+  "Tiruppur": [11.1085, 77.3411],
+  "Erode": [11.3424, 77.7281],
+  "The Nilgiris": [11.4166, 76.6946],
+  "Nilgiris": [11.4166, 76.6946],
+  "Tiruchirappalli": [10.7905, 78.7047],
+  "Karur": [10.9601, 78.0766],
+  "Perambalur": [11.2332, 78.8821],
+  "Ariyalur": [11.1399, 79.0736],
+  "Thanjavur": [10.7870, 79.1378],
+  "Tiruvarur": [10.7744, 79.6366],
+  "Nagapattinam": [10.7672, 79.8449],
+  "Mayiladuthurai": [11.1026, 79.6521],
+  "Pudukkottai": [10.3797, 78.8205],
+  "Madurai": [9.9252, 78.1198],
+  "Theni": [10.0104, 77.4768],
+  "Dindigul": [10.3673, 77.9803],
+  "Ramanathapuram": [9.3639, 78.8320],
+  "Sivaganga": [9.8433, 78.4809],
+  "Virudhunagar": [9.5855, 77.9556],
+  "Tirunelveli": [8.7139, 77.7567],
+  "Tenkasi": [8.9585, 77.3111],
+  "Thoothukudi": [8.7642, 78.1348],
+  "Kanyakumari": [8.0883, 77.5385],
+};
+
 export default function FloodMap({ districts = [] }: FloodMapProps) {
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<District | null>(null);
@@ -69,6 +115,26 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
     if (risk >= 40) return 12;
     return 9;
   };
+
+  // Pre-process districts to ensure they have valid coordinates (or use fallback)
+  const validDistricts = districts
+    .map((d) => {
+      let lat = d.lat;
+      let lon = d.lon;
+
+      // If coordinate is invalid, lookup in fallback table
+      if (!lat || !lon || lat === 0 || lon === 0) {
+        const fallback = TN_COORDINATES[d.name];
+        if (fallback) {
+          lat = fallback[0];
+          lon = fallback[1];
+        }
+      }
+
+      return { ...d, lat, lon };
+    })
+    // Filter out any that still don't have valid coordinates to prevent Leaflet crash
+    .filter((d) => typeof d.lat === "number" && typeof d.lon === "number" && !isNaN(d.lat) && !isNaN(d.lon));
 
   return (
     <div className="relative w-full h-full">
@@ -97,7 +163,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
 
           <LayersControl.Overlay checked name="District Risk Sensors (Heatmap)">
             <LayerGroup>
-        {districts.map((district) => {
+        {validDistricts.map((district) => {
           const markerColor = getRiskColor(district.risk_score, district.risk_level);
           return (
           <CircleMarker
