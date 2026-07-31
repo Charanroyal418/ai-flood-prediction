@@ -66,37 +66,94 @@ def _ts() -> str:
 
 
 def _build_fallback_inference_payload(db: Session, err_msg: str) -> Dict[str, Any]:
-    """Generates a resilient, valid 200 OK fallback payload if any pipeline stage fails unexpectedly."""
+    """Generates a resilient, valid 200 OK fallback payload using last-known DB data.
+    
+    Uses actual prediction history from DB instead of hardcoded values.
+    If no prediction history exists, uses physics-based risk estimation from weather data.
+    """
+    from app.models.history import PredictionHistory, WeatherHistory
+    from app.ml.inference import get_risk_level_and_color
+
     districts_res = []
     try:
         districts = db.query(District).all()
+
+        # Fetch last known predictions and weather in bulk
+        all_preds = db.query(PredictionHistory).order_by(
+            PredictionHistory.created_at.desc()
+        ).limit(500).all()
+        pred_map = {}
+        for p in all_preds:
+            if p.district_id not in pred_map:
+                pred_map[p.district_id] = p
+
+        all_weather = db.query(WeatherHistory).order_by(
+            WeatherHistory.recorded_at.desc()
+        ).limit(500).all()
+        weather_map = {}
+        for w in all_weather:
+            if w.district_id not in weather_map:
+                weather_map[w.district_id] = w
+
         for d in districts:
+            p = pred_map.get(d.id)
+            w = weather_map.get(d.id)
+
+            # Use last-known risk score from DB, or physics estimate from rainfall
+            if p:
+                risk_score = p.current_risk_score
+                confidence = p.confidence or 0.80
+                shap_vals = p.shap_values or []
+            elif w:
+                # Simple physics estimate: rainfall drives risk linearly
+                rainfall = w.rainfall_mm or 0.0
+                risk_score = min(100.0, rainfall * 0.35 + (100 - (w.humidity or 50)) * 0.05)
+                confidence = 0.70
+                shap_vals = [{"feature": "Rainfall", "contribution": round(rainfall * 0.35, 1)}]
+            else:
+                risk_score = 0.0
+                confidence = 0.50
+                shap_vals = []
+
+            risk_level, risk_color = get_risk_level_and_color(risk_score)
+            rainfall_val = (w.rainfall_mm if w else 0.0)
+
             districts_res.append({
                 "district_id": d.id,
                 "district": d.name,
-                "risk_score": 15.0,
-                "risk_level": "Safe",
-                "risk_color": "#22c55e",
-                "confidence": 0.95,
-                "rainfall_24h": 0.0,
-                "rainfall_mm": 0.0,
-                "river_influence": 15.0,
-                "class_probabilities": {"Safe": 0.95, "Watch": 0.03, "Moderate": 0.02, "Warning": 0.0, "Severe": 0.0},
-                "inference_mode": "Physics (Fallback)",
-                "shap_values": [{"feature": "Base Elevation", "contribution": 10.0}],
-                "reasoning_chain": [f"Fallback telemetry evaluated for {d.name}"],
-                "forecast_horizons": {
-                    "now": 15.0,
-                    "1h": 15.5,
-                    "3h": 16.2,
-                    "6h": 17.0,
-                    "12h": 16.5,
-                    "24h": 15.2
+                "risk_score": round(risk_score, 2),
+                "risk_level": risk_level,
+                "risk_color": risk_color,
+                "confidence": round(confidence, 3),
+                "rainfall_24h": round(rainfall_val, 1),
+                "rainfall_mm": round(rainfall_val, 1),
+                "river_influence": round(risk_score * 0.3, 2),
+                "class_probabilities": {
+                    "Safe": round(max(0.0, 1.0 - risk_score / 100.0) * 0.95, 3),
+                    "Moderate": round(min(0.3, risk_score / 150.0), 3),
+                    "High": round(min(0.4, max(0.0, risk_score - 60) / 100.0), 3),
+                    "Critical": round(min(0.5, max(0.0, risk_score - 80) / 50.0), 3),
                 },
-                "inference_time_ms": 1.2,
+                "inference_mode": "Last-Known-DB",
+                "shap_values": shap_vals,
+                "reasoning_chain": [
+                    f"Using last-known prediction for {d.name}",
+                    f"Pipeline error recovery: {err_msg[:80]}" if err_msg else "Fallback mode active",
+                ],
+                "forecast_horizons": {
+                    "now": round(risk_score, 1),
+                    "1h": round(min(100, risk_score * 1.02), 1),
+                    "3h": round(min(100, risk_score * 1.05), 1),
+                    "6h": round(min(100, risk_score * 1.08), 1),
+                    "12h": round(min(100, risk_score * 1.04), 1),
+                    "24h": round(min(100, risk_score * 0.98), 1),
+                },
+                "inference_time_ms": 1.5,
             })
-    except Exception:
+    except Exception as ex:
+        logger.warning(f"Fallback payload DB query failed: {ex}")
         districts_res = []
+
 
     model_status = {
         "model_name": "GDNN v2 (GAT + GRU)",

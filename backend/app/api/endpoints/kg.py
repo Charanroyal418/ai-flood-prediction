@@ -42,21 +42,30 @@ def _invalidate_cache():
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def get_2d_projections(embeddings: np.ndarray) -> np.ndarray:
-    """Projects high-dimensional embeddings to 2D using t-SNE or fast SVD fallback."""
+    """Projects high-dimensional embeddings to 2D using t-SNE or fast SVD fallback.
+    Falls back to deterministic circular layout — never random coordinates.
+    """
     if embeddings.shape[0] < 2:
-        return np.zeros((embeddings.shape[0], 2))
+        return np.zeros((embeddings.shape[0], 2)), "None"
     try:
         from sklearn.manifold import TSNE
         perplexity = min(30.0, float(embeddings.shape[0]) - 1.0)
         tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42,
                     init='random', learning_rate='auto')
-        return tsne.fit_transform(embeddings)
+        return tsne.fit_transform(embeddings), "t-SNE"
     except Exception:
         try:
             U, S, Vt = np.linalg.svd(embeddings, full_matrices=False)
-            return U[:, :2] * S[:2]
+            return U[:, :2] * S[:2], "PCA (SVD)"
         except Exception:
-            return np.random.randn(embeddings.shape[0], 2)
+            # Deterministic circular layout — stable, reproducible, no fake data
+            n = embeddings.shape[0]
+            angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+            radius = max(n * 30, 200)
+            return np.column_stack([
+                radius * np.cos(angles),
+                radius * np.sin(angles)
+            ]), "Circular Fallback"
 
 
 def _build_community_detail(communities: List[List[str]], G: nx.DiGraph) -> List[Dict]:
@@ -183,7 +192,11 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     node_preds = {n["node_id"]: n for n in gnn_results["nodes"]}
     embeddings = gnn_results["embeddings"]
     t_tsne_start = time.time()
-    coords_2d = get_2d_projections(embeddings) if len(embeddings) > 0 else np.zeros((len(kg_builder.node_ids), 2))
+    if len(embeddings) > 0:
+        coords_2d, proj_method = get_2d_projections(embeddings)
+    else:
+        coords_2d = np.zeros((len(kg_builder.node_ids), 2))
+        proj_method = "None"
     tsne_latency_ms = round((time.time() - t_tsne_start) * 1000, 1)
 
     min_x, max_x = np.min(coords_2d[:, 0]), np.max(coords_2d[:, 0])
@@ -346,6 +359,7 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
             "critical_edges": critical_edges,
             "highest_attention_paths": attention_paths,
             "bottlenecks": [],
+            "projection_method": proj_method,
         },
         "propagation_steps": [
             [nid for nid in kg_builder.node_ids if nid.startswith("sn-") or nid.startswith("ws-") or nid.startswith("rg-")],

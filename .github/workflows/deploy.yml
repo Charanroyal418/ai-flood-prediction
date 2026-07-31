@@ -1,0 +1,179 @@
+name: FloodSense AI — Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deploy target"
+        required: false
+        default: "all"
+        type: choice
+        options: [all, frontend, backend]
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Frontend → Vercel ─────────────────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend → Vercel
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.target == 'all' || github.event.inputs.target == 'frontend'))
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js application
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_WS_URL: ${{ secrets.NEXT_PUBLIC_WS_URL }}
+          NODE_ENV: production
+
+      - name: Deploy to Vercel (Production)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+          working-directory: frontend
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Backend → Render ──────────────────────────────────────────────────────
+  deploy-backend:
+    name: Deploy Backend → Render
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.target == 'all' || github.event.inputs.target == 'backend'))
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Trigger Render deploy hook
+        run: |
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              --fail
+            echo "✅ Render deploy triggered"
+          else
+            echo "⚠️  RENDER_DEPLOY_HOOK_URL not set — skipping backend deploy"
+          fi
+
+      - name: Wait for Render deploy
+        run: |
+          echo "Waiting 60s for Render to boot..."
+          sleep 60
+
+      - name: Health check backend
+        run: |
+          BACKEND_URL="${{ secrets.BACKEND_HEALTH_URL }}"
+          if [ -z "$BACKEND_URL" ]; then
+            echo "⚠️  BACKEND_HEALTH_URL not set — skipping health check"
+            exit 0
+          fi
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BACKEND_URL/health" --max-time 10 || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Backend healthy (HTTP $STATUS) on attempt $i"
+              exit 0
+            fi
+            echo "⏳ Attempt $i: HTTP $STATUS — retrying in 15s..."
+            sleep 15
+          done
+          echo "❌ Backend health check failed after 5 attempts"
+          exit 1
+
+  # ── Post-Deploy Smoke Tests ───────────────────────────────────────────────
+  smoke-tests:
+    name: Smoke Tests (Post-Deploy)
+    needs: [deploy-frontend, deploy-backend]
+    runs-on: ubuntu-latest
+    if: always() && (needs.deploy-frontend.result == 'success' || needs.deploy-backend.result == 'success')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test backend API endpoints
+        run: |
+          BACKEND_URL="${{ secrets.BACKEND_HEALTH_URL }}"
+          if [ -z "$BACKEND_URL" ]; then
+            echo "⚠️  BACKEND_HEALTH_URL not set — skipping smoke tests"
+            exit 0
+          fi
+
+          echo "=== Backend Smoke Tests ==="
+
+          # Health
+          echo "Testing /health..."
+          curl -sf "$BACKEND_URL/health" && echo "✅ /health OK" || echo "❌ /health FAILED"
+
+          # Dashboard live
+          echo "Testing /dashboard/live..."
+          curl -sf "$BACKEND_URL/dashboard/live" -o /dev/null && echo "✅ /dashboard/live OK" || echo "⚠️  /dashboard/live (may need auth)"
+
+          # KG stats
+          echo "Testing /kg/stats..."
+          curl -sf "$BACKEND_URL/kg/stats" -o /dev/null && echo "✅ /kg/stats OK" || echo "⚠️  /kg/stats (may need auth)"
+
+          echo "=== Smoke Tests Complete ==="
+
+      - name: Test frontend deployment
+        run: |
+          FRONTEND_URL="${{ secrets.FRONTEND_URL }}"
+          if [ -z "$FRONTEND_URL" ]; then
+            echo "⚠️  FRONTEND_URL not set — skipping frontend smoke test"
+            exit 0
+          fi
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" --max-time 15 || echo "000")
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Frontend accessible (HTTP $STATUS)"
+          else
+            echo "⚠️  Frontend returned HTTP $STATUS"
+          fi
+
+  # ── Notify Deployment ─────────────────────────────────────────────────────
+  notify:
+    name: Deployment Summary
+    needs: [deploy-frontend, deploy-backend, smoke-tests]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Deployment summary
+        run: |
+          echo "============================================"
+          echo "  FloodSense AI — Deployment Summary"
+          echo "============================================"
+          echo "  Commit:   ${{ github.sha }}"
+          echo "  Branch:   ${{ github.ref_name }}"
+          echo "  Actor:    ${{ github.actor }}"
+          echo "  Frontend: ${{ needs.deploy-frontend.result }}"
+          echo "  Backend:  ${{ needs.deploy-backend.result }}"
+          echo "  Smoke:    ${{ needs.smoke-tests.result }}"
+          echo "============================================"

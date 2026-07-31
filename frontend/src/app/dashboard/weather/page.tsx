@@ -92,7 +92,7 @@ function WeatherIntelligenceCard({ district, index }: { district: any; index: nu
         </div>
         <div className="text-right">
           <span className={`text-xl font-bold font-mono ${isStormActive ? "text-amber-600" : "text-indigo-600"}`}>
-            {district.rainfall_mm}
+            {district.rainfall_mm ?? "N/A"}
           </span>
           <span className="text-xs text-slate-500 ml-1">mm/24h</span>
         </div>
@@ -102,15 +102,15 @@ function WeatherIntelligenceCard({ district, index }: { district: any; index: nu
       <div className="grid grid-cols-3 gap-3 mb-4 relative z-10">
         <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
           <Thermometer className="w-4 h-4 text-orange-500" />
-          <span className="text-xs font-bold text-slate-700">{district.temperature}°C</span>
+          <span className="text-xs font-bold text-slate-700">{district.temperature != null ? `${district.temperature}°C` : "N/A"}</span>
         </div>
         <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
           <Droplets className="w-4 h-4 text-blue-500" />
-          <span className="text-xs font-bold text-slate-700">{district.humidity}%</span>
+          <span className="text-xs font-bold text-slate-700">{district.humidity != null ? `${district.humidity}%` : "N/A"}</span>
         </div>
         <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
           <Wind className="w-4 h-4 text-teal-500" />
-          <span className="text-xs font-bold text-slate-700">{district.wind_speed ? `${district.wind_speed.toFixed(1)} km/h` : "N/A"}</span>
+          <span className="text-xs font-bold text-slate-700">{district.wind_speed != null ? `${district.wind_speed.toFixed(1)} km/h` : "N/A"}</span>
         </div>
       </div>
 

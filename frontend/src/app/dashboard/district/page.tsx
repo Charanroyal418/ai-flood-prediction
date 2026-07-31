@@ -112,8 +112,8 @@ function DistrictDetailPanel({ district }: { district: any }) {
 
         <div className="grid grid-cols-2 gap-3 mt-4">
           {[
-            { label: "Flood Probability", value: `${(district.flood_probability * 100).toFixed(0)}%`, icon: Shield },
-            { label: "AI Confidence", value: `${(district.ai_confidence * 100).toFixed(0)}%`, icon: Brain },
+            { label: "Flood Probability", value: `${(district.flood_probability * 100).toFixed(1)}%`, icon: Shield },
+            { label: "AI Confidence", value: `${(district.ai_confidence * 100).toFixed(1)}%`, icon: Brain },
             { label: "Rainfall 24h", value: `${district.rainfall_mm}mm`, icon: CloudRain },
             { label: "Humidity", value: `${district.humidity}%`, icon: Droplets },
             { label: "River Level", value: `${district.river_level_m}m`, icon: Waves },

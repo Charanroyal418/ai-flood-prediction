@@ -117,12 +117,25 @@
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
     font-feature-settings: 'cv11', 'ss01';
+    /* Prevent horizontal overflow on all devices */
+    overflow-x: hidden;
+    /* iOS Safari: ensure minimum tap target and text sizing */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
     @apply min-h-screen transition-colors duration-300;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+    /* Prevent horizontal scroll — critical for mobile */
+    overflow-x: hidden;
+    /* iOS Safari: safe area insets for notches */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    /* Ensure body takes full viewport width without forcing scroll */
+    width: 100%;
+    position: relative;
   }
 
   /* Light mode body gradient */
@@ -153,7 +166,13 @@
   code, pre, .font-mono {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
+
+  /* Prevent content jump when scrollbar appears */
+  html {
+    scrollbar-gutter: stable;
+  }
 }
+
 
 /* ── Component Utilities ─────────────────────────────────────────────────── */
 @layer components {
@@ -541,3 +560,101 @@
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+
+/* ── Responsive Container Utilities ────────────────────────────────────────── */
+/* Ultra-wide displays: center content with max-width */
+.eoc-container {
+  width: 100%;
+  max-width: 1920px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+/* Responsive chart wrapper — prevents chart overflow on small screens */
+.chart-container {
+  width: 100%;
+  min-height: 120px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Responsive map height — adapts across breakpoints */
+.map-container {
+  width: 100%;
+  height: 280px;
+}
+@media (min-width: 640px)  { .map-container { height: 360px; } }
+@media (min-width: 768px)  { .map-container { height: 400px; } }
+@media (min-width: 1024px) { .map-container { height: 440px; } }
+@media (min-width: 1280px) { .map-container { height: 480px; } }
+
+/* ── Mobile Navigation Overlay ─────────────────────────────────────────────── */
+.mobile-nav-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 40;
+}
+
+.mobile-nav-panel {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(280px, 85vw);
+  background: hsl(var(--surface));
+  border-right: 1px solid hsl(var(--border));
+  z-index: 50;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ── iOS Leaflet Fix ────────────────────────────────────────────────────────── */
+/* Prevents ghost tap / scroll issues on iOS Safari */
+.leaflet-container {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: pan-x pan-y;
+}
+
+/* ── Touch Improvements ────────────────────────────────────────────────────── */
+button, a, [role="button"] {
+  /* Minimum 44x44px tap target per WCAG 2.5.5 */
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Override for inline/icon-only elements that shouldn't stretch */
+.no-min-tap {
+  min-height: unset;
+  min-width: unset;
+  display: inline;
+}
+
+/* ── Cross-browser Focus Ring ───────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Remove default blue focus on non-keyboard nav */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Dark Mode Leaflet ──────────────────────────────────────────────────────── */
+.dark .leaflet-tile-pane {
+  filter: brightness(0.75) saturate(0.85) hue-rotate(180deg) invert(1);
+}
+
+.dark .leaflet-container .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
+}

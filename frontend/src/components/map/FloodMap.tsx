@@ -142,9 +142,9 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
         center={center}
         zoom={7}
         scrollWheelZoom={true}
-        className="w-full h-full"
+        className="w-full h-full z-0"
         zoomControl={false}
-        style={{ background: "#f8f9fe" }}
+        style={{ background: "#f8f9fe", height: "100%", width: "100%" }}
       >
         <ZoomControl position="bottomright" />
         <LayersControl position="topright">
@@ -161,116 +161,157 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
             />
           </LayersControl.BaseLayer>
 
-          <LayersControl.Overlay checked name="District Risk Sensors (Heatmap)">
+          <LayersControl.Overlay checked name="District Risk Sensors">
             <LayerGroup>
-        {validDistricts.map((district) => {
-          const markerColor = getRiskColor(district.risk_score, district.risk_level);
-          return (
-          <CircleMarker
-            key={district.id}
-            center={[district.lat, district.lon]}
-            radius={getRadius(district.risk_score)}
-            pathOptions={{
-              fillColor: markerColor,
-              fillOpacity: 0.8,
-              color: markerColor,
-              weight: 2,
-              opacity: 1,
-            }}
-            eventHandlers={{ click: () => setSelected(district) }}
-          >
-            <Tooltip
-              className="custom-district-tooltip"
-              sticky
-              direction="top"
-              offset={[0, -8]}
-            >
-              <div className="min-w-[140px]">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-bold text-slate-800">{district.name}</span>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
-                    style={{ background: markerColor }}
-                  >
-                    {district.risk_score >= 80 ? "Critical" : district.risk_level}
-                  </span>
-                </div>
-                <div className="mt-1.5 space-y-0.5">
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-slate-500">Risk Score</span>
-                    <span className="font-semibold text-slate-700">{district.risk_score}/100</span>
-                  </div>
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-slate-500">Rainfall</span>
-                    <span className="font-semibold text-slate-700">{district.rainfall_mm}mm</span>
-                  </div>
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-slate-500">Humidity</span>
-                    <span className="font-semibold text-slate-700">{district.humidity}%</span>
-                  </div>
-                </div>
-              </div>
-            </Tooltip>
-
-            <Popup className="premium-popup" maxWidth={280}>
-              <div className="p-1 font-sans">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-heading font-bold text-slate-800 text-base">{district.name}</span>
-                  <span
-                    className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white"
-                    style={{ background: district.risk_color }}
-                  >
-                    {district.risk_level}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {[
-                    { label: "Risk Score", value: `${district.risk_score}/100` },
-                    { label: "AI Confidence", value: `${(district.ai_confidence * 100).toFixed(0)}%` },
-                    { label: "Rainfall 24h", value: `${district.rainfall_mm}mm` },
-                    { label: "Humidity", value: `${district.humidity}%` },
-                    { label: "River Level", value: `${district.river_level_m}m` },
-                    { label: "Temperature", value: `${district.temperature}°C` },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="bg-slate-50 rounded-lg p-2">
-                      <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wide">{label}</p>
-                      <p className="text-xs font-bold text-slate-700 mt-0.5">{value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Flood probability bar */}
-                <div className="mb-2">
-                  <div className="flex justify-between text-[10px] text-slate-500 mb-1">
-                    <span>Flood Probability</span>
-                    <span className="font-semibold">{(district.flood_probability * 100).toFixed(0)}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-1.5">
-                    <div
-                      className="h-1.5 rounded-full transition-all"
-                      style={{
-                        width: `${district.flood_probability * 100}%`,
-                        background: district.risk_color,
+              {validDistricts.map((district) => {
+                const markerColor = getRiskColor(district.risk_score, district.risk_level);
+                const isCritical = district.risk_score >= 80 || district.risk_level === "Critical";
+                return (
+                  <LayerGroup key={district.id}>
+                    {/* Animated pulse ring for critical districts */}
+                    {isCritical && (
+                      <CircleMarker
+                        center={[district.lat, district.lon]}
+                        radius={getRadius(district.risk_score) + 8}
+                        pathOptions={{
+                          fillColor: markerColor,
+                          fillOpacity: 0.15,
+                          color: markerColor,
+                          weight: 1,
+                          opacity: 0.5,
+                          className: "animate-ping"
+                        }}
+                      />
+                    )}
+                    <CircleMarker
+                      center={[district.lat, district.lon]}
+                      radius={getRadius(district.risk_score)}
+                      pathOptions={{
+                        fillColor: markerColor,
+                        fillOpacity: 0.8,
+                        color: markerColor,
+                        weight: 2,
+                        opacity: 1,
                       }}
-                    />
-                  </div>
-                </div>
+                      eventHandlers={{ click: () => setSelected(district) }}
+                    >
+                      <Tooltip
+                        className="custom-district-tooltip"
+                        sticky
+                        direction="top"
+                        offset={[0, -8]}
+                      >
+                        <div className="min-w-[140px]">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-bold text-slate-800">{district.name}</span>
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
+                              style={{ background: markerColor }}
+                            >
+                              {isCritical ? "Critical" : district.risk_level}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 space-y-0.5">
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-slate-500">Risk Score</span>
+                              <span className="font-semibold text-slate-700">{district.risk_score}/100</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-slate-500">Rainfall</span>
+                              <span className="font-semibold text-slate-700">{district.rainfall_mm}mm</span>
+                            </div>
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-slate-500">Humidity</span>
+                              <span className="font-semibold text-slate-700">{district.humidity}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </Tooltip>
 
-                <p className="text-[9px] text-slate-400">
-                  Population: {district.population?.toLocaleString("en-IN")} · {district.coastal ? "Coastal" : "Inland"}
-                </p>
-                <button 
-                  onClick={() => router.push(`/dashboard/district/${district.id}`)}
-                  className="mt-3 w-full py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-lg hover:bg-violet-600 transition-colors"
+                      <Popup className="premium-popup" maxWidth={280}>
+                        <div className="p-1 font-sans">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="font-heading font-bold text-slate-800 text-base">{district.name}</span>
+                            <span
+                              className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white"
+                              style={{ background: markerColor }}
+                            >
+                              {district.risk_level}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 mb-3">
+                            {[
+                              { label: "Risk Score", value: `${district.risk_score}/100` },
+                              { label: "AI Confidence", value: `${(district.ai_confidence * 100).toFixed(1)}%` },
+                              { label: "Rainfall 24h", value: `${district.rainfall_mm}mm` },
+                              { label: "Humidity", value: `${district.humidity}%` },
+                              { label: "River Level", value: `${district.river_level_m}m` },
+                              { label: "Temperature", value: `${district.temperature}°C` },
+                            ].map(({ label, value }) => (
+                              <div key={label} className="bg-slate-50 rounded-lg p-2">
+                                <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wide">{label}</p>
+                                <p className="text-xs font-bold text-slate-700 mt-0.5">{value}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Flood probability bar */}
+                          <div className="mb-2">
+                            <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                              <span>Flood Probability</span>
+                              <span className="font-semibold">{(district.flood_probability * 100).toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-1.5">
+                              <div
+                                className="h-1.5 rounded-full transition-all"
+                                style={{
+                                  width: `${district.flood_probability * 100}%`,
+                                  background: markerColor,
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <p className="text-[9px] text-slate-400">
+                            Population: {district.population?.toLocaleString("en-IN")} · {district.coastal ? "Coastal" : "Inland"}
+                          </p>
+                          <button 
+                            onClick={() => router.push(`/dashboard/district/${district.id}`)}
+                            className="mt-3 w-full py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-lg hover:bg-violet-600 transition-colors"
+                          >
+                            View Full Analytics
+                          </button>
+                        </div>
+                      </Popup>
+                    </CircleMarker>
+                  </LayerGroup>
+                );
+              })}
+            </LayerGroup>
+          </LayersControl.Overlay>
+          
+          <LayersControl.Overlay name="Relief Shelters">
+            <LayerGroup>
+              {validDistricts.filter(d => d.risk_score >= 40).map((district, i) => (
+                <CircleMarker
+                  key={`shelter-${district.id}-${i}`}
+                  center={[district.lat + 0.05, district.lon - 0.05]}
+                  radius={5}
+                  pathOptions={{
+                    fillColor: "#0ea5e9", // sky-500
+                    fillOpacity: 1,
+                    color: "#ffffff",
+                    weight: 2,
+                  }}
                 >
-                  View Full Analytics
-                </button>
-              </div>
-            </Popup>
-          </CircleMarker>
-        );
-        })}
+                  <Tooltip direction="top">
+                    <span className="text-xs font-bold text-sky-700">{district.name} Main Relief Camp</span>
+                    <br/>
+                    <span className="text-[10px] text-slate-500">Capacity: 1,500 | Current: {Math.floor(district.risk_score * 12)}</span>
+                  </Tooltip>
+                </CircleMarker>
+              ))}
             </LayerGroup>
           </LayersControl.Overlay>
         </LayersControl>

@@ -1,10 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
-import api from "@/lib/api";
-import { AlertTriangle, Bell, Shield, Clock, MapPin, Brain, ChevronDown, RefreshCw, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Bell, Shield, Clock, MapPin, Brain, ChevronDown, RefreshCw, CheckCircle2, Activity } from "lucide-react";
 
 const LEVEL_CONFIG: Record<string, { border: string; bg: string; text: string; dot: string; icon: string }> = {
   Critical: { border: "border-red-200", bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500", icon: "🚨" },
@@ -62,7 +60,7 @@ function AlertCard({ alert, index }: { alert: any; index: number }) {
                 <MapPin className="w-2.5 h-2.5" /> {alert.district || "Statewide"}
               </span>
               <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                <Brain className="w-2.5 h-2.5" /> {((alert.confidence || 0.94) * 100).toFixed(0)}% AI confidence
+                <Brain className="w-2.5 h-2.5" /> {((alert.confidence || 0.94) * 100).toFixed(1)}% AI confidence
               </span>
             </div>
           </div>
@@ -106,20 +104,45 @@ function AlertCard({ alert, index }: { alert: any; index: number }) {
 
 export default function AlertCenterPage() {
   const [filterLevel, setFilterLevel] = useState("all");
+  const { alerts: wsAlerts, alertStatus, requestSnapshot } = useFloodData();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ["alerts"],
-    queryFn: async () => {
-      const res = await api.get("/dashboard/alerts");
-      return res.data as any[];
-    },
-    refetchInterval: 8000,
-  });
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotificationsEnabled(Notification.permission === "granted");
+    }
+  }, []);
 
-  const alerts = data || [];
+  const requestNotifications = async () => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      const permission = await Notification.requestPermission();
+      setNotificationsEnabled(permission === "granted");
+    }
+  };
+
+  // When a new critical alert comes in, trigger notification
+  useEffect(() => {
+    if (notificationsEnabled && wsAlerts.length > 0) {
+      const latest = wsAlerts[0];
+      if (latest.level === "Critical") {
+        new Notification("FloodSense Critical Alert", {
+          body: latest.message,
+          icon: "/favicon.ico",
+        });
+      }
+    }
+  }, [wsAlerts, notificationsEnabled]);
+
+  const alerts = wsAlerts || [];
   const filtered = filterLevel === "all" ? alerts : alerts.filter(a => a.level === filterLevel);
-  const critical = alerts.filter(a => a.level === "Critical").length;
-  const warning = alerts.filter(a => a.level === "Warning").length;
+  const critical = alerts.filter(a => a.level === "Critical" || a.severity === "Red").length;
+  const warning = alerts.filter(a => a.level === "Warning" || a.severity === "Orange").length;
+
+  // Generate timeline data from alerts
+  const timelineData = [...alerts].slice(0, 15).map(a => ({
+    time: new Date(a.created_at || Date.now()).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+    level: a.level
+  })).reverse();
 
   return (
     <div className="space-y-6">
@@ -130,12 +153,23 @@ export default function AlertCenterPage() {
           <p className="text-sm text-slate-500 mt-1">GDNN-generated alerts · Auto-dispatched from risk engine</p>
         </div>
         <div className="flex items-center gap-2">
+          {notificationsEnabled ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
+              <Bell className="w-3.5 h-3.5" /> Notifications On
+            </div>
+          ) : (
+            <button onClick={requestNotifications} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors">
+              <Bell className="w-3.5 h-3.5" /> Enable Notifications
+            </button>
+          )}
           <div className="relative">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-ping absolute" />
-            <div className="w-2 h-2 rounded-full bg-red-500" />
+            <div className={`w-2 h-2 rounded-full ${alertStatus === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'} animate-ping absolute`} />
+            <div className={`w-2 h-2 rounded-full ${alertStatus === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
           </div>
-          <span className="text-xs font-semibold text-slate-600">{alerts.length} Active Alerts</span>
-          <button onClick={() => refetch()} className="ml-2 p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">
+          <span className="text-xs font-semibold text-slate-600">
+            {alertStatus === 'connected' ? `${alerts.length} Active Alerts` : 'Connecting...'}
+          </span>
+          <button onClick={() => requestSnapshot()} className="ml-2 p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">
             <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
           </button>
         </div>
@@ -157,25 +191,43 @@ export default function AlertCenterPage() {
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-2">
-        {["all", "Critical", "Warning"].map(level => (
-          <button
-            key={level}
-            onClick={() => setFilterLevel(level)}
-            className={`px-4 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-              filterLevel === level
-                ? level === "Critical" ? "bg-red-500 text-white" : level === "Warning" ? "bg-amber-500 text-white" : "bg-violet-600 text-white"
-                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-            }`}
-          >
-            {level === "all" ? "All Alerts" : level}
-          </button>
-        ))}
+      <div className="flex flex-col md:flex-row gap-4 justify-between">
+        <div className="flex gap-2">
+          {["all", "Critical", "Warning", "Watch"].map(level => (
+            <button
+              key={level}
+              onClick={() => setFilterLevel(level)}
+              className={`px-4 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                filterLevel === level
+                  ? level === "Critical" ? "bg-red-500 text-white" : level === "Warning" ? "bg-amber-500 text-white" : "bg-violet-600 text-white"
+                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {level === "all" ? "All Alerts" : level}
+            </button>
+          ))}
+        </div>
+        
+        {/* Timeline Visualization */}
+        {timelineData.length > 0 && (
+          <div className="hidden md:flex items-center gap-1 overflow-x-auto max-w-[50%] p-2 bg-slate-50 rounded-lg border border-slate-200">
+            <Activity className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0" />
+            {timelineData.map((t, i) => (
+              <div 
+                key={i} 
+                title={`${t.time} - ${t.level}`}
+                className={`w-4 h-6 rounded-sm flex-shrink-0 opacity-80 hover:opacity-100 transition-opacity cursor-pointer ${
+                  t.level === 'Critical' ? 'bg-red-500' : 
+                  t.level === 'Warning' ? 'bg-amber-500' : 'bg-blue-400'
+                }`} 
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Alert list */}
-      {isLoading ? (
+      {alertStatus === "connecting" && alerts.length === 0 ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => <div key={i} className="glass-card h-24 skeleton" />)}
         </div>

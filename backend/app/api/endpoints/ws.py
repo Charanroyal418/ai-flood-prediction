@@ -56,12 +56,18 @@ async def _get_dashboard_snapshot(db: Session) -> dict:
         if not latest_pred:
             continue
 
+        # Canonical color map — must match inference.py get_risk_level_and_color()
         color_map = {
-            "Severe": "#ef4444",
-            "High": "#f97316",
+            "Critical": "#ef4444",
+            "High":     "#f97316",
             "Moderate": "#f59e0b",
-            "Low": "#84cc16",
-            "Very Low": "#22c55e",
+            "Low":      "#22c55e",
+            "Safe":     "#3b82f6",
+            # Legacy aliases for backwards compat
+            "Severe":   "#ef4444",
+            "Very Low": "#3b82f6",
+            "Warning":  "#f59e0b",
+            "Watch":    "#3b82f6",
         }
 
         lon, lat = 0.0, 0.0

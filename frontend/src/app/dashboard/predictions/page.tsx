@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
@@ -83,6 +83,38 @@ const GDNN_FLOW = [
   { id: "alert_generation", label: "Alerts" },
 ];
 
+const DistrictItem = memo(({ 
+  dist, 
+  isSelected, 
+  onClick 
+}: { 
+  dist: DistrictResult; 
+  isSelected: boolean; 
+  onClick: (id: number) => void 
+}) => {
+  return (
+    <button
+      onClick={() => onClick(dist.district_id)}
+      className={`w-full text-left p-3 rounded-xl border transition-all flex justify-between items-center ${
+        isSelected 
+        ? "bg-indigo-50 border-indigo-200 shadow-sm" 
+        : "bg-white border-slate-100 hover:bg-slate-50"
+      }`}
+    >
+      <div>
+        <p className={`text-xs font-bold ${isSelected ? "text-indigo-800" : "text-slate-700"}`}>{dist.district}</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">{dist.risk_score}% Risk</p>
+      </div>
+      <div className={`w-2.5 h-2.5 rounded-full ${
+        dist.risk_level === 'Critical' || dist.risk_level === 'Severe' ? 'bg-red-500' :
+        dist.risk_level === 'High' ? 'bg-orange-500' :
+        dist.risk_level === 'Moderate' ? 'bg-amber-500' : 'bg-green-500'
+      }`} />
+    </button>
+  );
+});
+DistrictItem.displayName = "DistrictItem";
+
 export default function PredictionEnginePage() {
   const queryClient = useQueryClient();
   const [flowStage, setFlowStage] = useState(-1);
@@ -151,16 +183,7 @@ export default function PredictionEnginePage() {
     }
   };
 
-  if (isLoading && !data) {
-    return (
-      <div className="flex min-h-[80vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Brain className="w-12 h-12 text-blue-500 animate-pulse" />
-          <p className="text-sm font-semibold text-slate-400 font-mono">INITIALIZING GDNN KERNEL...</p>
-        </div>
-      </div>
-    );
-  }
+
 
   if (isError && !data) {
     return (
@@ -290,14 +313,18 @@ export default function PredictionEnginePage() {
           <p className="text-[9px] text-slate-400 font-mono">Sum of 6 pipeline stages</p>
         </div>
         
-        <div className="col-span-2 xl:col-span-2 bg-white/80 border border-slate-200 rounded-xl p-3 backdrop-blur-md grid grid-cols-2 gap-2 shadow-sm">
+        <div className="col-span-2 xl:col-span-2 bg-white/80 border border-slate-200 rounded-xl p-3 backdrop-blur-md grid grid-cols-3 gap-2 shadow-sm">
           <div>
             <p className="text-[9px] text-slate-400 uppercase tracking-widest flex items-center gap-1"><Network className="w-2.5 h-2.5 text-indigo-500"/> Nodes</p>
-            <p className="text-xs font-bold text-slate-700 font-mono">{s.node_count ?? 142}</p>
+            <p className="text-xs font-bold text-slate-700 font-mono">{s.node_count ?? 0}</p>
           </div>
           <div>
             <p className="text-[9px] text-slate-400 uppercase tracking-widest flex items-center gap-1"><GitBranch className="w-2.5 h-2.5 text-purple-500"/> Edges</p>
-            <p className="text-xs font-bold text-slate-700 font-mono">{s.edge_count ?? 580}</p>
+            <p className="text-xs font-bold text-slate-700 font-mono">{s.edge_count ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-[9px] text-slate-400 uppercase tracking-widest flex items-center gap-1"><Brain className="w-2.5 h-2.5 text-blue-500"/> Heads</p>
+            <p className="text-xs font-bold text-slate-700 font-mono">{s.attention_heads ?? 4}</p>
           </div>
         </div>
 
@@ -373,27 +400,23 @@ export default function PredictionEnginePage() {
               />
             </div>
             <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 scrollbar-hide">
-              {filteredDistricts.map(dist => (
-                <button
-                  key={dist.district_id}
-                  onClick={() => setSelectedDistrictId(dist.district_id)}
-                  className={`w-full text-left p-3 rounded-xl border transition-all flex justify-between items-center ${
-                    selectedDistrictId === dist.district_id 
-                    ? "bg-indigo-50 border-indigo-200 shadow-sm" 
-                    : "bg-white border-slate-100 hover:bg-slate-50"
-                  }`}
-                >
-                  <div>
-                    <p className={`text-xs font-bold ${selectedDistrictId === dist.district_id ? "text-indigo-800" : "text-slate-700"}`}>{dist.district}</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{dist.risk_score}% Risk</p>
-                  </div>
-                  <div className={`w-2.5 h-2.5 rounded-full ${
-                    dist.risk_level === 'Critical' || dist.risk_level === 'Severe' ? 'bg-red-500' :
-                    dist.risk_level === 'High' ? 'bg-orange-500' :
-                    dist.risk_level === 'Moderate' ? 'bg-amber-500' : 'bg-green-500'
-                  }`} />
-                </button>
-              ))}
+              {isLoading && !data ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <RefreshCw className="w-5 h-5 animate-spin mb-2" />
+                  <p className="text-xs">Loading GDNN predictions...</p>
+                </div>
+              ) : filteredDistricts.length === 0 ? (
+                <div className="text-center text-slate-400 text-xs mt-10">No districts found</div>
+              ) : (
+                filteredDistricts.map(dist => (
+                  <DistrictItem 
+                    key={dist.district_id} 
+                    dist={dist} 
+                    isSelected={selectedDistrictId === dist.district_id} 
+                    onClick={setSelectedDistrictId} 
+                  />
+                ))
+              )}
             </div>
           </div>
         </div>

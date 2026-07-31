@@ -251,9 +251,10 @@ export default function CommandCenter() {
         critical_districts: criticalCount,
         high_risk_districts: highCount,
         avg_rainfall_24h_mm: wsDistricts.reduce((s, d) => s + (d.rainfall_mm || 0), 0) / (wsDistricts.length || 1),
-        gdnn_inference_ms: modelMeta?.inference_time_ms ?? 0,
+        gdnn_inference_ms: modelMeta?.inference_time_ms ?? data?.metrics?.gdnn_inference_ms ?? 0,
         model_confidence: wsDistricts.reduce((s, d) => s + (d.confidence || 0), 0) / (wsDistricts.length || 1),
-        kg_nodes: modelMeta?.node_count ?? data?.metrics?.kg_nodes ?? data?.metrics?.nodes ?? 147,
+        kg_nodes: modelMeta?.node_count ?? data?.metrics?.kg_nodes ?? data?.metrics?.nodes ?? 0,
+        attention_heads: modelMeta?.attention_heads ?? data?.metrics?.attention_heads ?? 4,
       }
     : data?.metrics;
 
@@ -296,7 +297,7 @@ export default function CommandCenter() {
     : (dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Persistent Storm Simulation Active Banner */}
       {isStormActive && (
         <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white px-4 py-3 rounded-xl flex items-center justify-between shadow-lg border border-red-500/50">
@@ -373,7 +374,7 @@ export default function CommandCenter() {
       </div>
 
       {/* Top KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         {isLoading ? (
           Array.from({length: 6}).map((_, i) => (
             <div key={i} className="glass-card p-5 h-28 skeleton" />
@@ -391,16 +392,16 @@ export default function CommandCenter() {
       </div>
 
       {/* Main Grid: Map + Right Panel */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
         {/* Map - takes 2/3 */}
         <div className="xl:col-span-2">
-          <div className="glass-card p-4 h-[480px]">
-            <div className="flex items-center justify-between mb-3">
+          <div className="glass-card p-3 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
-                <h2 className="text-sm font-heading font-bold text-slate-800">Flood Risk Map</h2>
+                <h2 className="text-sm font-heading font-bold text-slate-800 dark:text-slate-100">Flood Risk Map</h2>
                 <p className="text-[11px] text-slate-400">District-level prediction overlay · 38 districts</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {["Critical", "High", "Moderate", "Low"].map(level => (
                   <div key={level} className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full" style={{ background: RISK_COLORS[level] }} />
@@ -409,7 +410,7 @@ export default function CommandCenter() {
                 ))}
               </div>
             </div>
-            <div className="h-[400px] rounded-xl overflow-hidden">
+            <div className="map-container rounded-xl overflow-hidden">
               <FloodMap districts={hasWsData && data?.districts
                 ? wsDistricts.map(d => {
                     const base = data.districts.find((x: any) => x.id === d.district_id) || {};
@@ -518,7 +519,7 @@ export default function CommandCenter() {
       </div>
 
       {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* GDNN Pipeline */}
         <div className="glass-card p-6">
           <div className="flex items-center justify-between mb-5">
@@ -532,11 +533,12 @@ export default function CommandCenter() {
             </div>
           </div>
           <PipelineStatus nodeCount={metrics?.kg_nodes || 147} />
-          <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="mt-5 grid grid-cols-4 gap-3">
             {[
               { label: "Model", value: modelMeta?.inference_mode ?? (metrics?.inference_mode || "GDNN v2.1") },
-              { label: "Confidence", value: `${((metrics?.model_confidence ?? 0.924) * 100).toFixed(1)}%` },
-              { label: "KG Nodes", value: modelMeta?.node_count ?? metrics?.kg_nodes ?? 147 },
+              { label: "Confidence", value: `${((metrics?.model_confidence ?? 0) * 100).toFixed(1)}%` },
+              { label: "KG Nodes", value: modelMeta?.node_count ?? metrics?.kg_nodes ?? 0 },
+              { label: "Attn Heads", value: modelMeta?.attention_heads ?? metrics?.attention_heads ?? 4 },
             ].map(({ label, value }) => (
               <div key={label} className="text-center p-3 rounded-xl bg-violet-50/60 border border-violet-100">
                 <p className="text-[10px] text-violet-500 font-semibold uppercase tracking-wide">{label}</p>

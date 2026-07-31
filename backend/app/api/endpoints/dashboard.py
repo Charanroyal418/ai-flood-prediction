@@ -1,8 +1,8 @@
-from typing import Any
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from typing import Any, List, Optional
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Body
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
-import random
 
 from app.api import deps
 from app.models.district import District
@@ -22,6 +22,15 @@ router = APIRouter()
 _dash_live_cache = {"ts": 0, "data": None}
 _DASH_CACHE_TTL = 10.0
 
+@router.get("/test")
+def test_edges(db: Session = Depends(deps.get_db)):
+    try:
+        from app.models.graph import GraphEdge
+        edges = db.query(GraphEdge).limit(5).all()
+        return [{"source": e.source_id, "target": e.target_id, "type": e.edge_type} for e in edges]
+    except Exception as e:
+        return {"error": str(e)}
+
 @router.get("/live")
 def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     """
@@ -31,9 +40,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     """
     global _dash_live_cache
     now_t = time.time()
-    if _dash_live_cache["data"] is not None and (now_t - _dash_live_cache["ts"]) < _DASH_CACHE_TTL:
-        return _dash_live_cache["data"]
-
+    # Cache skipped temporarily
+    
     now = datetime.now(timezone.utc)
     
     # Get latest inference metrics
@@ -43,7 +51,14 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     # Get all districts
     districts = db.query(District).all()
     
-    # Get latest predictions per district
+    try:
+        from app.models.graph import GraphEdge
+        edges = db.query(GraphEdge).limit(5).all()
+        with open("C:/Users/Sekar Harshitha/Downloads/flood prediction/backend/edges_dump.txt", "w") as f:
+            for e in edges:
+                f.write(f"Edge: {e.source_id} -> {e.target_id} ({e.edge_type})\n")
+    except Exception as e:
+        pass
     # Using a subquery or just fetching latest 500 and grouping by district
     all_preds = db.query(PredictionHistory).order_by(PredictionHistory.created_at.desc()).limit(200).all()
     pred_map = {}
@@ -69,18 +84,26 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     for d in districts:
         p = pred_map.get(d.id)
         w = weather_map.get(d.id)
-        
-        if not p or not w:
-            continue
+
+        # Expose explicit None for missing telemetry to trigger UI 'Unavailable' states, avoid fake 0.0
+        risk_score = p.current_risk_score if p else 0.0
+        confidence = p.confidence if p else 0.0
+        shap_values = (p.shap_values or []) if p else []
+        rainfall_mm = w.rainfall_mm if w else None
+        humidity = w.humidity if w else None
+        temperature = w.temperature if w else None
+        pressure = w.pressure if w else None
+        wind_speed = w.wind_speed if w else None
+        risk_level_str = p.current_risk_level if p else "Safe"
             
-        risk_lvl, color = get_risk_level_and_color(p.current_risk_score)
+        risk_lvl, color = get_risk_level_and_color(risk_score)
             
         lon, lat = 0.0, 0.0
         if d.geom_json and "coordinates" in d.geom_json:
             lon, lat = d.geom_json["coordinates"]
             
-        river_level_m = 0
-        river_danger_m = 5.0
+        river_level_m = None
+        river_danger_m = None
         r_lvl = river_map.get(d.id)
         if r_lvl:
             river_level_m = r_lvl.current_level
@@ -92,19 +115,19 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "lat": lat,
             "lon": lon,
             "population": d.population,
-            "risk_score": p.current_risk_score,
+            "risk_score": risk_score,
             "risk_level": risk_lvl,
             "risk_color": color,
-            "rainfall_mm": w.rainfall_mm,
-            "humidity": w.humidity,
-            "temperature": w.temperature,
-            "pressure": w.pressure,
-            "wind_speed": w.wind_speed,
+            "rainfall_mm": rainfall_mm,
+            "humidity": humidity,
+            "temperature": temperature,
+            "pressure": pressure,
+            "wind_speed": wind_speed,
             "river_level_m": river_level_m,
             "river_danger_m": river_danger_m,
-            "flood_probability": p.current_risk_score / 100.0,
-            "ai_confidence": p.confidence,
-            "shap_values": p.shap_values,
+            "flood_probability": risk_score / 100.0,
+            "ai_confidence": confidence,
+            "shap_values": shap_values,
         })
         
     districts_with_risk.sort(key=lambda x: x["risk_score"], reverse=True)
@@ -252,9 +275,10 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     avg_confidence = round(sum(all_confidences) / len(all_confidences), 3) if all_confidences else 0.0
 
     # Real inference time from ModelInference table
-    gdnn_ms = round(inf.inference_time_ms, 1) if inf and inf.inference_time_ms else 0.0
+    gdnn_ms = round(inf.latency_ms if inf and inf.latency_ms else (inf.inference_time_ms if inf and inf.inference_time_ms else 0.0), 1)
     kg_nodes = inf.node_count if inf else 0
     kg_edges = inf.edge_count if inf else 0
+    attention_heads = 4 # Known configuration for GAT model
 
     res = {
         "status": "online",
@@ -270,6 +294,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "gdnn_inference_ms": gdnn_ms,
             "kg_nodes": kg_nodes,
             "kg_edges": kg_edges,
+            "attention_heads": attention_heads,
             "storm_simulation_active": sim_meta["active"],
         },
         "storm_simulation": sim_meta,
@@ -290,24 +315,88 @@ def get_all_districts(db: Session = Depends(deps.get_db)) -> Any:
 def get_all_alerts(db: Session = Depends(deps.get_db)) -> Any:
     return get_dashboard_live(db)["alerts"]
 
+class StormScenarioRequest(BaseModel):
+    """Dynamic storm scenario parameters."""
+    active: Optional[bool] = None
+    scenario: str = Field(default="Cyclone Michaung", description="Scenario name")
+    category: str = Field(default="Very Severe Cyclonic Storm", description="Cyclone category")
+    rainfall_mm: float = Field(default=180.0, ge=0.0, le=600.0, description="Simulated 24h rainfall in mm")
+    wind_speed_kmh: float = Field(default=185.0, ge=0.0, le=350.0, description="Max wind speed km/h")
+    storm_surge_m: float = Field(default=2.5, ge=0.0, le=10.0, description="Coastal storm surge height in meters")
+    duration_minutes: int = Field(default=15, ge=5, le=120, description="Simulation duration in minutes")
+    target_districts: List[str] = Field(
+        default=["Chennai", "Thiruvallur", "Kancheepuram", "Cuddalore"],
+        description="Districts to apply heavy rainfall override"
+    )
+    landfall_lat: Optional[float] = Field(default=13.08, description="Cyclone landfall latitude")
+    landfall_lon: Optional[float] = Field(default=80.27, description="Cyclone landfall longitude")
+
+
 @router.post("/simulate-storm")
-def simulate_storm_event(active: bool = None, db: Session = Depends(deps.get_db)) -> Any:
-    """Toggle or explicitly set heavy storm simulation state."""
-    from app.services.orchestrator import RealtimeOrchestrator, get_storm_simulation_active, set_storm_simulation_active, get_storm_simulation_meta
-    if active is None:
-        new_state = set_storm_simulation_active(not get_storm_simulation_active(db), db)
+def simulate_storm_event(
+    body: StormScenarioRequest = Body(default=StormScenarioRequest()),
+    db: Session = Depends(deps.get_db),
+) -> Any:
+    """
+    Activate/deactivate storm simulation with fully parameterized scenario.
+    
+    Accepts a JSON body with scenario parameters:
+    - scenario, category: storm label
+    - rainfall_mm: synthetic 24h rainfall to inject (0–600mm)
+    - wind_speed_kmh: simulated wind speed
+    - storm_surge_m: coastal surge height
+    - duration_minutes: how long simulation runs
+    - target_districts: which districts receive the rainfall override
+    - landfall_lat/lon: epicenter coordinates
+    """
+    from app.services.orchestrator import (
+        RealtimeOrchestrator,
+        get_storm_simulation_active,
+        set_storm_simulation_active,
+        get_storm_simulation_meta,
+        _STORM_SIMULATION_META,
+    )
+    import app.services.orchestrator as _orch_module
+
+    # Determine new active state
+    if body.active is None:
+        new_state = not get_storm_simulation_active(db)
     else:
-        new_state = set_storm_simulation_active(active, db)
-        
+        new_state = body.active
+
+    # Inject custom scenario metadata before activation
+    if new_state:
+        _orch_module._STORM_SIMULATION_META.update({
+            "scenario": body.scenario,
+            "category": body.category,
+            "rainfall_mm": body.rainfall_mm,
+            "wind_speed_kmh": body.wind_speed_kmh,
+            "storm_surge_m": body.storm_surge_m,
+            "duration_minutes": body.duration_minutes,
+            "target_districts": body.target_districts,
+            "landfall_lat": body.landfall_lat,
+            "landfall_lon": body.landfall_lon,
+            "simulation_id": f"SIM-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}",
+        })
+        _orch_module.STORM_SIMULATION_MAX_DURATION_MINUTES = body.duration_minutes
+
+    set_storm_simulation_active(new_state, db)
     orchestrator = RealtimeOrchestrator(db)
     summary = orchestrator.run_pipeline(simulate_storm=new_state)
     sim_meta = get_storm_simulation_meta()
+
     return {
         "status": "success",
         "storm_simulation_active": new_state,
         "storm_simulation": sim_meta,
-        "message": f"Storm simulation is now {'active' if new_state else 'inactive'}.",
-        "summary": summary
+        "message": f"Storm simulation '{body.scenario}' is now {'active' if new_state else 'inactive'}.",
+        "summary": summary,
+        "parameters_applied": {
+            "rainfall_mm": body.rainfall_mm,
+            "wind_speed_kmh": body.wind_speed_kmh,
+            "storm_surge_m": body.storm_surge_m,
+            "target_districts": body.target_districts,
+        } if new_state else None
     }
 
 @router.get("/audit-logs")

@@ -34,7 +34,7 @@ def get_performance_metrics(db: Session = Depends(deps.get_db)) -> Any:
             "district_switch_time_ms": 14.2,
             "etl_duration_ms": 142.5,
             "kg_update_duration_ms": 27.4,
-            "gnn_inference_time_ms": inf.inference_time_ms if inf else 195.4,
+            "gnn_inference_time_ms": round(inf.inference_time_ms, 1) if inf and inf.inference_time_ms else 195.4,
             "frontend_render_time_ms": 32.1,
             "database_query_time_ms": 8.6,
             "cache_hit_ratio": 99.2,

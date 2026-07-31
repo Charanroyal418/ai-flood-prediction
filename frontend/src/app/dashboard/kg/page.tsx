@@ -19,9 +19,10 @@ import * as d3 from "d3-force";
 
 const STATUS_COLORS: Record<string, string> = {
   Critical: "#ef4444",
-  Warning: "#f59e0b",
-  Watch: "#3b82f6",
-  Safe: "#10b981",
+  High: "#f97316",
+  Moderate: "#f59e0b",
+  Low: "#22c55e",
+  Safe: "#3b82f6",
 };
 
 const COMMUNITY_COLORS = [
@@ -47,7 +48,7 @@ function DistrictNode({ data }: { data: any }) {
         }}
       >
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-bold text-slate-800 leading-snug truncate font-heading max-w-[95px]">
+          <p className="text-xs font-bold text-slate-800 leading-snug font-heading break-words text-center flex-1 pr-1">
             {data.label}
           </p>
           <span
@@ -110,7 +111,11 @@ export default function DynamicKnowledgeGraph() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [topConnections, setTopConnections] = useState<any[]>([]);
   
-  const playInterval = useRef<any>(null);
+  const playInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Must be called at top level — before any early returns
+  const { mode, stormSimulationActive, modelMeta } = useFloodData();
+  const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
   const TIME_WINDOWS = [
     { label: "Now", key: "now" },
@@ -158,10 +163,10 @@ export default function DynamicKnowledgeGraph() {
 
     const d3Nodes = districtNodes.map((n: any) => {
       const currentRisk = getRiskFromHistory(n, timeIdx);
-      let status = "Safe";
-      if (currentRisk >= 75) status = "Critical";
-      else if (currentRisk >= 50) status = "Warning";
-      else if (currentRisk >= 25) status = "Watch";
+      if (currentRisk >= 80) status = "Critical";
+      else if (currentRisk >= 60) status = "High";
+      else if (currentRisk >= 40) status = "Moderate";
+      else if (currentRisk >= 20) status = "Low";
       
       const commIdx = communityMap[n.id] ?? 0;
       const communityColor = COMMUNITY_COLORS[commIdx % COMMUNITY_COLORS.length];
@@ -189,10 +194,11 @@ export default function DynamicKnowledgeGraph() {
       const sourceNode = rawNodes.find(n => n.id === e.source);
       const sourceRisk = sourceNode ? getRiskFromHistory(sourceNode, timeIdx) : 15;
       const dynamicInfluence = e.attention * sourceRisk;
-      const statusColor = sourceRisk >= 75 ? STATUS_COLORS.Critical 
-                        : sourceRisk >= 50 ? STATUS_COLORS.Warning 
-                        : sourceRisk >= 25 ? STATUS_COLORS.Watch 
-                        : "#94a3b8";
+      const statusColor = sourceRisk >= 80 ? STATUS_COLORS.Critical 
+                        : sourceRisk >= 60 ? STATUS_COLORS.High 
+                        : sourceRisk >= 40 ? STATUS_COLORS.Moderate 
+                        : sourceRisk >= 20 ? STATUS_COLORS.Low 
+                        : STATUS_COLORS.Safe;
 
       return {
         id: e.id,
@@ -229,7 +235,7 @@ export default function DynamicKnowledgeGraph() {
 
     const simulation = d3.forceSimulation(d3Nodes)
       .force("charge", d3.forceManyBody().strength(-600))
-      .force("collide", d3.forceCollide(85).iterations(4)) // Sized collision zone (170px) prevents any node overlaps!
+      .force("collide", d3.forceCollide(100).iterations(4)) // Sized collision zone prevents overlaps
       .force("x", d3.forceX((d: any) => {
         const angle = (d.data.communityIdx / totalCommunities) * Math.PI * 2;
         return Math.cos(angle) * radius;
@@ -312,9 +318,10 @@ export default function DynamicKnowledgeGraph() {
         if (updatedNode) {
           const currentRisk = getRiskFromHistory(updatedNode, timeIndex);
           let status = "Safe";
-          if (currentRisk >= 75) status = "Critical";
-          else if (currentRisk >= 50) status = "Warning";
-          else if (currentRisk >= 25) status = "Watch";
+          if (currentRisk >= 80) status = "Critical";
+          else if (currentRisk >= 60) status = "High";
+          else if (currentRisk >= 40) status = "Moderate";
+          else if (currentRisk >= 20) status = "Low";
           setSelectedNode((prev: any) => prev ? {
             ...prev,
             risk_score: currentRisk,
@@ -394,9 +401,6 @@ export default function DynamicKnowledgeGraph() {
     return factors;
   };
 
-  const { mode, stormSimulationActive } = useFloodData();
-  const isStormActive = stormSimulationActive || mode === "SIMULATION";
-
   return (
     <div className="space-y-5 h-[calc(100vh-6rem)] pb-6 flex flex-col">
       {/* Top Header Controls */}
@@ -438,9 +442,10 @@ export default function DynamicKnowledgeGraph() {
                 { label: "Graph Density", value: data.stats.density, explain: "Measures how interconnected the regions are. High density means floods spread easily across borders." },
                 { label: "Avg Degree", value: data.stats.avg_degree, explain: "Average number of direct connections per node. High degree indicates complex water flow networks." },
                 { label: "Clustering Coeff", value: data.stats.clustering_coefficient, explain: "Indicates localized risk pockets. High clustering means a flood in one area will likely trap nearby areas." },
-                { label: "Inference Latency", value: `${data.stats.latency_ms}ms`, explain: "Time taken by AI to analyze the entire graph. Lower is better for real-time alerts." },
-                { label: "Total Nodes", value: data.stats.total_nodes, explain: "Number of geographical and sensor entities being monitored in real time." },
-                { label: "Active Sensors", value: data.stats.active_sensors, explain: "Live data sources continuously feeding the Knowledge Graph." }
+                { label: "Inference Latency", value: `${modelMeta?.inference_time_ms ?? data.stats.latency_ms}ms`, explain: "Time taken by AI to analyze the entire graph. Lower is better for real-time alerts." },
+                { label: "Total Nodes", value: modelMeta?.node_count ?? data.stats.total_nodes, explain: "Number of geographical and sensor entities being monitored in real time." },
+                { label: "Total Edges", value: modelMeta?.edge_count ?? data.stats.total_edges ?? 0, explain: "Number of connections (adjacency, river flows) between nodes." },
+                { label: "Attention Heads", value: modelMeta?.attention_heads ?? 4, explain: "Number of multi-head attention mechanisms used by the GAT layer." }
               ].map(({ label, value, explain }) => (
                 <div key={label} className="bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm hover:shadow transition-shadow">
                   <div className="flex justify-between items-center mb-1">
@@ -579,7 +584,7 @@ export default function DynamicKnowledgeGraph() {
               </span>
             </div>
             <div className="mt-4 overflow-y-auto space-y-3 flex-1 pr-1">
-              {(topConnections.length > 0 ? topConnections : data.explainability.critical_edges.slice(0, 4)).map((edge: any, i: number) => {
+              {(topConnections.length > 0 ? topConnections : data.explainability.critical_edges.filter((e: any) => e.source.startsWith('d-') && e.target.startsWith('d-')).slice(0, 4)).map((edge: any, i: number) => {
                 const sourceNode = data.nodes.find((n: any) => n.id === edge.source);
                 const targetNode = data.nodes.find((n: any) => n.id === edge.target);
                 if (!sourceNode || !targetNode) return null;
@@ -621,7 +626,7 @@ export default function DynamicKnowledgeGraph() {
         <div className="glass-card p-5 mt-2 flex flex-col gap-4 shadow-md bg-slate-900 border-none text-slate-300 relative">
           <div className="flex items-center justify-between border-b border-slate-700 pb-3">
              <h3 className="text-sm font-bold font-mono text-white flex items-center gap-2">
-               <BarChart2 className="w-4 h-4 text-indigo-400" /> 128D Embedding Projection (t-SNE)
+               <BarChart2 className="w-4 h-4 text-indigo-400" /> 128D Embedding Projection ({data.explainability?.projection_method || "t-SNE"})
              </h3>
              <button onClick={() => setShowAdvanced(false)} className="text-slate-400 hover:text-white">
                <X className="w-4 h-4" />
@@ -631,7 +636,7 @@ export default function DynamicKnowledgeGraph() {
             Underlying GNN embeddings projected to 2D space. Regions clustered tightly share similar risk profiles across 128 dimensions.
           </p>
           <div className="h-48 border border-slate-700 rounded-xl flex items-center justify-center bg-slate-950 text-slate-400 font-mono text-xs">
-            t-SNE Projection Matrix Active (38 district embedding vectors)
+            {data.explainability?.projection_method || "t-SNE"} Projection Matrix Active (38 district embedding vectors)
           </div>
         </div>
       )}

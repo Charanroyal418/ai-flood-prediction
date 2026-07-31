@@ -48,13 +48,13 @@ logger = logging.getLogger(__name__)
 # Persistent Simulation State with Safeguard
 _STORM_SIMULATION_ACTIVE: bool = False
 _STORM_SIMULATION_ACTIVATED_AT: Optional[datetime] = None
-STORM_SIMULATION_MAX_DURATION_MINUTES: int = 30
+STORM_SIMULATION_MAX_DURATION_MINUTES: int = 15
 
 _STORM_SIMULATION_META: Dict[str, Any] = {
     "scenario": "Cyclone Michaung",
     "category": "Very Severe Cyclonic Storm",
     "started_at": None,
-    "duration_minutes": 30,
+    "duration_minutes": 15,
     "simulation_id": "SIM-20260727-001",
     "prediction_source": "Simulated Weather Inputs",
 }

@@ -88,6 +88,7 @@ export interface ModelMeta {
   node_count: number;
   edge_count: number;
   inference_mode: string;
+  attention_heads?: number;
 }
 
 export interface SimulationMeta {
