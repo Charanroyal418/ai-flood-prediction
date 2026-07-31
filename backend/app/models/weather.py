@@ -11,6 +11,8 @@ class Weather(Base):
     temperature = Column(Float, nullable=True)
     humidity = Column(Float, nullable=True)
     pressure = Column(Float, nullable=True)
+    wind_speed = Column(Float, nullable=True)
+    rainfall_mm = Column(Float, nullable=True)
     status = Column(String, nullable=True)
     recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
 

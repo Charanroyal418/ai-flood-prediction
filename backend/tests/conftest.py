@@ -62,7 +62,7 @@ def seeded_db(db):
 
 
 @pytest.fixture()
-def admin_token(client):
+def admin_token(client, db):
     """Create admin user and return JWT access token."""
     resp = client.post("/api/v1/auth/register", json={
         "name": "Test Admin",
@@ -70,11 +70,15 @@ def admin_token(client):
         "password": "TestAdmin@2026!",
     })
     assert resp.status_code in (200, 201, 409)
-    if resp.status_code == 409:
-        resp = client.post("/api/v1/auth/login", json={
-            "email": "testadmin@floodsense.ai",
-            "password": "TestAdmin@2026!",
-        })
+    from app.models.user import User
+    user = db.query(User).filter_by(email="testadmin@floodsense.ai").first()
+    if user and user.role != "Admin":
+        user.role = "Admin"
+        db.commit()
+    resp = client.post("/api/v1/auth/login", json={
+        "email": "testadmin@floodsense.ai",
+        "password": "TestAdmin@2026!",
+    })
     return resp.json()["access_token"]
 
 

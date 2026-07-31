@@ -160,8 +160,8 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     # ── Build Edge Response ───────────────────────────────────────────────────
     edges_response = []
     for u, v, data in G.edges(data=True):
-        edge_type = data.get("relationship_type", data.get("type", "flow"))
-        meta = EDGE_TYPE_META.get(edge_type, EDGE_TYPE_META["flow"])
+        edge_type = data.get("relationship_type", data.get("type", "river_flow"))
+        meta = EDGE_TYPE_META.get(edge_type, EDGE_TYPE_META["river_flow"])
         attn = data.get("attention", data.get("weight", 0.5))
         src_risk = G.nodes[u].get("risk_score", 15.0)
         influence = float(attn) * float(src_risk)
@@ -521,7 +521,7 @@ def get_edge_detail(edge_id: str, db: Session = Depends(deps.get_db)) -> Any:
     tgt_node = G.nodes[target_id]
 
     edge_type = edge_data.get("relationship_type", edge_data.get("type", "flow"))
-    meta = EDGE_TYPE_META.get(edge_type, EDGE_TYPE_META["flow"])
+    meta = EDGE_TYPE_META.get(edge_type, EDGE_TYPE_META["river_flow"])
     attn = float(edge_data.get("attention", edge_data.get("weight", 0.5)))
     src_risk = float(src_node.get("risk_score", 15.0))
 

@@ -53,25 +53,18 @@ def get_district_boundaries(db: Session = Depends(get_db)):
     Returns all districts as GeoJSON for frontend Leaflet rendering.
     """
     try:
-        # Use PostGIS ST_AsGeoJSON to extract the polygons directly formatted for the web
-        sql = text("""
-            SELECT name, population, ST_AsGeoJSON(geom) as geojson
-            FROM district
-            WHERE geom IS NOT NULL
-        """)
-        
-        result = db.execute(sql).fetchall()
+        from app.models.district import District
+        districts = db.query(District).filter(District.geom_json != None).all()
         
         features = []
-        for r in result:
-            import json
+        for d in districts:
             features.append({
                 "type": "Feature",
                 "properties": {
-                    "name": r[0],
-                    "population": r[1]
+                    "name": d.name,
+                    "population": d.population
                 },
-                "geometry": json.loads(r[2])
+                "geometry": d.geom_json
             })
             
         return {

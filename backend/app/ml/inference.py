@@ -278,6 +278,30 @@ class GNNInferenceEngine:
             logger.error(f"[GNN] Forward pass failed: {e}. Switching to fallback.")
             return self._physics_predict(H, node_ids)
 
+    def _compute_physics_risk(self, feats: List[float]) -> float:
+        """
+        Standalone method for testing physics computations.
+        Takes a list of 12 features and returns the risk score.
+        """
+        rainfall = feats[0]
+        river_risk = feats[1]
+        humidity = feats[2]
+        elevation = feats[5]
+        hist_floods = feats[8]
+
+        r_mm = rainfall * 204.4 if rainfall <= 1.0 else rainfall
+        r_score = min(40.0, (r_mm / 204.4) * 40.0)
+
+        rv_ratio = river_risk if river_risk <= 1.0 else river_risk / 100.0
+        rv_score = min(25.0, rv_ratio * 25.0)
+
+        elev_score = max(0.0, (20.0 - elevation) / 20.0) * 15.0
+        hist_score = min(10.0, hist_floods * 2.0)
+        hum_boost = max(0.0, (humidity - 75.0) / 25.0) * 5.0
+
+        risk_raw = r_score + rv_score + elev_score + hist_score + hum_boost
+        return float(min(99.0, max(1.0, risk_raw)))
+
     def _physics_predict(
         self,
         H: torch.Tensor,

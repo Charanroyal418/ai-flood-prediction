@@ -179,7 +179,7 @@ class TestSpatialEndpoints:
     """Spatial and district endpoints."""
 
     def test_districts_endpoint_returns_200(self, client):
-        resp = client.get("/api/v1/spatial/districts")
+        resp = client.get("/api/v1/spatial/district-bounds")
         assert resp.status_code == 200
 
     def test_prediction_cycle_returns_200(self, client):

@@ -111,15 +111,18 @@ class KnowledgeGraphBuilder:
 
             # Set geographic coordinates for district nodes
             lat, lon = 0.0, 0.0
+            label_text = nid
             if nid.startswith("d-"):
                 try:
                     did = int(nid.split("-")[1])
                     lat, lon = DISTRICT_COORDS.get(did, (10.5, 78.5))
+                    label_text = f"District {did}"
                 except Exception:
                     lat, lon = 10.5, 78.5
 
             self.graph.add_node(nid, type=t, risk_score=15.0, elevation=20.0,
                                 rainfall=0.0, river_level=0.0, lat=lat, lon=lon,
+                                label=label_text,
                                 last_updated=now_iso)
 
         for i in range(1, 39):
@@ -458,6 +461,45 @@ class KnowledgeGraphBuilder:
 
         edge_index = torch.tensor([sources, targets], dtype=torch.long)
         return H, edge_index
+
+    def build_graph(self, db) -> dict:
+        """Helper to build a dict representation of the graph for testing/legacy APIs."""
+        import time
+        import networkx as nx
+        t0 = time.time()
+        if db:
+            self.update_graph_from_db(db)
+            
+        nodes = []
+        for nid, data in self.graph.nodes(data=True):
+            node = {"id": nid, "type": data.get("type", "unknown")}
+            node.update(data)
+            nodes.append(node)
+            
+        edges = []
+        for u, v, data in self.graph.edges(data=True):
+            edge = {"source": u, "target": v}
+            edge.update(data)
+            edges.append(edge)
+            
+        latency = (time.time() - t0) * 1000
+        stats = {
+            "density": nx.density(self.graph),
+            "total_nodes": self.graph.number_of_nodes(),
+            "avg_degree": sum(dict(self.graph.degree()).values()) / max(1, self.graph.number_of_nodes()),
+            "latency_ms": latency,
+        }
+        
+        H, _ = self.fetch_graph_snapshot(db, seq_len=3)
+        
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "stats": stats,
+            "communities": [],
+            "feature_matrix": H
+        }
+
 
 
 kg_builder = KnowledgeGraphBuilder()
