@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 gunicorn
 pydantic>=2.0
+email-validator
 pydantic-settings
 sqlalchemy>=2.0.30
 alembic
