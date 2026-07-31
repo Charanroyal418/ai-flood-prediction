@@ -1,7 +1,27 @@
 import type { Metadata, Viewport } from "next";
+import { Space_Grotesk, Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import QueryProvider from "@/components/QueryProvider";
 import { AuthProvider } from "@/context/AuthContext";
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+  variable: "--font-ibm-plex-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -9,24 +29,17 @@ export const metadata: Metadata = {
     template: "%s | FloodSense AI",
   },
   description:
-    "Intelligent Prediction of Flood Disaster Risk Levels Based on Dynamic Knowledge Graphs and Graph Attention Networks (GAT+GRU). Real-time AI monitoring for Tamil Nadu's 38 districts.",
+    "Intelligent Prediction of Flood Disaster Risk Levels. Real-time AI monitoring for Tamil Nadu's 38 districts.",
   keywords: [
     "flood prediction", "AI", "machine learning", "Tamil Nadu", "disaster management",
-    "knowledge graph", "GNN", "GAT", "GRU", "SHAP", "flood risk", "real-time",
-    "early warning system", "hydrology", "rainfall prediction",
   ],
   authors: [{ name: "FloodSense AI Research Team" }],
   creator: "FloodSense AI",
   openGraph: {
     title: "FloodSense AI — Tamil Nadu Flood Intelligence Platform",
-    description: "Real-Time AI Flood Prediction & Decision Support using Knowledge Graphs and GNN",
+    description: "Real-Time AI Flood Prediction & Decision Support",
     type: "website",
     locale: "en_IN",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "FloodSense AI",
-    description: "Real-Time AI Flood Prediction for Tamil Nadu",
   },
   robots: {
     index: true,
@@ -36,24 +49,21 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#FAFBFF" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0b14" },
+    { media: "(prefers-color-scheme: light)", color: "#F7F8FA" },
+    { media: "(prefers-color-scheme: dark)", color: "#0A1420" },
   ],
   width: "device-width",
   initialScale: 1,
 };
 
-// FloodSense AI is a real-time Emergency Operations Center platform.
-// Force dynamic rendering — static generation is meaningless for live flood data.
 export const dynamic = "force-dynamic";
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${spaceGrotesk.variable} ${inter.variable} ${ibmPlexMono.variable}`}>
       <head>
-        {/* Inline script to set theme before React hydrates (prevents flash) */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -66,7 +76,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="antialiased min-h-screen transition-colors duration-300">
+      <body className="antialiased min-h-screen transition-colors duration-300 font-sans">
         <AuthProvider>
           <QueryProvider>
             {children}

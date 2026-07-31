@@ -1,247 +1,182 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, Bell, Shield, Clock, MapPin, Brain, ChevronDown, RefreshCw, CheckCircle2, Activity } from "lucide-react";
-
-const LEVEL_CONFIG: Record<string, { border: string; bg: string; text: string; dot: string; icon: string }> = {
-  Critical: { border: "border-red-200", bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500", icon: "🚨" },
-  Warning:  { border: "border-amber-200", bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500", icon: "⚠️" },
-  Watch:    { border: "border-blue-200", bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500", icon: "👁️" },
-};
-
+import { AlertTriangle, Bell, Shield, Clock, MapPin, Brain, ChevronDown, RefreshCw, Activity, CheckCircle, ArrowUpRight } from "lucide-react";
 import { useFloodData } from "@/context/FloodDataContext";
 
-function AlertCard({ alert, index }: { alert: any; index: number }) {
+const LEVEL_CONFIG: Record<string, { badge: string; text: string; icon: React.ReactNode }> = {
+  Critical: { badge: "risk-badge-severe", text: "text-risk-severe", icon: <AlertTriangle className="w-5 h-5 text-risk-severe" /> },
+  Warning:  { badge: "risk-badge-high", text: "text-risk-high", icon: <AlertTriangle className="w-5 h-5 text-risk-high" /> },
+  Watch:    { badge: "risk-badge-low", text: "text-risk-low", icon: <Brain className="w-5 h-5 text-risk-low" /> },
+};
+
+function AlertCard({ alert }: { alert: any }) {
   const { mode, stormSimulationActive } = useFloodData();
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
   const [expanded, setExpanded] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+  
   const cfg = LEVEL_CONFIG[alert.level] || LEVEL_CONFIG.Watch;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.06 }}
-      className={`glass-card border ${isStormActive ? "border-amber-300 bg-amber-50/30" : cfg.border} overflow-hidden`}
-    >
-      <button
-        className="w-full p-5 text-left"
+    <div className={`bg-paper-100 border rounded-lg overflow-hidden transition-all ${acknowledged ? 'opacity-60 border-line' : isStormActive ? 'border-risk-high' : 'border-line'} ${expanded ? 'shadow-card' : ''}`}>
+      <div 
+        className="w-full p-4 text-left cursor-pointer hover:bg-line/20 flex gap-4 items-start"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-start gap-4">
-          {/* Icon */}
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isStormActive ? "bg-amber-100 text-amber-800" : cfg.bg} text-lg font-bold`}>
-            {isStormActive ? "🟠" : cfg.icon}
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                isStormActive
-                  ? "bg-amber-500 text-white border-amber-600 shadow-sm"
-                  : `${cfg.bg} ${cfg.text} ${cfg.border}`
-              }`}>
-                {isStormActive ? "🟠 SIMULATION ALERT" : `🚨 ${alert.level} LIVE ALERT`}
-              </span>
-              <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                <Clock className="w-2.5 h-2.5" /> {new Date(alert.created_at || Date.now()).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </div>
-            <p className="text-sm font-semibold text-slate-800 leading-snug">{alert.message}</p>
-            {isStormActive && (
-              <p className="text-[10px] font-bold text-amber-700 mt-1 bg-amber-100/80 px-2 py-0.5 rounded w-fit border border-amber-200">
-                Generated from simulation. Not an official warning.
-              </p>
-            )}
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                <MapPin className="w-2.5 h-2.5" /> {alert.district || "Statewide"}
-              </span>
-              <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                <Brain className="w-2.5 h-2.5" /> {((alert.confidence || 0.94) * 100).toFixed(1)}% AI confidence
-              </span>
-            </div>
-          </div>
-
-          {/* Expand arrow */}
-          <ChevronDown className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        <div className="flex-shrink-0 mt-1">
+          {cfg.icon}
         </div>
-      </button>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className={`px-5 pb-5 pt-0 border-t ${isStormActive ? "border-amber-200 bg-amber-50/50" : `${cfg.border} ${cfg.bg}`}`}>
-              <div className="mt-4 grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Rainfall</p>
-                  <p className="text-sm font-bold text-slate-800">{alert.rainfall_mm ?? 385}mm/24h</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">AI Confidence</p>
-                  <p className="text-sm font-bold text-slate-800">{((alert.confidence || 0.94) * 100).toFixed(1)}%</p>
-                </div>
-              </div>
-              <div className="mt-3 p-3 rounded-xl bg-white/60 border border-white">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Recommended Action</p>
-                <p className="text-xs text-slate-700 font-medium">{alert.suggested_response || "Evacuate low-lying zones immediately."}</p>
-              </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start mb-1">
+            <div className="flex gap-2 items-center">
+              <span className={`risk-badge ${isStormActive ? 'risk-badge-high' : cfg.badge}`}>
+                {isStormActive ? "SIMULATED ALERT" : `${alert.level.toUpperCase()} ALERT`}
+              </span>
+              <span className="text-[10px] text-text-secondary font-mono flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {new Date(alert.created_at || Date.now()).toLocaleTimeString("en-US", { hour12: false })}
+              </span>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+            <ChevronDown className={`w-4 h-4 text-text-secondary transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          </div>
+          <p className={`text-sm font-semibold mb-1 ${acknowledged ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
+            {alert.message}
+          </p>
+          <div className="flex items-center gap-4">
+            <span className="text-[10px] text-text-secondary font-mono flex items-center gap-1">
+              <MapPin className="w-3 h-3" /> {alert.district || "Statewide"}
+            </span>
+            <span className="text-[10px] text-text-secondary font-mono flex items-center gap-1">
+              <Brain className="w-3 h-3" /> {((alert.confidence || 0.94) * 100).toFixed(1)}% CONFIDENCE
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="px-4 pb-4 pt-2 border-t border-line/50 bg-paper-50">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div>
+              <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Rainfall (24h)</p>
+              <p className="text-sm font-mono font-bold text-text-primary">{alert.rainfall_mm ?? 385} mm</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Model Conf</p>
+              <p className="text-sm font-mono font-bold text-text-primary">{((alert.confidence || 0.94) * 100).toFixed(1)}%</p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Recommended Action</p>
+              <p className="text-xs font-semibold text-text-primary">{alert.suggested_response || "Evacuate low-lying zones immediately."}</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setAcknowledged(!acknowledged); }}
+              className="btn-secondary"
+            >
+              <CheckCircle className="w-4 h-4" /> {acknowledged ? "Unacknowledge" : "Acknowledge"}
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); }}
+              className="btn-primary !bg-risk-severe hover:!bg-red-800"
+            >
+              <ArrowUpRight className="w-4 h-4" /> Escalate to EOC
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 export default function AlertCenterPage() {
   const [filterLevel, setFilterLevel] = useState("all");
   const { alerts: wsAlerts, alertStatus, requestSnapshot } = useFloodData();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      setNotificationsEnabled(Notification.permission === "granted");
-    }
-  }, []);
-
-  const requestNotifications = async () => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      const permission = await Notification.requestPermission();
-      setNotificationsEnabled(permission === "granted");
-    }
-  };
-
-  // When a new critical alert comes in, trigger notification
-  useEffect(() => {
-    if (notificationsEnabled && wsAlerts.length > 0) {
-      const latest = wsAlerts[0];
-      if (latest.level === "Critical") {
-        new Notification("FloodSense Critical Alert", {
-          body: latest.message,
-          icon: "/favicon.ico",
-        });
-      }
-    }
-  }, [wsAlerts, notificationsEnabled]);
 
   const alerts = wsAlerts || [];
-  const filtered = filterLevel === "all" ? alerts : alerts.filter(a => a.level === filterLevel);
+  
+  // Sort by severity (Critical > Warning > Watch)
+  const severityScore = (level: string) => {
+    if (level === 'Critical') return 3;
+    if (level === 'Warning') return 2;
+    return 1;
+  };
+  
+  const sortedAlerts = [...alerts].sort((a, b) => severityScore(b.level) - severityScore(a.level));
+  const filtered = filterLevel === "all" ? sortedAlerts : sortedAlerts.filter(a => a.level === filterLevel);
+  
   const critical = alerts.filter(a => a.level === "Critical" || a.severity === "Red").length;
   const warning = alerts.filter(a => a.level === "Warning" || a.severity === "Orange").length;
 
-  // Generate timeline data from alerts
-  const timelineData = [...alerts].slice(0, 15).map(a => ({
-    time: new Date(a.created_at || Date.now()).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-    level: a.level
-  })).reverse();
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
+    <div className="flex flex-col gap-4">
+      {/* ── HEADER ACTION STRIP ── */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-heading font-bold text-slate-800">Alert Center</h1>
-          <p className="text-sm text-slate-500 mt-1">GDNN-generated alerts · Auto-dispatched from risk engine</p>
+          <h1 className="text-xl text-text-primary">Alert Center</h1>
+          <p className="text-xs text-text-secondary mt-1">GDNN-generated early warnings & dispatches</p>
         </div>
-        <div className="flex items-center gap-2">
-          {notificationsEnabled ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
-              <Bell className="w-3.5 h-3.5" /> Notifications On
-            </div>
-          ) : (
-            <button onClick={requestNotifications} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors">
-              <Bell className="w-3.5 h-3.5" /> Enable Notifications
-            </button>
-          )}
-          <div className="relative">
-            <div className={`w-2 h-2 rounded-full ${alertStatus === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'} animate-ping absolute`} />
-            <div className={`w-2 h-2 rounded-full ${alertStatus === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 font-mono text-xs text-text-secondary">
+            <div className={`w-2 h-2 rounded-full ${alertStatus === 'connected' ? 'bg-signal-500' : 'bg-risk-moderate'}`} />
+            <span>{alertStatus === 'connected' ? `LINK SECURE · ${alerts.length} ALERTS` : 'CONNECTING...'}</span>
           </div>
-          <span className="text-xs font-semibold text-slate-600">
-            {alertStatus === 'connected' ? `${alerts.length} Active Alerts` : 'Connecting...'}
-          </span>
-          <button onClick={() => requestSnapshot()} className="ml-2 p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors">
-            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+          <button onClick={() => requestSnapshot()} className="btn-secondary">
+            <RefreshCw className="w-4 h-4" /> Sync
           </button>
         </div>
       </div>
 
-      {/* Stats */}
+      {/* ── STATS ROW ── */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="glass-card-flat bg-red-50 p-4 text-center">
-          <p className="text-2xl font-heading font-bold text-red-700">{critical}</p>
-          <p className="text-[11px] text-red-500 mt-0.5 font-semibold">Critical Alerts</p>
+        <div className="metric-card !h-auto">
+          <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-2">Critical Alerts</p>
+          <p className="text-3xl font-mono font-bold text-risk-severe">{critical}</p>
         </div>
-        <div className="glass-card-flat bg-amber-50 p-4 text-center">
-          <p className="text-2xl font-heading font-bold text-amber-700">{warning}</p>
-          <p className="text-[11px] text-amber-500 mt-0.5 font-semibold">Warnings</p>
+        <div className="metric-card !h-auto">
+          <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-2">Warnings</p>
+          <p className="text-3xl font-mono font-bold text-risk-high">{warning}</p>
         </div>
-        <div className="glass-card-flat bg-green-50 p-4 text-center">
-          <p className="text-2xl font-heading font-bold text-green-700">{38 - alerts.length}</p>
-          <p className="text-[11px] text-green-500 mt-0.5 font-semibold">Districts Safe</p>
+        <div className="metric-card !h-auto">
+          <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-2">Safe Nodes</p>
+          <p className="text-3xl font-mono font-bold text-risk-low">{38 - (critical + warning)}</p>
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 justify-between">
-        <div className="flex gap-2">
-          {["all", "Critical", "Warning", "Watch"].map(level => (
-            <button
-              key={level}
-              onClick={() => setFilterLevel(level)}
-              className={`px-4 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                filterLevel === level
-                  ? level === "Critical" ? "bg-red-500 text-white" : level === "Warning" ? "bg-amber-500 text-white" : "bg-violet-600 text-white"
-                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {level === "all" ? "All Alerts" : level}
-            </button>
-          ))}
-        </div>
-        
-        {/* Timeline Visualization */}
-        {timelineData.length > 0 && (
-          <div className="hidden md:flex items-center gap-1 overflow-x-auto max-w-[50%] p-2 bg-slate-50 rounded-lg border border-slate-200">
-            <Activity className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0" />
-            {timelineData.map((t, i) => (
-              <div 
-                key={i} 
-                title={`${t.time} - ${t.level}`}
-                className={`w-4 h-6 rounded-sm flex-shrink-0 opacity-80 hover:opacity-100 transition-opacity cursor-pointer ${
-                  t.level === 'Critical' ? 'bg-red-500' : 
-                  t.level === 'Warning' ? 'bg-amber-500' : 'bg-blue-400'
-                }`} 
-              />
-            ))}
+      {/* ── FILTERS ── */}
+      <div className="flex gap-2">
+        {["all", "Critical", "Warning", "Watch"].map(level => (
+          <button
+            key={level}
+            onClick={() => setFilterLevel(level)}
+            className={`px-4 py-1.5 rounded text-xs font-semibold font-mono transition-colors border ${
+              filterLevel === level
+                ? level === "Critical" ? "bg-risk-severe text-white border-risk-severe" : level === "Warning" ? "bg-risk-high text-white border-risk-high" : level === "Watch" ? "bg-risk-low text-white border-risk-low" : "bg-ink-900 text-white border-ink-900"
+                : "bg-paper-100 text-text-secondary border-line hover:bg-line/30"
+            }`}
+          >
+            {level === "all" ? "ALL_ALERTS" : level.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      {/* ── ALERTS LIST ── */}
+      <div className="flex flex-col gap-2">
+        {alertStatus === "connecting" && alerts.length === 0 ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-20 skeleton" />)}
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-paper-100 border border-line rounded-lg p-12 text-center flex flex-col items-center">
+            <Shield className="w-12 h-12 text-risk-low mb-4" />
+            <h2 className="text-lg font-bold text-text-primary mb-1">All Clear</h2>
+            <p className="text-sm text-text-secondary">No active alerts matching criteria. GDNN monitoring continues.</p>
+          </div>
+        ) : (
+          filtered.map((alert) => <AlertCard key={alert.id} alert={alert} />)
         )}
       </div>
-
-      {/* Alert list */}
-      {alertStatus === "connecting" && alerts.length === 0 ? (
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="glass-card h-24 skeleton" />)}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="glass-card p-16 text-center">
-          <Shield className="w-12 h-12 text-green-400 mx-auto mb-4" />
-          <h2 className="text-lg font-heading font-bold text-slate-700">All Clear</h2>
-          <p className="text-sm text-slate-500 mt-2">No active alerts at this time. The GDNN is continuously monitoring all 38 districts.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filtered.map((alert, i) => <AlertCard key={alert.id} alert={alert} index={i} />)}
-        </div>
-      )}
     </div>
   );
 }
