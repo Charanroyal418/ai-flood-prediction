@@ -107,7 +107,7 @@
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2
            text-sm font-semibold transition-all duration-150 border border-line
-           focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 text-text-primary bg-paper-100 hover:bg-line/50;
+           focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 text-foreground bg-paper-100 hover:bg-line;
   }
 
   /* ── Risk Badges (Strictly Institutional) ─────────────────────────────── */
@@ -121,20 +121,20 @@
   .risk-badge-low { @apply bg-[rgba(63,125,92,0.1)] text-risk-low border-[rgba(63,125,92,0.3)]; }
   
   /* Safe fallback for data missing/safe */
-  .risk-badge-safe { @apply bg-paper-100 text-text-secondary border-line; }
+  .risk-badge-safe { @apply bg-paper-100 text-muted-foreground border-line; }
 
   /* ── Sidebar Items ────────────────────────────────────────────────────── */
   .sidebar-item {
     @apply flex items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium
-           transition-colors duration-150 cursor-pointer text-text-secondary;
+           transition-colors duration-150 cursor-pointer text-muted-foreground;
   }
 
   .sidebar-item:hover {
-    @apply text-text-primary bg-ink-900;
+    @apply text-foreground bg-ink-900;
   }
 
   .sidebar-item.active {
-    @apply text-white bg-signal-100/10 border-l-4 border-signal-500 pl-2 font-semibold;
+    @apply text-white bg-white/10 border-l-4 border-signal-500 pl-2 font-semibold;
   }
 
   /* ── Data Tables ──────────────────────────────────────────────────────── */
@@ -144,16 +144,16 @@
   }
 
   .data-table td {
-    @apply py-2 px-3 text-sm border-b border-line/50 text-text-primary transition-colors duration-100;
+    @apply py-2 px-3 text-sm border-b border-line text-foreground transition-colors duration-100;
   }
 
   .data-table tr:hover td {
-    @apply bg-line/20;
+    @apply bg-paper-50;
   }
 
   /* ── Skeleton Loaders (Solid Shapes) ──────────────────────────────────── */
   .skeleton {
-    @apply rounded-sm bg-line/60 animate-pulse;
+    @apply rounded-sm bg-line animate-pulse;
   }
 }
 
