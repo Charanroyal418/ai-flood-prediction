@@ -788,7 +788,7 @@ class RealtimeOrchestrator:
                     "high_risk_districts": len([d for d in district_updates if d["risk_level"] == "High"]),
                     "avg_rainfall_24h_mm": round(sum(d["rainfall_mm"] for d in district_updates) / (len(district_updates) or 1), 1),
                     "districts_monitored": len(district_updates),
-                    "model_confidence": 0.94,
+                    "model_confidence": 0.0,
                     "gdnn_inference_ms": summary.get("latency_ms", 0),
                     "storm_simulation_active": is_storm,
                 }

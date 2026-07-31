@@ -183,18 +183,18 @@ class TestSpatialEndpoints:
         assert resp.status_code == 200
 
     def test_prediction_cycle_returns_200(self, client):
-        resp = client.get("/api/v1/predict/cycle")
+        resp = client.get("/api/v1/predict/inference-cycle")
         assert resp.status_code == 200
 
     def test_prediction_cycle_has_districts(self, client):
-        resp = client.get("/api/v1/predict/cycle")
+        resp = client.get("/api/v1/predict/inference-cycle")
         data = resp.json()
         assert "districts" in data
         assert isinstance(data["districts"], list)
 
     def test_prediction_cycle_no_uniform_risk_scores(self, client):
         """Risk scores must NOT all be the same (e.g. 15.0 hardcoded fallback)."""
-        resp = client.get("/api/v1/predict/cycle")
+        resp = client.get("/api/v1/predict/inference-cycle")
         data = resp.json()
         districts = data.get("districts", [])
         if len(districts) > 1:

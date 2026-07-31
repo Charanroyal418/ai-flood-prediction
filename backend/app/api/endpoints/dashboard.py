@@ -169,7 +169,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "message": a.message,
             "suggested_response": a.suggested_response,
             "created_at": a.created_at.isoformat(),
-            "confidence": a.confidence if a.confidence is not None else 0.94,
+            "confidence": a.confidence if a.confidence is not None else 0.0,
             "rainfall_mm": rainfall_val,
         })
 
@@ -186,7 +186,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
                 "message": f"[{d['risk_level']}] Flood risk in {d['name']}: Score {d['risk_score']:.0f}/100. Primary driver: {top_reason}.",
                 "suggested_response": "Immediate evacuation of flood-prone zones. Open relief camps." if d["risk_level"] in ["Critical", "Severe"] else "Monitor water levels. Pre-position rescue teams.",
                 "created_at": now.isoformat(),
-                "confidence": d.get("ai_confidence", 0.94),
+                "confidence": d.get("ai_confidence", 0.0),
                 "rainfall_mm": d.get("rainfall_mm", 0.0),
             })
             seen_districts.add(d["id"])
