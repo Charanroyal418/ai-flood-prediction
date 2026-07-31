@@ -28,6 +28,11 @@ const config: Config = {
           DEFAULT: 'var(--line)',
           dark: 'var(--line-dark)',
         },
+        text: {
+          primary: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          inverse: 'var(--text-inverse)',
+        },
         signal: {
           100: 'var(--signal-100)',
           500: 'var(--signal-500)',
