@@ -53,11 +53,11 @@ class TestRiskLevelMapping:
     def test_risk_level_thresholds(self):
         from app.ml.inference import get_risk_level_and_color
 
-        assert get_risk_level_and_color(5.0)[0] == "Very Low"
+        assert get_risk_level_and_color(5.0)[0] == "Safe"
         assert get_risk_level_and_color(20.0)[0] == "Low"
         assert get_risk_level_and_color(40.0)[0] == "Moderate"
         assert get_risk_level_and_color(60.0)[0] == "High"
-        assert get_risk_level_and_color(80.0)[0] == "Severe"
+        assert get_risk_level_and_color(80.0)[0] == "Critical"
 
     def test_risk_color_is_hex(self):
         from app.ml.inference import get_risk_level_and_color

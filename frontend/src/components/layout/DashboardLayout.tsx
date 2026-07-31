@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { ThemeSwitcher } from "@/components/layout/ThemeSwitcher";
 
 const navSections = [
   {
@@ -345,10 +345,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           {!collapsed && (
             <div className="flex items-center justify-between px-2 mt-2">
               <span className="text-[10px] text-slate-400 font-medium">Theme</span>
-              <ThemeToggle />
+              <ThemeSwitcher />
             </div>
           )}
-          {collapsed && <ThemeToggle />}
+          {collapsed && <ThemeSwitcher />}
         </div>
       </motion.nav>
 
@@ -431,7 +431,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                     <p className="text-[10px] text-slate-400 dark:text-slate-500">State EOC Command</p>
                   </div>
                   <div className="ml-auto">
-                    <ThemeToggle />
+                    <ThemeSwitcher />
                   </div>
                 </div>
               </div>
