@@ -8,21 +8,9 @@ export function RainfallTrendChart() {
   const { data: trendData, isLoading } = useQuery({
     queryKey: ['rainfallTrend'],
     queryFn: async () => {
-      // Fetching mock trend for MVP if real historical endpoint isn't fully populated
-      try {
-        const res = await api.get('/ml/trends');
-        return res.data;
-      } catch {
-        return [
-          { day: 'Mon', rainfall: 45 },
-          { day: 'Tue', rainfall: 82 },
-          { day: 'Wed', rainfall: 150 },
-          { day: 'Thu', rainfall: 210 },
-          { day: 'Fri', rainfall: 180 },
-          { day: 'Sat', rainfall: 90 },
-          { day: 'Sun', rainfall: 30 },
-        ];
-      }
+      // Fetching real trend from the backend
+      const res = await api.get('/ml/trends');
+      return res.data;
     },
     refetchInterval: 300000 // 5 minutes
   });

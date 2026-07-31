@@ -84,3 +84,49 @@ def predict_flood_risk(
         "probability": float(round(prob * 100, 2)),
         "risk_level": risk_level
     }
+
+@router.get("/trends")
+def get_rainfall_trends(db: Session = Depends(deps.get_db)) -> Any:
+    """
+    Returns the average rainfall per day for the last 7 days across all districts.
+    Replaces mock data with actual DB telemetry.
+    """
+    from sqlalchemy import func
+    from app.models.history import WeatherHistory
+    from datetime import datetime, timedelta
+    
+    # Get the last 7 days
+    now = datetime.utcnow()
+    seven_days_ago = now - timedelta(days=7)
+    
+    # Query database for daily average rainfall
+    results = (
+        db.query(
+            func.date(WeatherHistory.recorded_at).label("date"),
+            func.avg(WeatherHistory.rainfall_mm).label("avg_rainfall")
+        )
+        .filter(WeatherHistory.recorded_at >= seven_days_ago)
+        .group_by(func.date(WeatherHistory.recorded_at))
+        .order_by(func.date(WeatherHistory.recorded_at).asc())
+        .all()
+    )
+    
+    trends = []
+    # If no data, return real zeros, not mock spikes
+    if not results:
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        today_idx = now.weekday()
+        days_ordered = days[today_idx:] + days[:today_idx]
+        for day in days_ordered:
+            trends.append({"day": day, "rainfall": 0.0})
+        return trends
+        
+    for res in results:
+        day_str = res.date.strftime("%a")
+        trends.append({
+            "day": day_str,
+            "rainfall": round(res.avg_rainfall, 1) if res.avg_rainfall else 0.0
+        })
+        
+    return trends
+

@@ -14,15 +14,32 @@ class GeospatialETL(BaseETLPipeline):
         
     def extract(self):
         logger.info("Extracting raw dataset features (DEM, Rivers, Weather, Rainfall)...")
-        # In a production scenario, we would use geopandas to read shapefiles from data/raw/
-        # Here we mock the extracted dataset structure to satisfy verification pipeline
-        mock_raw_data = [
-            {"type": "District", "name": "Chennai", "rainfall_24h": 150.5, "elevation": 6.7, "population": 7000000},
-            {"type": "District", "name": "Cuddalore", "rainfall_24h": 85.0, "elevation": 5.2, "population": 2600000},
-            {"type": "River", "name": "Adyar", "water_level": 4.5, "discharge": 1200},
-            {"type": "River", "name": "Cooum", "water_level": 3.8, "discharge": 850}
-        ]
-        return mock_raw_data
+        from app.models.district import District
+        from app.models.river import RiverLevel
+        from app.models.history import WeatherHistory
+        
+        districts = self.db.query(District).all()
+        raw_data = []
+        for d in districts:
+            w = self.db.query(WeatherHistory).filter(WeatherHistory.district_id == d.id).order_by(WeatherHistory.recorded_at.desc()).first()
+            raw_data.append({
+                "type": "District", 
+                "name": d.name, 
+                "rainfall_24h": w.rainfall_mm if w else 0.0, 
+                "elevation": 15.0, # Will be updated dynamically by DEM later
+                "population": d.population or 1000000
+            })
+            
+        rivers = self.db.query(RiverLevel).all()
+        for r in rivers:
+            raw_data.append({
+                "type": "River", 
+                "name": r.river_name, 
+                "water_level": r.current_level, 
+                "discharge": r.current_level * 250 # Approximation for flow rate
+            })
+            
+        return raw_data
         
     def validate(self, raw_data):
         logger.info(f"Validating {len(raw_data)} records...")

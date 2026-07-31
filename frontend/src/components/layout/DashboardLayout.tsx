@@ -463,7 +463,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
               <span>Updated:</span>
               <span className="font-semibold text-slate-700 dark:text-slate-200">
-                {lastUpdated
+                {!mounted ? "" : lastUpdated
                   ? new Date(lastUpdated).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
                   : new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
               </span>

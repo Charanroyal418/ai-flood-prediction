@@ -619,13 +619,17 @@ def get_kg_summary(db: Session = Depends(deps.get_db)) -> Any:
     edges_count = inf.edge_count if inf else 248
     last_updated_ts = inf.created_at.isoformat() + "Z" if inf else datetime.now(timezone.utc).isoformat()
 
+    r_nodes = len([n for n in kg_builder.graph.nodes if n.startswith("rv-")]) if kg_builder.graph else 0
+    res_nodes = len([n for n in kg_builder.graph.nodes if n.startswith("rs-")]) if kg_builder.graph else 0
+    ws_nodes = len([n for n in kg_builder.graph.nodes if n.startswith("ws-")]) if kg_builder.graph else 0
+
     return {
         "nodes": nodes_count,
         "edges": edges_count,
         "district_nodes": dist_count,
-        "river_nodes": 9,
-        "reservoir_nodes": 6,
-        "weather_station_nodes": 38,
+        "river_nodes": r_nodes,
+        "reservoir_nodes": res_nodes,
+        "weather_station_nodes": ws_nodes,
         "last_updated": last_updated_ts,
         "inference_mode": gnn_engine.inference_mode,
     }
