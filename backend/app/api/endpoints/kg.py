@@ -300,7 +300,7 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
         path = [start_edge["source"], start_edge["target"]]
         current = start_edge["target"]
         for _ in range(4):
-            out_edges = [e for e in district_edges if e["source"] == current]
+            out_edges = [e for e in valid_edges if e["source"] == current]
             if not out_edges:
                 break
             best = max(out_edges, key=lambda x: x["attention"])
