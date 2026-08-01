@@ -124,14 +124,19 @@ export default function PredictionEnginePage() {
     } catch (err) {} 
   };
 
-  if (isError && !data) {
+  if (isError || !data || data.status === "waiting_for_telemetry") {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
-          <AlertTriangle className="w-8 h-8 text-risk-severe" />
-          <h2 className="text-sm font-heading font-bold text-text-primary">Engine Offline</h2>
+          <AlertTriangle className={`w-8 h-8 ${isError ? 'text-risk-severe' : 'text-signal-500'}`} />
+          <h2 className="text-sm font-heading font-bold text-text-primary">
+            {isError ? "Engine Offline" : "Waiting for Telemetry"}
+          </h2>
+          <p className="text-xs text-text-secondary max-w-sm">
+            {data?.message || "Pipeline is currently waiting for initial data ingestion."}
+          </p>
           <button onClick={() => refetch()} className="btn-primary">
-            <RefreshCw className="w-4 h-4" /> Retry Connection
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh Pipeline
           </button>
         </div>
       </div>
@@ -139,10 +144,7 @@ export default function PredictionEnginePage() {
   }
 
   const s = data?.model_status || {};
-  const breakdown = data?.latency_breakdown || {
-    ETL: 125.4, "KG update": 32.1, "Feature engineering": 18.5,
-    "GDNN inference": 185.2, Explainability: 41.3, "Response serialization": 38.5,
-  };
+  const breakdown = data?.latency_breakdown || {};
   const totalLatencySum = Object.values(breakdown).reduce((a: any, b: any) => a + b, 0);
   const filteredDistricts = data?.districts?.filter((d: any) => 
     d.district.toLowerCase().includes(searchQuery.toLowerCase())

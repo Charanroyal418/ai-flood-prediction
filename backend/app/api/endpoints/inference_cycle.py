@@ -65,143 +65,6 @@ def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M:%S")
 
 
-def _build_fallback_inference_payload(db: Session, err_msg: str) -> Dict[str, Any]:
-    """Generates a resilient, valid 200 OK fallback payload using last-known DB data.
-    
-    Uses actual prediction history from DB instead of hardcoded values.
-    If no prediction history exists, uses physics-based risk estimation from weather data.
-    """
-    from app.models.history import PredictionHistory, WeatherHistory
-    from app.ml.inference import get_risk_level_and_color
-
-    districts_res = []
-    try:
-        districts = db.query(District).all()
-
-        # Fetch last known predictions and weather in bulk
-        all_preds = db.query(PredictionHistory).order_by(
-            PredictionHistory.created_at.desc()
-        ).limit(500).all()
-        pred_map = {}
-        for p in all_preds:
-            if p.district_id not in pred_map:
-                pred_map[p.district_id] = p
-
-        all_weather = db.query(WeatherHistory).order_by(
-            WeatherHistory.recorded_at.desc()
-        ).limit(500).all()
-        weather_map = {}
-        for w in all_weather:
-            if w.district_id not in weather_map:
-                weather_map[w.district_id] = w
-
-        for d in districts:
-            p = pred_map.get(d.id)
-            w = weather_map.get(d.id)
-
-            # Use last-known risk score from DB, or physics estimate from rainfall
-            if p:
-                risk_score = p.current_risk_score
-                confidence = p.confidence or 0.80
-                shap_vals = p.shap_values or []
-            elif w:
-                # Simple physics estimate: rainfall drives risk linearly
-                rainfall = w.rainfall_mm or 0.0
-                risk_score = min(100.0, rainfall * 0.35 + (100 - (w.humidity or 50)) * 0.05)
-                confidence = 0.70
-                shap_vals = [{"feature": "Rainfall", "contribution": round(rainfall * 0.35, 1)}]
-            else:
-                risk_score = 15.0 + (len(str(d.name)) % 5) * 1.5 if hasattr(d, "name") else 15.0
-                confidence = 0.50
-                shap_vals = []
-
-            risk_level, risk_color = get_risk_level_and_color(risk_score)
-            rainfall_val = (w.rainfall_mm if w else 0.0)
-
-            districts_res.append({
-                "district_id": d.id,
-                "district": d.name,
-                "risk_score": round(risk_score, 2),
-                "risk_level": risk_level,
-                "risk_color": risk_color,
-                "confidence": round(confidence, 3),
-                "rainfall_24h": round(rainfall_val, 1),
-                "rainfall_mm": round(rainfall_val, 1),
-                "river_influence": round(risk_score * 0.3, 2),
-                "class_probabilities": {
-                    "Safe": round(max(0.0, 1.0 - risk_score / 100.0) * 0.95, 3),
-                    "Moderate": round(min(0.3, risk_score / 150.0), 3),
-                    "High": round(min(0.4, max(0.0, risk_score - 60) / 100.0), 3),
-                    "Critical": round(min(0.5, max(0.0, risk_score - 80) / 50.0), 3),
-                },
-                "inference_mode": "Last-Known-DB",
-                "shap_values": shap_vals,
-                "reasoning_chain": [
-                    f"Using last-known prediction for {d.name}",
-                    f"Pipeline error recovery: {err_msg[:80]}" if err_msg else "Fallback mode active",
-                ],
-                "forecast_horizons": {
-                    "now": round(risk_score, 1),
-                    "1h": round(min(100, risk_score * 1.02), 1),
-                    "3h": round(min(100, risk_score * 1.05), 1),
-                    "6h": round(min(100, risk_score * 1.08), 1),
-                    "12h": round(min(100, risk_score * 1.04), 1),
-                    "24h": round(min(100, risk_score * 0.98), 1),
-                },
-                "inference_time_ms": 1.5,
-            })
-    except Exception as ex:
-        logger.warning(f"Fallback payload DB query failed: {ex}")
-        districts_res = []
-
-
-    model_status = {
-        "model_name": "GDNN v2 (GAT + GRU)",
-        "model_version": "2.1.0",
-        "architecture": "TemporalFloodGNN",
-        "training_date": "2026-07-18",
-        "dataset_version": "TN-Flood-2026-Q3",
-        "inference_mode": "Physics (Fallback)",
-        "model_loaded": True,
-        "compute_device": "cpu",
-        "total_inference_count": _inference_count,
-        "current_cycle_id": _inference_count,
-        "last_inference": datetime.now(timezone.utc).isoformat(),
-        "pipeline_latency_ms": 50.0,
-        "gnn_latency_ms": 10.0,
-        "backend_status": "online",
-        "database_status": "connected",
-        "node_count": len(districts_res),
-        "edge_count": 50,
-        "attention_heads": 4,
-    }
-
-    latency_breakdown = {
-        "ETL": 15.0,
-        "KG update": 5.0,
-        "Feature engineering": 5.0,
-        "GDNN inference": 15.0,
-        "Explainability": 5.0,
-        "Response serialization": 5.0,
-    }
-
-    return {
-        "cycle_id": _inference_count,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "total_latency_ms": 50.0,
-        "latency_breakdown": latency_breakdown,
-        "stages": {},
-        "districts": districts_res,
-        "metrics": {
-            "statewide_flood_probability": 15.0,
-            "prediction_uncertainty": 2.5,
-            "model_confidence": 0.0,
-            "risk_distribution": {"severe": 0, "high": 0, "moderate": 0, "low": 0, "very_low": len(districts_res)},
-        },
-        "model_status": model_status,
-        "logs": [{"ts": _ts(), "message": f"Inference pipeline recovered via fallback: {err_msg[:100]}"}],
-    }
-
 
 def _execute_inference_pipeline(db: Session) -> Any:
     global _cycle_cache, _inference_count
@@ -1008,15 +871,18 @@ def run_inference_cycle(db: Session = Depends(deps.get_db), background_tasks: Ba
     """
     global _cycle_cache
     
-    # 1. Serve pre-computed payload from RAM cache instantly (< 5ms)
+    # 1. Trigger async pipeline execution in background task if available and cache is empty
+    if _cycle_cache["payload"] is None and background_tasks:
+        background_tasks.add_task(_async_pipeline_execution, db)
+
+    # 2. Serve pre-computed payload from RAM cache
     if _cycle_cache["payload"] is not None:
         return sanitize_numpy(_cycle_cache["payload"])
-
-    # 2. On cold start, build fast DB snapshot payload (< 50ms)
-    fallback = sanitize_numpy(_build_fallback_inference_payload(db, "Initial pre-computed snapshot"))
-    _cycle_cache = {"ts": time.time(), "payload": fallback}
-    
-    # 3. Trigger async pipeline execution in background task if available
-    if background_tasks:
-        background_tasks.add_task(_async_pipeline_execution, db)
-    return fallback
+        
+    # 3. Return explicit "waiting for telemetry" status when DB/cache is truly empty
+    return {
+        "status": "waiting_for_telemetry",
+        "message": "Data pipeline is initializing. Please wait.",
+        "districts": [],
+        "model_status": {"backend_status": "initializing"}
+    }

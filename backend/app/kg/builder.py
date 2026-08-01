@@ -231,8 +231,10 @@ class KnowledgeGraphBuilder:
             telemetry_risk = min(95.0, max(10.0, rain_mm * 0.4 + river_ratio * 40.0))
             elev = float(dem.elevation if dem else 15.0)
 
-            # Coordinates from seeded table
-            lat, lon = DISTRICT_COORDS.get(d.id, (10.5, 78.5))
+            # Coordinates from DB geom_json
+            lat, lon = 10.5, 78.5
+            if d.geom_json and "coordinates" in d.geom_json:
+                lon, lat = d.geom_json["coordinates"]
 
             self.graph.nodes[node_id].update({
                 "label": d.name,
