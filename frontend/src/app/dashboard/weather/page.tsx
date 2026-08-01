@@ -171,7 +171,24 @@ export default function WeatherCenter() {
   if (isLoading || !data) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
-        <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-slate-500 font-heading">Fetching weather telemetry...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (data.districts?.length === 0) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
+            <CloudRain className="w-7 h-7 text-slate-400" />
+          </div>
+          <h2 className="text-lg font-heading font-bold text-slate-800">No Weather Data Available</h2>
+          <p className="text-sm text-slate-500">Waiting for the background ETL pipeline to ingest meteorological telemetry into the database.</p>
+        </div>
       </div>
     );
   }

@@ -163,6 +163,26 @@ export default function RiverIntelligencePage() {
   const warning = rivers.filter(r => r.status === "Warning").length;
   const avgLevel = rivers.length ? rivers.reduce((a, r) => a + r.overflow_pct, 0) / rivers.length : 0;
 
+  if (!isLoading && rivers.length === 0) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
+            <Waves className="w-7 h-7 text-slate-400" />
+          </div>
+          <h2 className="text-lg font-heading font-bold text-slate-800">No River Telemetry</h2>
+          <p className="text-sm text-slate-500">Waiting for background ETL to synchronize river gauge data from the API.</p>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-sm font-bold transition-all"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}

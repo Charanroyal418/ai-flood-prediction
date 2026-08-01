@@ -124,7 +124,7 @@ export default function PredictionEnginePage() {
     } catch (err) {} 
   };
 
-  if (isError || !data || data.status === "waiting_for_telemetry") {
+  if (isError || !data || data.status === "waiting_for_telemetry" || !data.districts || data.districts.length === 0) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">

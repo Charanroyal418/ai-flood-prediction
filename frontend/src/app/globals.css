@@ -138,6 +138,19 @@
   .skeleton {
     @apply rounded-sm bg-line animate-pulse;
   }
+
+  /* ── EOC Professional Polish ──────────────────────────────────────────── */
+  .glass-card {
+    @apply bg-white border border-slate-200/60 shadow-lg rounded-2xl transition-all duration-300;
+  }
+  
+  .glass-card:hover {
+    @apply shadow-xl border-slate-300/80 -translate-y-0.5;
+  }
+
+  .glass-card-flat {
+    @apply bg-white border border-slate-200/60 shadow-sm rounded-xl transition-all duration-200;
+  }
 }
 
 @layer utilities {

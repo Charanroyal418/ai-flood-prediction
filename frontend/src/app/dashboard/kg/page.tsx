@@ -369,12 +369,32 @@ export default function DynamicKnowledgeGraph() {
     );
   }
 
-  if (isLoading || !nodes.length) {
+  if (isLoading || !data) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 max-w-sm text-center">
           <div className="w-14 h-14 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
           <p className="text-sm font-semibold text-slate-600 font-heading">Constructing Knowledge Graph...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (data?.nodes?.length === 0) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
+            <Network className="w-7 h-7 text-slate-400" />
+          </div>
+          <h2 className="text-lg font-heading font-bold text-slate-800">Graph Not Populated</h2>
+          <p className="text-sm text-slate-500">The knowledge graph telemetry hasn't been ingested yet.</p>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-sm font-bold transition-all"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
         </div>
       </div>
     );

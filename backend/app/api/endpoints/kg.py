@@ -124,8 +124,14 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     # ── GNN Forward Pass ──────────────────────────────────────────────────────
     H, edge_index = kg_builder.fetch_graph_snapshot(db, seq_len=3)
     t_gnn_start = time.time()
-    gnn_results = gnn_engine.predict(H, edge_index, kg_builder.node_ids)
-    gnn_latency_ms = round((time.time() - t_gnn_start) * 1000, 1)
+    
+    # Handle empty graph cleanly without crashing
+    if H.shape[0] == 0 or len(kg_builder.node_ids) == 0:
+        gnn_results = {"nodes": [], "embeddings": np.array([]), "attentions": []}
+        gnn_latency_ms = 0.0
+    else:
+        gnn_results = gnn_engine.predict(H, edge_index, kg_builder.node_ids)
+        gnn_latency_ms = round((time.time() - t_gnn_start) * 1000, 1)
 
     # ── Build NetworkX working graph ──────────────────────────────────────────
     G = nx.DiGraph()

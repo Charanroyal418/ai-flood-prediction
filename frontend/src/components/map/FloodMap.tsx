@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl, Lay
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
+import api from "@/lib/api";
 
 // Fix default icon
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -102,9 +103,15 @@ const TN_COORDINATES: Record<string, [number, number]> = {
 export default function FloodMap({ districts = [] }: FloodMapProps) {
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<District | null>(null);
+  const [geoJsonData, setGeoJsonData] = useState<any>(null);
   const router = useRouter();
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { 
+    setMounted(true); 
+    api.get("/spatial/district-bounds")
+       .then(res => setGeoJsonData(res.data))
+       .catch(err => console.error("Failed to load map bounds:", err));
+  }, []);
   if (!mounted) return null;
 
   const center: [number, number] = [10.8, 78.5];
@@ -160,6 +167,21 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             />
           </LayersControl.BaseLayer>
+
+          {geoJsonData && (
+            <LayersControl.Overlay checked name="District Boundaries">
+              <GeoJSON 
+                data={geoJsonData} 
+                style={{
+                  color: "#94a3b8", // slate-400
+                  weight: 1,
+                  opacity: 0.6,
+                  fillOpacity: 0.05,
+                  fillColor: "#e2e8f0"
+                }}
+              />
+            </LayersControl.Overlay>
+          )}
 
           <LayersControl.Overlay checked name="District Risk Sensors">
             <LayerGroup>
@@ -312,6 +334,24 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                   </Tooltip>
                 </CircleMarker>
               ))}
+            </LayerGroup>
+          </LayersControl.Overlay>
+
+          <LayersControl.Overlay name="Risk Polygons (Simulated)">
+            <LayerGroup>
+              {/* Empty state overlay for EOC requirements */}
+            </LayerGroup>
+          </LayersControl.Overlay>
+          
+          <LayersControl.Overlay name="Live Weather Overlays">
+            <LayerGroup>
+              {/* Empty state overlay for EOC requirements */}
+            </LayerGroup>
+          </LayersControl.Overlay>
+
+          <LayersControl.Overlay name="River Network & Reservoirs">
+            <LayerGroup>
+              {/* Empty state overlay for EOC requirements */}
             </LayerGroup>
           </LayersControl.Overlay>
         </LayersControl>

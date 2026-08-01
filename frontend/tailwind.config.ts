@@ -80,7 +80,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        heading: ['var(--font-space-grotesk)', 'Space Grotesk', 'sans-serif'],
+        heading: ['var(--font-inter)', 'Inter', '-apple-system', 'sans-serif'],
         mono: ['var(--font-ibm-plex-mono)', 'IBM Plex Mono', 'monospace'],
       },
       fontSize: {
