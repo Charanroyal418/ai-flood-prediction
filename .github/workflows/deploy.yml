@@ -52,14 +52,16 @@ jobs:
           NODE_ENV: production
 
       - name: Deploy to Vercel (Production)
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: "--prod"
-          working-directory: frontend
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ secrets.VERCEL_TOKEN != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npx vercel deploy --prod --token "$VERCEL_TOKEN" --yes
+        
+      - name: Skip Vercel Deploy (No Token)
+        if: ${{ secrets.VERCEL_TOKEN == '' }}
+        run: echo "Vercel deployment skipped because VERCEL_TOKEN secret is not set in this repository."
 
   # ── Backend → Render ──────────────────────────────────────────────────────
   deploy-backend:
