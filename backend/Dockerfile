@@ -56,15 +56,15 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/api/v1/health || exit 1
 
 # Start with Gunicorn + Uvicorn workers for production
-CMD ["gunicorn", "app.main:app", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--workers", "2", \
-     "--bind", "0.0.0.0:8000", \
-     "--timeout", "120", \
-     "--keep-alive", "5", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-", \
-     "--log-level", "info"]
+CMD gunicorn app.main:app \
+     --worker-class uvicorn.workers.UvicornWorker \
+     --workers 1 \
+     --bind 0.0.0.0:${PORT:-8000} \
+     --timeout 120 \
+     --keep-alive 5 \
+     --access-logfile - \
+     --error-logfile - \
+     --log-level info
