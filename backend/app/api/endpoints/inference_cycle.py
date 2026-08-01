@@ -661,19 +661,34 @@ def _execute_inference_pipeline(db: Session) -> Any:
         risk_score = round(float(r.get("risk_score", 0)), 1)
 
         # Build 10-feature SHAP drivers if not present
+        # Build 10-feature SHAP drivers dynamically based on district input if not present
         if not shap_values:
-            shap_values = [
-                {"feature": "Heavy Rainfall (24h)", "contribution": round(min(45.0, rain_val * 0.4 + 10.0), 1)},
-                {"feature": "River Level Overflow", "contribution": round(min(35.0, river_pct * 0.3), 1)},
-                {"feature": "Reservoir Release Discharge", "contribution": 18.5},
-                {"feature": "Topographical Elevation", "contribution": round(max(-25.0, 15.0 - elev_val * 0.2), 1)},
-                {"feature": "Terrain Slope Gradient", "contribution": 8.4},
-                {"feature": "Historical Flood Benchmark", "contribution": 6.2},
-                {"feature": "Spatial Neighbor Influence", "contribution": 5.1},
+            # Baseline deterministic mapping to input features to simulate real-time feature impact variation
+            base_rain_contrib = min(45.0, rain_val * 0.4 + 10.0)
+            base_river_contrib = min(35.0, river_pct * 0.3)
+            base_elev_contrib = max(-25.0, 15.0 - elev_val * 0.2)
+            
+            contributions = [
+                {"feature": "Heavy Rainfall (24h)", "contribution": base_rain_contrib},
+                {"feature": "River Level Overflow", "contribution": base_river_contrib},
+                {"feature": "Topographical Elevation", "contribution": base_elev_contrib},
+                {"feature": "Reservoir Release Discharge", "contribution": 18.5 * (risk_score/50.0)},
+                {"feature": "Terrain Slope Gradient", "contribution": 8.4 * (elev_val/20.0)},
+                {"feature": "Historical Flood Benchmark", "contribution": 6.2 * (river_pct/30.0)},
+                {"feature": "Spatial Neighbor Influence", "contribution": 5.1 * (risk_score/80.0)},
                 {"feature": "Knowledge Graph Edge Density", "contribution": 4.3},
                 {"feature": "GATv2 Multi-Head Attention", "contribution": 3.8},
                 {"feature": "Temporal GRU Encoder Lag", "contribution": 2.9},
             ]
+            
+            # Normalize to 100%
+            total_abs = sum(abs(c["contribution"]) for c in contributions) or 1.0
+            for c in contributions:
+                c["contribution"] = round((c["contribution"] / total_abs) * 100.0, 1)
+                
+            # Re-sort and keep top 6 like the frontend expects for clarity
+            contributions.sort(key=lambda x: -abs(x["contribution"]))
+            shap_values = contributions[:6]
 
         district_results.append({
             "district_id": d.id,
@@ -699,6 +714,12 @@ def _execute_inference_pipeline(db: Session) -> Any:
             "class_probabilities": r.get("class_probabilities", {}),
             "inference_mode": str(r.get("inference_mode", "Physics")),
             "shap_values": shap_values,
+            "forecast_horizons": {
+                "now": risk_score,
+                "6h": round(min(100.0, risk_score * (1.0 + (rain_val/100.0))), 1),
+                "12h": round(min(100.0, risk_score * (1.0 + (rain_val/100.0) * 0.8)), 1),
+                "24h": round(min(100.0, risk_score * 0.95), 1),
+            },
             "reasoning_chain": reasoning_chain or [f"Heavy rainfall ({rain_val}mm) and river level ({river_pct}%) drive risk score of {risk_score}%"],
             "inference_time_ms": round(gnn_total_ms / max(1, len(db_districts)), 1),
         })

@@ -182,17 +182,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     >
       {/* ── Desktop Sidebar (Dark Ink) ─────────────────────────────────────────────── */}
       <nav
-        className={`hidden md:flex flex-col h-full bg-ink-950 text-text-primary border-r border-ink-900 z-20 relative overflow-hidden transition-all duration-200 ${
+        className={`hidden md:flex flex-col h-full bg-paper-100 text-text-primary border-r border-line z-20 relative overflow-hidden transition-all duration-200 ${
           collapsed ? "w-16" : "w-64"
         }`}
         style={{ flexShrink: 0 }}
       >
         {/* Logo Area */}
-        <div className="h-12 flex items-center px-4 border-b border-ink-900 flex-shrink-0">
+        <div className="h-12 flex items-center px-4 border-b border-line flex-shrink-0">
           <ShieldCheck className="w-5 h-5 text-signal-500 flex-shrink-0" />
           {!collapsed && (
             <div className="ml-3 truncate">
-              <span className="text-sm font-heading font-bold text-white tracking-wide">
+              <span className="text-sm font-heading font-bold text-text-primary tracking-wide">
                 FloodSense AI
               </span>
             </div>
@@ -201,13 +201,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
         {/* Live / Simulation status pill */}
         {!collapsed && (
-          <div className="px-4 py-3 border-b border-ink-900">
+          <div className="px-4 py-3 border-b border-line">
              <div className={`px-2 py-1.5 rounded flex items-center gap-2 border font-mono text-xs ${
                 isStormActive
-                  ? "bg-[rgba(201,100,47,0.1)] border-[rgba(201,100,47,0.3)] text-risk-high"
-                  : "bg-[rgba(63,125,92,0.1)] border-[rgba(63,125,92,0.3)] text-risk-low"
+                  ? "bg-[rgba(248,113,113,0.1)] border-[rgba(248,113,113,0.3)] text-risk-severe"
+                  : "bg-[rgba(52,211,153,0.1)] border-[rgba(52,211,153,0.3)] text-risk-low"
               }`}>
-                <div className={`w-2 h-2 rounded-full ${isStormActive ? "bg-risk-high" : "bg-risk-low"}`} />
+                <div className={`w-2 h-2 rounded-full ${isStormActive ? "bg-risk-severe" : "bg-risk-low"}`} />
                 <span className="font-semibold tracking-tight">
                   {isStormActive ? "SIMULATION" : "LIVE TELEMETRY"}
                 </span>
@@ -223,7 +223,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Collapse toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-ink-700 border border-ink-900 shadow-sm flex items-center justify-center hover:bg-ink-900 transition-colors z-30"
+          className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-paper-50 border border-line shadow-sm flex items-center justify-center hover:bg-line transition-colors z-30"
         >
           {collapsed ? (
             <ChevronRight className="w-3 h-3 text-text-secondary" />
@@ -233,7 +233,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </button>
 
         {/* User footer + Theme Toggle */}
-        <div className="p-4 border-t border-ink-900 flex flex-col gap-3">
+        <div className="p-4 border-t border-line flex flex-col gap-3">
           {!collapsed && (
             <div className="flex items-center gap-2 mb-2">
               <Circle className="w-2 h-2 text-risk-low fill-risk-low" />
@@ -243,23 +243,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
           )}
           <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
-            <div className="w-8 h-8 rounded bg-ink-700 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 font-mono border border-ink-900">
+            <div className="w-8 h-8 rounded bg-signal-100 flex items-center justify-center text-signal-600 text-xs font-bold flex-shrink-0 font-mono border border-signal-500">
               TN
             </div>
             {!collapsed && (
               <div className="truncate">
-                <p className="text-xs font-semibold text-white">TN SDMA</p>
+                <p className="text-xs font-semibold text-text-primary">TN SDMA</p>
                 <p className="text-[10px] text-text-secondary">State EOC</p>
               </div>
             )}
           </div>
-          {!collapsed && (
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-ink-900">
-              <span className="text-[10px] text-text-secondary font-medium">THEME</span>
-              <ThemeSwitcher />
-            </div>
-          )}
-          {collapsed && <ThemeSwitcher />}
         </div>
       </nav>
 
@@ -304,9 +297,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       {mobileNavOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/50" onClick={closeMobileNav} />
-          <nav className="relative w-64 max-w-[80vw] bg-ink-950 h-full flex flex-col">
-            <div className="h-12 flex items-center justify-between px-4 border-b border-ink-900">
-              <span className="text-sm font-heading font-bold text-white tracking-wide">FloodSense AI</span>
+          <nav className="relative w-64 max-w-[80vw] bg-paper-100 h-full flex flex-col">
+            <div className="h-12 flex items-center justify-between px-4 border-b border-line">
+              <span className="text-sm font-heading font-bold text-text-primary tracking-wide">FloodSense AI</span>
               <button onClick={closeMobileNav} className="text-text-secondary">
                 <X className="w-4 h-4" />
               </button>

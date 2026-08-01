@@ -4,47 +4,30 @@
 
 @layer base {
   :root {
-    --ink-950: #0A1420;
-    --ink-900: #101B2D;
-    --ink-700: #24344D;
+    --ink-950: #1E293B; /* Slate 800 */
+    --ink-900: #334155; /* Slate 700 */
+    --ink-700: #475569; /* Slate 600 */
     
-    --paper-50: #F7F8FA;
-    --paper-100: #EEF1F4;
+    --paper-50: #F8FAFC;
+    --paper-100: #FFFFFF;
     
-    --line: #DCE1E8;
-    --line-dark: #2C3B54;
+    --line: #E2E8F0;
+    --line-dark: #CBD5E1;
 
-    --signal-100: #E3F2F1;
-    --signal-500: #0E7C86;
-    --signal-600: #0B6169;
+    --signal-100: #EDE9FE;
+    --signal-500: #8B5CF6; /* Purple/Indigo */
+    --signal-600: #7C3AED;
 
-    --risk-low: #3F7D5C;
-    --risk-moderate: #C99A3C;
-    --risk-high: #C9642F;
-    --risk-severe: #A6332B;
+    --risk-low: #34D399; /* Emerald */
+    --risk-moderate: #FBBF24; /* Amber */
+    --risk-high: #FB923C; /* Orange */
+    --risk-severe: #F87171; /* Red */
 
-    --text-primary: #0F1B2D;
-    --text-secondary: #5B6B82;
-    --text-inverse: #E8ECF1;
+    --text-primary: #0F172A;
+    --text-secondary: #64748B;
+    --text-inverse: #FFFFFF;
 
     /* Semantic mappings */
-    --background: var(--paper-50);
-    --foreground: var(--text-primary);
-  }
-
-  .dark {
-    --paper-50: #0A1420; /* Ink 950 */
-    --paper-100: #101B2D; /* Ink 900 */
-    
-    --line: #2C3B54;
-    --line-dark: #3E5170;
-
-    --signal-100: rgba(14, 124, 134, 0.2);
-
-    --text-primary: #E8ECF1;
-    --text-secondary: #8A99AC;
-    --text-inverse: #0F1B2D;
-
     --background: var(--paper-50);
     --foreground: var(--text-primary);
   }
@@ -115,10 +98,10 @@
     @apply inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-sm border font-mono;
   }
   
-  .risk-badge-severe { @apply bg-[rgba(166,51,43,0.1)] text-risk-severe border-[rgba(166,51,43,0.3)]; }
-  .risk-badge-high { @apply bg-[rgba(201,100,47,0.1)] text-risk-high border-[rgba(201,100,47,0.3)]; }
-  .risk-badge-moderate { @apply bg-[rgba(201,154,60,0.1)] text-risk-moderate border-[rgba(201,154,60,0.3)]; }
-  .risk-badge-low { @apply bg-[rgba(63,125,92,0.1)] text-risk-low border-[rgba(63,125,92,0.3)]; }
+  .risk-badge-severe { @apply bg-[rgba(248,113,113,0.1)] text-risk-severe border-[rgba(248,113,113,0.3)]; }
+  .risk-badge-high { @apply bg-[rgba(251,146,60,0.1)] text-risk-high border-[rgba(251,146,60,0.3)]; }
+  .risk-badge-moderate { @apply bg-[rgba(251,191,36,0.1)] text-risk-moderate border-[rgba(251,191,36,0.3)]; }
+  .risk-badge-low { @apply bg-[rgba(52,211,153,0.1)] text-risk-low border-[rgba(52,211,153,0.3)]; }
   
   /* Safe fallback for data missing/safe */
   .risk-badge-safe { @apply bg-paper-100 text-muted-foreground border-line; }
@@ -126,15 +109,15 @@
   /* ── Sidebar Items ────────────────────────────────────────────────────── */
   .sidebar-item {
     @apply flex items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium
-           transition-colors duration-150 cursor-pointer text-muted-foreground;
+           transition-colors duration-150 cursor-pointer text-text-secondary;
   }
 
   .sidebar-item:hover {
-    @apply text-foreground bg-ink-900;
+    @apply text-text-primary bg-paper-50;
   }
 
   .sidebar-item.active {
-    @apply text-white bg-white/10 border-l-4 border-signal-500 pl-2 font-semibold;
+    @apply text-signal-600 bg-signal-100 border-l-4 border-signal-500 pl-2 font-semibold;
   }
 
   /* ── Data Tables ──────────────────────────────────────────────────────── */
@@ -186,13 +169,9 @@
   border-radius: 2px !important;
 }
 
-/* Grayscale/desaturated maps for serious feel */
+/* Original maps for light theme */
 .leaflet-tile-pane {
-  filter: grayscale(80%) saturate(60%) opacity(80%) contrast(110%);
-}
-
-.dark .leaflet-tile-pane {
-  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(1.1) grayscale(60%);
+  /* removed grayscale filter */
 }
 
 /* ── Scrollbar Global ────────────────────────────────────────────────────── */

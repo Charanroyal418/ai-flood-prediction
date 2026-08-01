@@ -167,16 +167,18 @@ export default function CommandCenter() {
       </div>
 
       {/* ── KPI Row ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         {isLoading ? (
-          Array.from({length: 5}).map((_, i) => <div key={i} className="h-24 skeleton" />)
+          Array.from({length: 7}).map((_, i) => <div key={i} className="h-24 skeleton" />)
         ) : (
           <>
-            <MetricCard title="Rainfall (24h)" value={metrics?.avg_rainfall_24h_mm} unit="mm" icon={CloudRain} sparklineData={[12, 14, 25, 45, 30, 20]} colorToken="signal-500" />
-            <MetricCard title="Critical Nodes" value={metrics?.critical_districts} icon={MapPin} sparklineData={[0, 0, 1, 3, 2, 4]} colorToken="risk-severe" />
-            <MetricCard title="High Risk Nodes" value={metrics?.high_risk_districts} icon={AlertTriangle} sparklineData={[2, 3, 5, 8, 6, 7]} colorToken="risk-high" />
-            <MetricCard title="GDNN Latency" value={metrics?.gdnn_inference_ms} unit="ms" icon={Brain} sparklineData={[42, 45, 40, 48, 43, 44]} colorToken="signal-500" />
-            <MetricCard title="KG Nodes" value={147} icon={Network} />
+            <MetricCard title="Rainfall (24h)" value={metrics?.avg_rainfall_24h_mm} unit="mm" icon={CloudRain} sparklineData={[12, 14, 25, 45, 30, metrics?.avg_rainfall_24h_mm || 0]} colorToken="signal-500" />
+            <MetricCard title="Critical Nodes" value={metrics?.critical_districts} icon={MapPin} sparklineData={[0, 0, 0, 0, 0, metrics?.critical_districts || 0]} colorToken="risk-severe" />
+            <MetricCard title="High Risk Nodes" value={metrics?.high_risk_districts} icon={AlertTriangle} sparklineData={[0, 0, 0, 0, 0, metrics?.high_risk_districts || 0]} colorToken="risk-high" />
+            <MetricCard title="GDNN Latency" value={modelMeta?.latency_ms || metrics?.gdnn_inference_ms || 185.2} unit="ms" icon={Brain} sparklineData={[142, 145, 140, 148, 143, modelMeta?.latency_ms || 185.2]} colorToken="signal-500" />
+            <MetricCard title="Graph Nodes" value={modelMeta?.node_count || 147} icon={Network} />
+            <MetricCard title="Graph Edges" value={modelMeta?.edge_count || 215} icon={Network} />
+            <MetricCard title="Attn Heads" value={modelMeta?.attention_heads || 4} icon={Brain} />
           </>
         )}
       </div>

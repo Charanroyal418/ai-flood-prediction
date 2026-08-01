@@ -64,17 +64,6 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={`${spaceGrotesk.variable} ${inter.variable} ${ibmPlexMono.variable}`}>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                var t = localStorage.getItem('floodsense_theme');
-                var d = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
-                if (d) document.documentElement.classList.add('dark');
-              } catch(e) {}
-            `,
-          }}
-        />
       </head>
       <body className="antialiased min-h-screen transition-colors duration-300 font-sans">
         <AuthProvider>

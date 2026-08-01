@@ -152,7 +152,7 @@ export default function AlertCenterPage() {
             onClick={() => setFilterLevel(level)}
             className={`px-4 py-1.5 rounded text-xs font-semibold font-mono transition-colors border ${
               filterLevel === level
-                ? level === "Critical" ? "bg-risk-severe text-white border-risk-severe" : level === "Warning" ? "bg-risk-high text-white border-risk-high" : level === "Watch" ? "bg-risk-low text-white border-risk-low" : "bg-ink-900 text-white border-ink-900"
+                ? level === "Critical" ? "bg-risk-severe text-white border-risk-severe" : level === "Warning" ? "bg-risk-high text-white border-risk-high" : level === "Watch" ? "bg-risk-low text-white border-risk-low" : "bg-paper-100 text-text-primary border-line"
                 : "bg-paper-100 text-text-secondary border-line hover:bg-line/30"
             }`}
           >

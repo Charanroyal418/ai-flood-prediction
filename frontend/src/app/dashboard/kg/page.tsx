@@ -485,7 +485,7 @@ export default function DynamicKnowledgeGraph() {
           <div className="flex-1 min-h-0 bg-slate-50 relative">
             <ReactFlow
               nodes={nodes}
-              edges={edges.filter((e: any) => showAllEdges || e.dynamicInfluence > 20 || e.attention > 0.4)}
+              edges={edges.filter((e: any) => showAllEdges || e.attention > 0.05)}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
@@ -611,35 +611,7 @@ export default function DynamicKnowledgeGraph() {
         </div>
       </div>
 
-      {/* Advanced / Technical View Toggle */}
-      <div className="flex justify-center flex-shrink-0">
-        <button 
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-4 py-2 rounded-full transition-colors flex items-center gap-2"
-        >
-          <Code className="w-4 h-4" />
-          {showAdvanced ? "Hide Advanced / Technical View" : "Show Advanced / Technical View"}
-        </button>
-      </div>
 
-      {showAdvanced && (
-        <div className="glass-card p-5 mt-2 flex flex-col gap-4 shadow-md bg-slate-900 border-none text-slate-300 relative">
-          <div className="flex items-center justify-between border-b border-slate-700 pb-3">
-             <h3 className="text-sm font-bold font-mono text-white flex items-center gap-2">
-               <BarChart2 className="w-4 h-4 text-indigo-400" /> 128D Embedding Projection ({data.explainability?.projection_method || "t-SNE"})
-             </h3>
-             <button onClick={() => setShowAdvanced(false)} className="text-slate-400 hover:text-white">
-               <X className="w-4 h-4" />
-             </button>
-          </div>
-          <p className="text-[11px] text-slate-400 font-mono">
-            Underlying GNN embeddings projected to 2D space. Regions clustered tightly share similar risk profiles across 128 dimensions.
-          </p>
-          <div className="h-48 border border-slate-700 rounded-xl flex items-center justify-center bg-slate-950 text-slate-400 font-mono text-xs">
-            {data.explainability?.projection_method || "t-SNE"} Projection Matrix Active (38 district embedding vectors)
-          </div>
-        </div>
-      )}
 
       {/* Selected Node Details Drawer */}
       <AnimatePresence>

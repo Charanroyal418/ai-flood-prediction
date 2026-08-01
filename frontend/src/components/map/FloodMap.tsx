@@ -316,17 +316,6 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
           </LayersControl.Overlay>
         </LayersControl>
       </MapContainer>
-
-      {/* Floating legend */}
-      <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm rounded-xl border border-slate-100 shadow-lg p-3 z-[400]">
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Risk Level</p>
-        {Object.entries(RISK_COLORS).map(([level, color]) => (
-          <div key={level} className="flex items-center gap-2 mb-1">
-            <div className="w-3 h-3 rounded-full" style={{ background: color }} />
-            <span className="text-[10px] text-slate-600 font-medium">{level}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

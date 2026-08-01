@@ -155,9 +155,9 @@ export default function DistrictAnalyticsPage() {
     refetchInterval: 10000,
   });
 
-  const districts = data || [];
+  const districts = Array.isArray(data) ? data : (data?.districts || []);
   const filtered = districts
-    .filter((d: any) => d.name.toLowerCase().includes(search.toLowerCase()))
+    .filter((d: any) => d?.name?.toLowerCase().includes(search.toLowerCase()))
     .sort((a: any, b: any) => b[sortBy] - a[sortBy]);
 
   return (

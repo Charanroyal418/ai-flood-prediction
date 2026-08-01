@@ -240,6 +240,7 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
             "label": n.get("label", node_id),
             "type": n.get("type", "unknown"),
             "risk_score": base_risk,
+            "history": history,
             "status": pred.get("risk_level", "Safe"),
             "risk_color": pred.get("risk_color", "#3b82f6"),
             "confidence": pred.get("confidence", 0.95),
@@ -288,9 +289,10 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     total_latency_ms = round((datetime.now(timezone.utc) - start_time).total_seconds() * 1000, 1)
 
     # ── Critical Paths for Explainability ────────────────────────────────────
-    district_edges = [e for e in edges_response
-                      if e["source"].startswith("d-") and e["target"].startswith("d-")]
-    critical_edges = sorted(district_edges, key=lambda x: x["influence"], reverse=True)[:5]
+    valid_edges = [e for e in edges_response
+                   if (e["source"].startswith("d-") and e["target"].startswith("d-")) or 
+                      (e["source"].startswith("rv-") and e["target"].startswith("d-"))]
+    critical_edges = sorted(valid_edges, key=lambda x: x["influence"], reverse=True)[:5]
 
     attention_paths = []
     if critical_edges:

@@ -72,7 +72,6 @@ export default function PredictionEnginePage() {
   const [showLogs, setShowLogs] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [stoppingSim, setStoppingSim] = useState(false);
 
   const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery<any>({
     queryKey: ["inference-cycle"],
@@ -118,14 +117,11 @@ export default function PredictionEnginePage() {
   }, []);
 
   const handleStopSimulation = async () => {
-    setStoppingSim(true);
     try {
       await api.post("/dashboard/simulate-storm?active=false");
       await refetch();
       queryClient.invalidateQueries({ queryKey: ["dashboard", "live"] });
-    } catch (err) {} finally {
-      setStoppingSim(false);
-    }
+    } catch (err) {} 
   };
 
   if (isError && !data) {
@@ -156,17 +152,13 @@ export default function PredictionEnginePage() {
 
   const forecastHorizons = d?.forecast_horizons || {
     now: d?.risk_score || 25,
-    "1h": Math.min(100, (d?.risk_score || 25) * 1.04),
-    "3h": Math.min(100, (d?.risk_score || 25) * 1.09),
-    "6h": Math.min(100, (d?.risk_score || 25) * 1.15),
-    "12h": Math.min(100, (d?.risk_score || 25) * 1.12),
+    "6h": Math.min(100, (d?.risk_score || 25) * 1.04),
+    "12h": Math.min(100, (d?.risk_score || 25) * 1.09),
     "24h": Math.min(100, (d?.risk_score || 25) * 1.05),
   };
 
   const chartData = [
     { name: "Now", risk: forecastHorizons.now },
-    { name: "+1h", risk: forecastHorizons["1h"] },
-    { name: "+3h", risk: forecastHorizons["3h"] },
     { name: "+6h", risk: forecastHorizons["6h"] },
     { name: "+12h", risk: forecastHorizons["12h"] },
     { name: "+24h", risk: forecastHorizons["24h"] },
@@ -360,7 +352,7 @@ export default function PredictionEnginePage() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Flood Prob</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{(d.risk_score / 100).toFixed(3)}</p>
+                      <p className="text-sm font-mono font-semibold text-text-primary">{d.risk_score.toFixed(1)}%</p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Confidence</p>
@@ -462,7 +454,7 @@ export default function PredictionEnginePage() {
           </div>
 
           {/* Collapsible Logs */}
-          <div className="bg-ink-950 border border-ink-900 rounded-lg">
+          <div className="bg-paper-100 border border-line rounded-lg">
             <button 
               onClick={() => setShowLogs(!showLogs)}
               className="w-full flex items-center justify-between p-4 focus:outline-none"
@@ -473,12 +465,12 @@ export default function PredictionEnginePage() {
               {showLogs ? <ChevronUp className="w-4 h-4 text-text-secondary" /> : <ChevronDown className="w-4 h-4 text-text-secondary" />}
             </button>
             {showLogs && (
-              <div className="p-4 pt-0 h-[200px] flex flex-col font-mono text-[10px] border-t border-ink-900 text-text-secondary">
+              <div className="p-4 pt-0 h-[200px] flex flex-col font-mono text-[10px] border-t border-line text-text-secondary">
                 <div className="flex-1 overflow-y-auto space-y-2 custom-scroll">
                     {data?.logs?.map((log: any, i: number) => (
-                      <div key={i} className="flex items-start gap-3 border-b border-ink-900/50 pb-2">
+                      <div key={i} className="flex items-start gap-3 border-b border-line/50 pb-2">
                         <span className="shrink-0 text-text-secondary">[{log.ts}]</span>
-                        <span className="text-signal-100">{log.message}</span>
+                        <span className="text-signal-600">{log.message}</span>
                       </div>
                     ))}
                 </div>
