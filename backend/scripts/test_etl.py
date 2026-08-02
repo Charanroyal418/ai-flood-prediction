@@ -3,7 +3,7 @@ import sys
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 import app.db.base # Register all models
 

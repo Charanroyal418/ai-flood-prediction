@@ -380,7 +380,7 @@ export default function DynamicKnowledgeGraph() {
     );
   }
 
-  if (data?.nodes?.length === 0) {
+  if (!data?.nodes || data.nodes.length === 0) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 max-w-md text-center">

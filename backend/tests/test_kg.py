@@ -38,10 +38,10 @@ def seeded_db(db):
     now = datetime.now(timezone.utc)
 
     districts = [
-        District(id=1, name="Chennai",   population=7100000, area_km2=426,  elevation_m=6.0),
-        District(id=2, name="Salem",     population=3480000, area_km2=5245, elevation_m=278.0),
-        District(id=3, name="Cuddalore", population=2605000, area_km2=3678, elevation_m=5.0),
-        District(id=4, name="Theni",     population=1245000, area_km2=3242, elevation_m=310.0),
+        District(id=1, name="Chennai",   population=7100000, elevation_m=6.0),
+        District(id=2, name="Salem",     population=3480000, elevation_m=278.0),
+        District(id=3, name="Cuddalore", population=2605000, elevation_m=5.0),
+        District(id=4, name="Theni",     population=1245000, elevation_m=310.0),
     ]
     for d in districts:
         db.add(d)

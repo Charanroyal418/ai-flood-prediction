@@ -7,7 +7,9 @@ from werkzeug.security import generate_password_hash
 # Add backend directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from app.db.session import SessionLocal
+import app.db.base # Register all models before doing anything else
+from app.db.session import SessionLocal, engine
+from app.db.base_class import Base
 from app.models.district import District
 from app.models.user import User
 from app.models.facility import Shelter
@@ -71,8 +73,7 @@ def seed_facilities_and_rivers(db: Session):
             shelter = Shelter(
                 district_id=chennai.id,
                 name="Velachery Relief Camp",
-                capacity=500,
-                current_occupancy=0
+                capacity=500
             )
             db.add(shelter)
             
@@ -91,6 +92,10 @@ def seed_facilities_and_rivers(db: Session):
 
 def main():
     print("Starting Database Seed...")
+    print("Rebuilding database schema...")
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    
     db = SessionLocal()
     try:
         seed_districts(db)
