@@ -110,7 +110,7 @@ function WeatherIntelligenceCard({ district, index }: { district: any; index: nu
         </div>
         <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
           <Wind className="w-4 h-4 text-teal-500" />
-          <span className="text-xs font-bold text-slate-700">{district.wind_speed != null ? `${(district?.wind_speed ?? 0).toFixed(1)} km/h` : "N/A"}</span>
+          <span className="text-xs font-bold text-slate-700">{district.wind_speed != null ? `${(Number(district?.wind_speed) || 0).toFixed(1)} km/h` : "N/A"}</span>
         </div>
       </div>
 

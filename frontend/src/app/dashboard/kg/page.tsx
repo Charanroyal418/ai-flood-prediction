@@ -55,7 +55,7 @@ function DistrictNode({ data }: { data: any }) {
             className="text-[9px] font-extrabold px-1.5 py-0.5 rounded font-mono text-white flex-shrink-0 transition-colors duration-300"
             style={{ backgroundColor: statusColor }}
           >
-            {(data?.risk_score ?? 0).toFixed(1)}
+            {(Number(data?.risk_score) || 0).toFixed(1)}
           </span>
         </div>
 
@@ -127,22 +127,9 @@ export default function DynamicKnowledgeGraph() {
     { label: "+24h", key: "24h" }
   ];
 
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["kgGraphData"],
-    queryFn: async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 90000);
-      try {
-        const res = await api.get("/kg/graph", { signal: controller.signal });
-        return res.data;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    },
-    refetchInterval: 5 * 60 * 1000,
-    staleTime: 4 * 60 * 1000,
-    retry: 2,
-  });
+  const { kgData: data, refetchKg: refetch } = useFloodData();
+  const isLoading = !data;
+  const isError = false;
 
   const getRiskFromHistory = (node: any, idx: number) => {
     if (!node.history || node.history.length <= idx) return node.risk_score;
@@ -205,7 +192,7 @@ export default function DynamicKnowledgeGraph() {
         source: e.source,
         target: e.target,
         animated: dynamicInfluence > 15 || e.attention > 0.4,
-        label: `infl: ${(dynamicInfluence ?? 0).toFixed(1)}`,
+        label: `infl: ${(Number(dynamicInfluence) || 0).toFixed(1)}`,
         labelStyle: { fill: "#475569", fontWeight: 700, fontSize: 8 },
         labelBgStyle: { fill: "#ffffff", fillOpacity: 0.95, rx: 4, ry: 4 },
         style: {
@@ -369,15 +356,20 @@ export default function DynamicKnowledgeGraph() {
     );
   }
 
-  if (isLoading || !data) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-4 max-w-sm text-center">
-          <div className="w-14 h-14 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
-          <p className="text-sm font-semibold text-slate-600 font-heading">Constructing Knowledge Graph...</p>
+  if (isLoading || isInitialLoading) {
+    // Return early without rendering if data is totally empty and it's fetching.
+    // If we have nodes though, don't show full-page loading!
+    if (!data?.nodes || data.nodes.length === 0) {
+      return (
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <Activity className="w-8 h-8 text-signal-500 animate-pulse mx-auto mb-4" />
+            <h2 className="text-lg font-bold text-text-primary">Initializing Graph Engine...</h2>
+            <p className="text-sm text-text-secondary">Constructing the node topology from live data.</p>
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
   if (!data?.nodes || data.nodes.length === 0) {
@@ -387,7 +379,7 @@ export default function DynamicKnowledgeGraph() {
           <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
             <Network className="w-7 h-7 text-slate-400" />
           </div>
-          <h2 className="text-lg font-heading font-bold text-slate-800">Graph Not Populated</h2>
+          <h2 className="text-lg font-bold text-slate-800">Graph Not Populated</h2>
           <p className="text-sm text-slate-500">The knowledge graph telemetry hasn't been ingested yet.</p>
           <button
             onClick={() => refetch()}
@@ -414,10 +406,10 @@ export default function DynamicKnowledgeGraph() {
     const rain = node.data?.rainfall_24h ?? 0;
     const saturation = node.data?.soil_saturation_pct ?? 0;
     const factors = [];
-    if (rain > 0) factors.push({ label: "Heavy Rainfall", change: `+${(rain * 0.4).toFixed(0)}%`, isPositive: true });
-    if (saturation > 40) factors.push({ label: "Soil Saturation", change: `+${(saturation * 0.15).toFixed(0)}%`, isPositive: true });
-    factors.push({ label: "Upstream Inflow", change: `+${((node?.risk_score ?? 0) * 0.25).toFixed(0)}%`, isPositive: true });
-    factors.push({ label: "GAT Attention Weight", change: `+${((node.importance ?? 0.5) * 20).toFixed(0)}%`, isPositive: true });
+    if (rain > 0) factors.push({ label: "Heavy Rainfall", change: `+${(Number(rain) * 0.4).toFixed(0)}%`, isPositive: true });
+    if (saturation > 40) factors.push({ label: "Soil Saturation", change: `+${(Number(saturation) * 0.15).toFixed(0)}%`, isPositive: true });
+    factors.push({ label: "Upstream Inflow", change: `+${(Number(node?.risk_score ?? 0) * 0.25).toFixed(0)}%`, isPositive: true });
+    factors.push({ label: "GAT Attention Weight", change: `+${(Number(node?.importance ?? 0.5) * 20).toFixed(0)}%`, isPositive: true });
     return factors;
   };
 
@@ -427,7 +419,7 @@ export default function DynamicKnowledgeGraph() {
       <div className="flex justify-between items-center flex-wrap gap-4 flex-shrink-0">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-heading font-bold text-slate-800 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
               <Network className="w-6 h-6 text-violet-600" /> Dynamic Knowledge Graph Engine
             </h1>
             {isStormActive && (
@@ -454,7 +446,7 @@ export default function DynamicKnowledgeGraph() {
         {/* Left Panel: Graph Metrics */}
         <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-h-0 overflow-y-auto">
           <div className="glass-card p-5 space-y-4 shrink-0 shadow-md">
-            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-3 font-heading">
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-3">
               <Activity className="w-4 h-4 text-violet-500" /> Graph Structural Metrics
             </h2>
             <div className="flex flex-col gap-3">
@@ -617,7 +609,7 @@ export default function DynamicKnowledgeGraph() {
                         <span>{sourceNode.label} → {targetNode.label}</span>
                       </div>
                       <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex-shrink-0">
-                        {(edge.dynamicInfluence ?? 0).toFixed(1)} infl
+                        {(Number(edge.dynamicInfluence) || 0).toFixed(1)} infl
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-600 leading-normal mt-0.5">
@@ -655,7 +647,7 @@ export default function DynamicKnowledgeGraph() {
                     Risk Level: {selectedNode.status}
                   </span>
                   <span className="text-[11px] text-slate-500 font-mono font-semibold">
-                    Risk Score: {(selectedNode?.risk_score ?? 0).toFixed(1)}/100
+                    Risk Score: {(Number(selectedNode?.risk_score) || 0).toFixed(1)}/100
                   </span>
                 </div>
               </div>

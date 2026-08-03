@@ -121,7 +121,7 @@ export default function DistrictDrilldown() {
           { label: "Current Risk Score", value: `${data.risk_score}/100`, icon: Activity, color: data.risk_color },
           { label: "Rainfall (24h)", value: `${data.rainfall_mm} mm`, icon: Droplets, color: "#6366f1" },
           { label: "River Level", value: `${data.river_level_m}m`, icon: Waves, color: "#0ea5e9" },
-          { label: "Vulnerable Pop", value: `${(data.demographics.vulnerable_population/1000).toFixed(1)}k`, icon: AlertTriangle, color: "#f59e0b" },
+          { label: "Vulnerable Pop", value: `${(Number(data.demographics?.vulnerable_population ?? 0)/1000).toFixed(1)}k`, icon: AlertTriangle, color: "#f59e0b" },
         ].map((kpi, i) => (
           <div key={i} className="glass-card p-5 relative overflow-hidden group">
             <div className="absolute -right-4 -top-4 w-16 h-16 rounded-full opacity-10 group-hover:scale-150 transition-transform duration-500" style={{ background: kpi.color }} />
@@ -154,7 +154,7 @@ export default function DistrictDrilldown() {
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: f.color }} />
                   <span className="text-xs text-slate-600 font-medium">{f.label}</span>
                 </div>
-                <span className="text-xs font-bold text-slate-800">{(f.value * 100).toFixed(1)}%</span>
+                <span className="text-xs font-bold text-slate-800">{(Number(f.value || 0) * 100).toFixed(1)}%</span>
               </div>
             ))}
           </div>

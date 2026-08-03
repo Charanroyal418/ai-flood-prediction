@@ -63,7 +63,7 @@
 
   /* Typography Base */
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     font-weight: 600;
     letter-spacing: -0.02em;
     line-height: 1.2;

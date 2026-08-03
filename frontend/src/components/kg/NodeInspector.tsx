@@ -135,7 +135,7 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                   </span>
                 </div>
                 <div className="flex items-end gap-3 mb-3">
-                  <span className="text-4xl font-heading font-extrabold text-white">{(nodeData?.risk_score ?? 0).toFixed(1)}</span>
+                  <span className="text-4xl font-bold text-white">{(Number(nodeData?.risk_score) || 0).toFixed(1)}</span>
                   <span className="text-slate-400 text-sm mb-1">/100</span>
                   <span className="ml-auto text-xs text-slate-400">{((nodeData?.confidence ?? 0) * 100).toFixed(1)}% confidence</span>
                 </div>

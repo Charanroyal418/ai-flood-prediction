@@ -112,8 +112,8 @@ function DistrictDetailPanel({ district }: { district: any }) {
 
         <div className="grid grid-cols-2 gap-3 mt-4">
           {[
-            { label: "Flood Probability", value: `${(district.flood_probability * 100).toFixed(1)}%`, icon: Shield },
-            { label: "AI Confidence", value: `${(district.ai_confidence * 100).toFixed(1)}%`, icon: Brain },
+            { label: "Flood Probability", value: `${(Number(district.flood_probability || 0) * 100).toFixed(1)}%`, icon: Shield },
+            { label: "AI Confidence", value: `${(Number(district.ai_confidence || 0) * 100).toFixed(1)}%`, icon: Brain },
             { label: "Rainfall 24h", value: `${district.rainfall_mm}mm`, icon: CloudRain },
             { label: "Humidity", value: `${district.humidity}%`, icon: Droplets },
             { label: "River Level", value: `${district.river_level_m}m`, icon: Waves },
@@ -217,7 +217,7 @@ export default function DistrictAnalyticsPage() {
                       className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
                       style={{ background: district.risk_color }}
                     >
-                      {district.risk_score.toFixed(0)}
+                      {(Number(district.risk_score) || 0).toFixed(0)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-slate-800 truncate">{district.name}</p>

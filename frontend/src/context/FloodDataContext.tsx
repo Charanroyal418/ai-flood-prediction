@@ -119,6 +119,10 @@ interface FloodDataState {
   simulationMeta: SimulationMeta;
   // Last pipeline update timestamp
   lastUpdated: string | null;
+  // Knowledge Graph Complete Payload
+  kgData: any | null;
+  // Pipeline (Inference Cycle) Data
+  pipelineData: any | null;
   // Connection status per channel
   dashboardStatus: WsConnectionStatus;
   kgStatus: WsConnectionStatus;
@@ -133,6 +137,8 @@ interface FloodDataState {
   toggleStormSimulation: (active?: boolean) => Promise<void>;
   stopSimulation: () => Promise<void>;
   requestSnapshot: () => void;
+  refetchPipeline: () => Promise<void>;
+  refetchKg: () => Promise<void>;
 }
 
 const FloodDataContext = createContext<FloodDataState | null>(null);
@@ -157,6 +163,8 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [stormSimulationActive, setStormSimulationActive] = useState<boolean>(false);
   const [simulationMeta, setSimulationMeta] = useState<SimulationMeta>(DEFAULT_SIM_META);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [pipelineData, setPipelineData] = useState<any | null>(null);
+  const [kgData, setKgData] = useState<any | null>(null);
 
   // Initial Sync from REST API
   useEffect(() => {
@@ -193,6 +201,33 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     return () => { isMounted = false; };
   }, []);
 
+  const refetchPipeline = useCallback(async () => {
+    try {
+      const res = await api.get("/predict/inference-cycle");
+      if (res.data && res.data.status !== "waiting_for_telemetry") {
+        setPipelineData(res.data);
+      }
+    } catch (err) {
+      console.warn("Pipeline fetch failed:", err);
+    }
+  }, []);
+
+  const refetchKg = useCallback(async () => {
+    try {
+      const res = await api.get("/kg/graph");
+      if (res.data) {
+        setKgData(res.data);
+      }
+    } catch (err) {
+      console.warn("KG fetch failed:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refetchPipeline();
+    refetchKg();
+  }, [refetchPipeline, refetchKg]);
+
   // ─── Dashboard Channel ─────────────────────────────────────────────
   const handleDashboardMessage = useCallback(
     (data: Record<string, unknown>) => {
@@ -220,9 +255,12 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         if (data.timestamp) {
           setLastUpdated(data.timestamp as string);
         }
+        if (type === "PIPELINE_UPDATE" || type === "INITIAL_SNAPSHOT") {
+          refetchPipeline();
+        }
       }
     },
-    []
+    [refetchPipeline]
   );
 
   const { status: dashboardStatus, send: sendDashboard } = useWebSocket({
@@ -348,6 +386,10 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     toggleStormSimulation,
     stopSimulation,
     requestSnapshot,
+    refetchPipeline,
+    refetchKg,
+    pipelineData,
+    kgData,
   };
 
   return (
@@ -381,6 +423,10 @@ const SAFE_DEFAULT: FloodDataState = {
   toggleStormSimulation: async () => {},
   stopSimulation: async () => {},
   requestSnapshot: () => {},
+  refetchPipeline: async () => {},
+  refetchKg: async () => {},
+  pipelineData: null,
+  kgData: null,
 };
 
 export function useFloodData(): FloodDataState {

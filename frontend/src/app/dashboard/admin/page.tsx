@@ -238,7 +238,7 @@ export default function AdminPanel() {
                 <span className="text-sm text-slate-600 dark:text-slate-400">Inference Time</span>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                   {status?.pipeline.last_inference_ms
-                    ? `${status.pipeline.last_inference_ms.toFixed(1)} ms`
+                    ? `${(Number(status.pipeline.last_inference_ms) || 0).toFixed(1)} ms`
                     : "—"}
                 </span>
               </div>
@@ -300,7 +300,7 @@ export default function AdminPanel() {
               <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/30 rounded-xl border border-green-200 dark:border-green-800/50">
                 <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                 <div className="text-xs text-green-800 dark:text-green-300">
-                  Training complete. Accuracy: <strong>{((gnnStatus.result.metrics?.accuracy ?? 0) * 100).toFixed(1)}%</strong>
+                  Training complete. Accuracy: <strong>{(Number(gnnStatus.result.metrics?.accuracy ?? 0) * 100).toFixed(1)}%</strong>
                 </div>
               </div>
             )}
@@ -356,11 +356,11 @@ export default function AdminPanel() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
             <MetricStat
               label="Test Accuracy"
-              value={`${((metrics.accuracy ?? 0) * 100).toFixed(1)}%`}
+              value={`${(Number(metrics.accuracy ?? 0) * 100).toFixed(1)}%`}
             />
             <MetricStat
               label="Best Val Loss"
-              value={metrics.best_val_loss?.toFixed(4) ?? "—"}
+              value={typeof metrics.best_val_loss === 'number' ? metrics.best_val_loss.toFixed(4) : "—"}
               sub={`Epoch ${metrics.best_epoch}`}
             />
             <MetricStat
@@ -388,7 +388,7 @@ export default function AdminPanel() {
                     />
                   </div>
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 w-10 text-right">
-                    {((acc as number) * 100).toFixed(0)}%
+                    {(Number(acc) * 100).toFixed(0)}%
                   </span>
                 </div>
               ))}

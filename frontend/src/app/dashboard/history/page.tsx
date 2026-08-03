@@ -215,9 +215,9 @@ export default function HistoricalPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "Flood Events", value: events.length, icon: History, color: "text-violet-700", bg: "bg-violet-50" },
-          { label: "Total Affected", value: `${((totalAffected ?? 0) / 1000000).toFixed(1)}M`, icon: Users, color: "text-blue-700", bg: "bg-blue-50" },
+          { label: "Total Affected", value: `${(Number((totalAffected ?? 0) / 1000000) || 0).toFixed(1)}M`, icon: Users, color: "text-blue-700", bg: "bg-blue-50" },
           { label: "Total Deaths", value: totalDeaths.toLocaleString(), icon: AlertTriangle, color: "text-red-700", bg: "bg-red-50" },
-          { label: "Total Damage", value: `₹${((totalDamage ?? 0) / 1000).toFixed(0)}K Cr`, icon: MapPin, color: "text-amber-700", bg: "bg-amber-50" },
+          { label: "Total Damage", value: `₹${(Number((totalDamage ?? 0) / 1000) || 0).toFixed(0)}K Cr`, icon: MapPin, color: "text-amber-700", bg: "bg-amber-50" },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className={`glass-card-flat p-4 ${bg}`}>
             <Icon className={`w-5 h-5 mb-2 ${color}`} />
@@ -281,7 +281,7 @@ export default function HistoricalPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-600">{event.affected_districts.slice(0, 2).join(", ")}{event.affected_districts.length > 2 ? ` +${event.affected_districts.length - 2}` : ""}</td>
-                  <td className="px-4 py-3 text-xs font-semibold text-slate-700">{((event?.affected_people ?? 0) / 1000000).toFixed(2)}M</td>
+                  <td className="px-4 py-3 text-xs font-semibold text-slate-700">{(Number((event?.affected_people ?? 0) / 1000000) || 0).toFixed(2)}M</td>
                   <td className="px-4 py-3 text-xs font-semibold text-red-600">{event.deaths.toLocaleString()}</td>
                   <td className="px-4 py-3 text-xs font-semibold text-amber-700">₹{event.damage_cr.toLocaleString()}</td>
                 </motion.tr>

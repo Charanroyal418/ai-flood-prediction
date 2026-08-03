@@ -73,22 +73,14 @@ export default function PredictionEnginePage() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery<any>({
-    queryKey: ["inference-cycle"],
-    queryFn: async () => {
-      const res = await api.get("/predict/inference-cycle");
-      const raw = res.data;
-      const districtList = raw.districts || raw.stages?.gdnn_output?.district_ranking || [];
-      return {
-        ...raw,
-        districts: districtList,
-      };
-    },
-    refetchInterval: 20000,
-    staleTime: 15000,
-    refetchOnWindowFocus: false,
-    retry: 2,
-  });
+  const { pipelineData: contextData, refetchPipeline } = useFloodData();
+  const data = contextData ? {
+    ...contextData,
+    districts: contextData.districts || contextData.stages?.gdnn_output?.district_ranking || []
+  } : null;
+  const isLoading = !data;
+  const isError = false; // We can handle this from context if needed
+  const dataUpdatedAt = contextData?.timestamp || 0;
 
   useEffect(() => {
     if (data && data.status !== "waiting_for_telemetry") {
@@ -119,23 +111,45 @@ export default function PredictionEnginePage() {
   const handleStopSimulation = async () => {
     try {
       await api.post("/dashboard/simulate-storm?active=false");
-      await refetch();
+      await refetchPipeline();
       queryClient.invalidateQueries({ queryKey: ["dashboard", "live"] });
     } catch (err) {} 
   };
 
-  if (isError || !data || data.status === "waiting_for_telemetry" || !data.districts || data.districts.length === 0) {
+  const { districts: wsDistricts, stormSimulationActive } = useFloodData();
+  const hasWsData = wsDistricts && wsDistricts.length > 0;
+
+  if (!data || data.status === "waiting_for_telemetry" || !data.districts || data.districts.length === 0) {
+    if (hasWsData) {
+      // If we have live dashboard data but pipeline is still computing, use the dashboard data as fallback
+      // or at least don't show the fake "offline" screen. We can render a simplified view.
+      // But for now, let's wait with a non-error state if backend is still initializing the pipeline.
+      return (
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <Activity className="w-8 h-8 text-signal-500 animate-pulse" />
+            <h2 className="text-sm font-semibold text-text-primary">
+              Computing Prediction Pipeline
+            </h2>
+            <p className="text-xs text-text-secondary max-w-sm">
+              Live telemetry is active. Waiting for the GDNN cycle to complete.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
           <AlertTriangle className={`w-8 h-8 ${isError ? 'text-risk-severe' : 'text-signal-500'}`} />
-          <h2 className="text-sm font-heading font-bold text-text-primary">
+          <h2 className="text-sm font-bold text-text-primary">
             {isError ? "Engine Offline" : "Waiting for Telemetry"}
           </h2>
           <p className="text-xs text-text-secondary max-w-sm">
             {data?.message || "Pipeline is currently waiting for initial data ingestion."}
           </p>
-          <button onClick={() => refetch()} className="btn-primary">
+          <button onClick={() => refetchPipeline()} className="btn-primary">
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh Pipeline
           </button>
         </div>
@@ -173,7 +187,7 @@ export default function PredictionEnginePage() {
     return "var(--risk-low)";
   };
 
-  const { mode, stormSimulationActive } = useFloodData();
+  const { mode } = useFloodData();
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
   return (
@@ -227,7 +241,7 @@ export default function PredictionEnginePage() {
               <Zap className="w-3 h-3"/> Total Latency
             </p>
           </div>
-          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || (totalLatencySum ?? 0).toFixed(1)} ms</p>
+          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || (Number(totalLatencySum) || 0).toFixed(1)} ms</p>
         </div>
         
         <div className="col-span-2 xl:col-span-2 metric-card !h-auto grid grid-cols-3 gap-2">
@@ -354,18 +368,18 @@ export default function PredictionEnginePage() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Flood Prob</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{(d?.risk_score ?? 0).toFixed(1)}%</p>
+                      <p className="text-sm font-mono font-semibold text-text-primary">{(Number(d?.risk_score) || 0).toFixed(1)}%</p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Confidence</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {((d?.confidence <= 1.0 ? d.confidence * 100 : d.confidence) ?? 0).toFixed(1)}%
+                        {(Number(d?.confidence <= 1.0 ? (d.confidence * 100) : d.confidence) || 0).toFixed(1)}%
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Rainfall 24H</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {(d?.rainfall_24h !== undefined && d?.rainfall_24h !== null) ? `${d.rainfall_24h.toFixed(1)} mm` : "0.0 mm"}
+                        {(d?.rainfall_24h !== undefined && d?.rainfall_24h !== null) ? `${Number(d.rainfall_24h).toFixed(1)} mm` : "0.0 mm"}
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
