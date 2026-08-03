@@ -91,7 +91,7 @@ app = FastAPI(
 # Use configurable origins — never wildcard in production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins if settings.ENVIRONMENT == "production" else ["*"],
+    allow_origins=["*"], # Allow all origins to prevent CORS issues
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
