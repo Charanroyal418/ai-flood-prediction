@@ -205,7 +205,7 @@ export default function RiverIntelligencePage() {
           { label: "Rivers Monitored", value: rivers.length, icon: Waves, color: "text-blue-700", bg: "bg-blue-50" },
           { label: "Critical Level", value: critical, icon: AlertTriangle, color: "text-red-700", bg: "bg-red-50" },
           { label: "Warning Level", value: warning, icon: TrendingUp, color: "text-amber-700", bg: "bg-amber-50" },
-          { label: "Avg Overflow %", value: `${avgLevel.toFixed(0)}%`, icon: Activity, color: "text-violet-700", bg: "bg-violet-50" },
+          { label: "Avg Overflow %", value: `${(avgLevel ?? 0).toFixed(0)}%`, icon: Activity, color: "text-violet-700", bg: "bg-violet-50" },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className={`glass-card-flat p-4 ${bg}`}>
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${bg}`}>

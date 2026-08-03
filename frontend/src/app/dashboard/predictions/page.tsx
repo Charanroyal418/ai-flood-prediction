@@ -227,7 +227,7 @@ export default function PredictionEnginePage() {
               <Zap className="w-3 h-3"/> Total Latency
             </p>
           </div>
-          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || totalLatencySum.toFixed(1)} ms</p>
+          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || (totalLatencySum ?? 0).toFixed(1)} ms</p>
         </div>
         
         <div className="col-span-2 xl:col-span-2 metric-card !h-auto grid grid-cols-3 gap-2">
@@ -354,18 +354,18 @@ export default function PredictionEnginePage() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Flood Prob</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{d.risk_score.toFixed(1)}%</p>
+                      <p className="text-sm font-mono font-semibold text-text-primary">{(d?.risk_score ?? 0).toFixed(1)}%</p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Confidence</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {((d.confidence <= 1.0 ? d.confidence * 100 : d.confidence)).toFixed(1)}%
+                        {((d?.confidence <= 1.0 ? d.confidence * 100 : d.confidence) ?? 0).toFixed(1)}%
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Rainfall 24H</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {(d.rainfall_24h !== undefined && d.rainfall_24h !== null) ? `${d.rainfall_24h.toFixed(1)} mm` : "0.0 mm"}
+                        {(d?.rainfall_24h !== undefined && d?.rainfall_24h !== null) ? `${d.rainfall_24h.toFixed(1)} mm` : "0.0 mm"}
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">

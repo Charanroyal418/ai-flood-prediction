@@ -55,7 +55,7 @@ function DistrictNode({ data }: { data: any }) {
             className="text-[9px] font-extrabold px-1.5 py-0.5 rounded font-mono text-white flex-shrink-0 transition-colors duration-300"
             style={{ backgroundColor: statusColor }}
           >
-            {data.risk_score.toFixed(1)}
+            {(data?.risk_score ?? 0).toFixed(1)}
           </span>
         </div>
 
@@ -205,7 +205,7 @@ export default function DynamicKnowledgeGraph() {
         source: e.source,
         target: e.target,
         animated: dynamicInfluence > 15 || e.attention > 0.4,
-        label: `infl: ${dynamicInfluence.toFixed(1)}`,
+        label: `infl: ${(dynamicInfluence ?? 0).toFixed(1)}`,
         labelStyle: { fill: "#475569", fontWeight: 700, fontSize: 8 },
         labelBgStyle: { fill: "#ffffff", fillOpacity: 0.95, rx: 4, ry: 4 },
         style: {
@@ -416,7 +416,7 @@ export default function DynamicKnowledgeGraph() {
     const factors = [];
     if (rain > 0) factors.push({ label: "Heavy Rainfall", change: `+${(rain * 0.4).toFixed(0)}%`, isPositive: true });
     if (saturation > 40) factors.push({ label: "Soil Saturation", change: `+${(saturation * 0.15).toFixed(0)}%`, isPositive: true });
-    factors.push({ label: "Upstream Inflow", change: `+${(node.risk_score * 0.25).toFixed(0)}%`, isPositive: true });
+    factors.push({ label: "Upstream Inflow", change: `+${((node?.risk_score ?? 0) * 0.25).toFixed(0)}%`, isPositive: true });
     factors.push({ label: "GAT Attention Weight", change: `+${((node.importance ?? 0.5) * 20).toFixed(0)}%`, isPositive: true });
     return factors;
   };
@@ -617,7 +617,7 @@ export default function DynamicKnowledgeGraph() {
                         <span>{sourceNode.label} → {targetNode.label}</span>
                       </div>
                       <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex-shrink-0">
-                        {edge.dynamicInfluence.toFixed(1)} infl
+                        {(edge.dynamicInfluence ?? 0).toFixed(1)} infl
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-600 leading-normal mt-0.5">
@@ -655,7 +655,7 @@ export default function DynamicKnowledgeGraph() {
                     Risk Level: {selectedNode.status}
                   </span>
                   <span className="text-[11px] text-slate-500 font-mono font-semibold">
-                    Risk Score: {selectedNode.risk_score.toFixed(1)}/100
+                    Risk Score: {(selectedNode?.risk_score ?? 0).toFixed(1)}/100
                   </span>
                 </div>
               </div>

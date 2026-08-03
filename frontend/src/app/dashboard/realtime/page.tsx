@@ -233,7 +233,7 @@ export default function StormSimulationPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[10px] text-text-secondary uppercase">Avg Risk</p>
-                  <p className="font-mono font-bold text-text-primary">{avgRisk.toFixed(1)}</p>
+                  <p className="font-mono font-bold text-text-primary">{(avgRisk ?? 0).toFixed(1)}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-text-secondary uppercase">Critical</p>
@@ -294,7 +294,7 @@ export default function StormSimulationPage() {
                </div>
                <div className="bg-paper-50 p-2 rounded border border-line">
                  <p className="text-[9px] text-text-secondary uppercase font-medium flex items-center gap-1"><Waves className="w-3 h-3"/> Surge</p>
-                 <p className="font-mono text-sm text-text-primary">{params.storm_surge_m.toFixed(1)} m</p>
+                 <p className="font-mono text-sm text-text-primary">{(params?.storm_surge_m ?? 0).toFixed(1)} m</p>
                </div>
                <div className="bg-paper-50 p-2 rounded border border-line">
                  <p className="text-[9px] text-text-secondary uppercase font-medium flex items-center gap-1"><MapPin className="w-3 h-3"/> Target Nodes</p>

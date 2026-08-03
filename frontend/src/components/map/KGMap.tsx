@@ -67,12 +67,12 @@ export default function KGMap({ nodes, edges, showAllEdges, onNodeClick, activeN
   };
 
   // Only plot nodes with valid coordinates
-  const mapNodes = nodes.filter((n: any) => n.lat && n.lon && n.lat !== 0 && n.lon !== 0 && n.type === 'district');
+  const mapNodes = (nodes || []).filter((n: any) => n.lat && n.lon && n.lat !== 0 && n.lon !== 0 && n.type === 'district');
   const nodeMap = new Map<string, any>(mapNodes.map((n: any) => [n.id, n]));
 
   // Draw edges connecting valid nodes
-  const mapEdges = edges
-    .filter((e: any) => showAllEdges || e.dynamicInfluence > 30 || e.attention > 0.6)
+  const mapEdges = (edges || [])
+    .filter((e: any) => showAllEdges || (e?.dynamicInfluence ?? 0) > 30 || (e?.attention ?? 0) > 0.6)
     .filter((e: any) => nodeMap.has(e.source) && nodeMap.has(e.target));
 
   return (
@@ -88,7 +88,7 @@ export default function KGMap({ nodes, edges, showAllEdges, onNodeClick, activeN
         <ZoomControl position="bottomright" />
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
 
         {mapEdges.map((edge: any) => {
@@ -167,7 +167,7 @@ export default function KGMap({ nodes, edges, showAllEdges, onNodeClick, activeN
                 <div className="mt-1.5 space-y-0.5">
                   <div className="flex justify-between text-[10px]">
                     <span className="text-slate-500">Risk Score</span>
-                    <span className="font-semibold text-slate-700">{node.risk_score.toFixed(1)}/100</span>
+                    <span className="font-semibold text-slate-700">{(node?.risk_score ?? 0).toFixed(1)}/100</span>
                   </div>
                   {node.data?.rainfall_24h !== undefined && (
                     <div className="flex justify-between text-[10px]">

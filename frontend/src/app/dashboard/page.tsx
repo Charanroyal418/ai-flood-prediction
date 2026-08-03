@@ -157,7 +157,7 @@ export default function CommandCenter() {
         <div className="flex gap-8">
           <div className="text-right">
             <p className="text-xs uppercase text-text-secondary mb-1">Statewide Avg Risk</p>
-            <p className="text-2xl font-mono text-text-primary">{metrics?.avg_risk_score?.toFixed(1) || "0.0"}<span className="text-sm text-text-secondary ml-1">/100</span></p>
+            <p className="text-2xl font-mono text-text-primary">{(metrics?.avg_risk_score ?? 0).toFixed(1) || "0.0"}<span className="text-sm text-text-secondary ml-1">/100</span></p>
           </div>
           <div className="text-right">
             <p className="text-xs uppercase text-text-secondary mb-1">Active Alerts</p>
@@ -232,7 +232,7 @@ export default function CommandCenter() {
                     <tr key={d.name}>
                       <td className="font-medium text-text-primary">{d.name}</td>
                       <td className="text-right font-mono text-text-primary">
-                        {typeof d.risk_score === 'number' ? d.risk_score.toFixed(1) : d.risk_score}
+                        {typeof d.risk_score === 'number' ? (d?.risk_score ?? 0).toFixed(1) : d.risk_score}
                       </td>
                       <td className="text-right">
                         <span className={`risk-badge ${RISK_LEVELS[d.risk_level] || RISK_LEVELS.Safe}`}>{d.risk_level}</span>

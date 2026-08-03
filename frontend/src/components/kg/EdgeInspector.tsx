@@ -92,7 +92,7 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
                   <div className="flex-1 rounded-lg bg-slate-700/50 p-2.5 text-center">
                     <p className="text-[9px] text-slate-400 mb-0.5">SOURCE</p>
                     <p className="text-xs font-bold text-white leading-tight">{edgeData.source_label}</p>
-                    <p className="text-[10px] font-mono text-orange-400 mt-1">{edgeData.source_risk.toFixed(1)} risk</p>
+                    <p className="text-[10px] font-mono text-orange-400 mt-1">{(edgeData?.source_risk ?? 0).toFixed(1)} risk</p>
                   </div>
                   <div className="flex flex-col items-center gap-0.5">
                     <ArrowRight className="w-4 h-4" style={{ color: edgeData.color }} />
@@ -101,7 +101,7 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
                   <div className="flex-1 rounded-lg bg-slate-700/50 p-2.5 text-center">
                     <p className="text-[9px] text-slate-400 mb-0.5">TARGET</p>
                     <p className="text-xs font-bold text-white leading-tight">{edgeData.target_label}</p>
-                    <p className="text-[10px] font-mono text-rose-400 mt-1">{edgeData.target_risk.toFixed(1)} risk</p>
+                    <p className="text-[10px] font-mono text-rose-400 mt-1">{(edgeData?.target_risk ?? 0).toFixed(1)} risk</p>
                   </div>
                 </div>
               </div>
@@ -122,12 +122,12 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
               {/* Metrics Grid */}
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: "GAT Attention", val: `${(edgeData.attention * 100).toFixed(1)}%`, icon: BarChart3, color: "text-indigo-400" },
-                  { label: "Influence Score", val: edgeData.influence.toFixed(2), icon: AlertTriangle, color: "text-rose-400" },
-                  { label: "Propagation Prob", val: `${(edgeData.propagation_probability * 100).toFixed(1)}%`, icon: Percent, color: "text-amber-400" },
-                  { label: "Confidence", val: `${(edgeData.confidence * 100).toFixed(1)}%`, icon: BarChart3, color: "text-teal-400" },
-                  { label: "Travel Time", val: `~${edgeData.travel_time_min} min`, icon: Clock, color: "text-cyan-400" },
-                  { label: "Edge Weight", val: edgeData.weight.toFixed(3), icon: GitBranch, color: "text-purple-400" },
+                  { label: "GAT Attention", val: `${((edgeData?.attention ?? 0) * 100).toFixed(1)}%`, icon: BarChart3, color: "text-indigo-400" },
+                  { label: "Influence Score", val: (edgeData?.influence ?? 0).toFixed(2), icon: AlertTriangle, color: "text-rose-400" },
+                  { label: "Propagation Prob", val: `${((edgeData?.propagation_probability ?? 0) * 100).toFixed(1)}%`, icon: Percent, color: "text-amber-400" },
+                  { label: "Confidence", val: `${((edgeData?.confidence ?? 0) * 100).toFixed(1)}%`, icon: BarChart3, color: "text-teal-400" },
+                  { label: "Travel Time", val: `~${edgeData?.travel_time_min ?? 0}m`, icon: Clock, color: "text-sky-400" },
+                  { label: "Edge Weight", val: (edgeData?.weight ?? 0).toFixed(3), icon: GitBranch, color: "text-purple-400" },
                 ].map(({ label, val, icon: Icon, color }) => (
                   <div key={label} className="rounded-lg bg-slate-800/40 border border-slate-700/30 p-3">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -144,7 +144,7 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
                 <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-[10px] text-slate-400">GAT Attention Weight</span>
-                    <span className="text-[10px] font-mono font-bold text-white">{(edgeData.attention * 100).toFixed(1)}%</span>
+                    <span className="text-[10px] font-mono font-bold text-white">{((edgeData?.attention ?? 0) * 100).toFixed(1)}%</span>
                   </div>
                   <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
                     <motion.div
@@ -157,7 +157,7 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
                 <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-[10px] text-slate-400">Propagation Probability</span>
-                    <span className="text-[10px] font-mono font-bold text-white">{(edgeData.propagation_probability * 100).toFixed(1)}%</span>
+                    <span className="text-[10px] font-mono font-bold text-white">{((edgeData?.propagation_probability ?? 0) * 100).toFixed(1)}%</span>
                   </div>
                   <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
                     <motion.div

@@ -48,7 +48,7 @@ function AlertCard({ alert }: { alert: any }) {
               <MapPin className="w-3 h-3" /> {alert.district || "Statewide"}
             </span>
             <span className="text-[10px] text-text-secondary font-mono flex items-center gap-1">
-              <Brain className="w-3 h-3" /> {((alert.confidence || 0.94) * 100).toFixed(1)}% CONFIDENCE
+              <Brain className="w-3 h-3" /> {(((alert?.confidence ?? 0.94)) * 100).toFixed(1)}% CONFIDENCE
             </span>
           </div>
         </div>
@@ -63,7 +63,7 @@ function AlertCard({ alert }: { alert: any }) {
             </div>
             <div>
               <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Model Conf</p>
-              <p className="text-sm font-mono font-bold text-text-primary">{((alert.confidence || 0.94) * 100).toFixed(1)}%</p>
+              <p className="text-sm font-mono font-bold text-text-primary">{(((alert?.confidence ?? 0.94)) * 100).toFixed(1)}%</p>
             </div>
             <div className="col-span-2">
               <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Recommended Action</p>

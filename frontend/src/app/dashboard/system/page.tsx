@@ -30,7 +30,7 @@ function ServiceCard({ name, status, details, icon: Icon, color, bg }: any) {
           <div key={key} className="flex justify-between items-center">
             <span className="text-[10px] text-slate-400 capitalize">{key.replace(/_/g, " ")}</span>
             <span className="text-[10px] font-semibold text-slate-700 text-right max-w-[120px] truncate">
-              {typeof val === "number" ? (typeof val === "number" && val % 1 !== 0 ? val.toFixed(2) : val.toLocaleString()) : String(val)}
+              {typeof val === "number" ? (typeof val === "number" && val % 1 !== 0 ? (val ?? 0).toFixed(2) : val.toLocaleString()) : String(val)}
             </span>
           </div>
         ))}
@@ -95,7 +95,7 @@ export default function SystemHealthPage() {
           </div>
           <div className="ml-auto text-right">
             <p className="text-[10px] text-slate-400">Platform uptime</p>
-            <p className="text-sm font-bold text-slate-700">{telemetry.uptime_hours?.toFixed(0) ?? "—"}h</p>
+            <p className="text-sm font-bold text-slate-700">{(telemetry?.uptime_hours ?? 0).toFixed(0) ?? "—"}h</p>
           </div>
         </div>
       </div>
@@ -105,7 +105,7 @@ export default function SystemHealthPage() {
         {[
           { label: "Sensors Active", value: telemetry.sensors_active ?? "—", icon: Activity, color: "text-violet-600", bg: "bg-violet-50" },
           { label: "API Calls Today", value: telemetry.api_calls_today?.toLocaleString() ?? "—", icon: Zap, color: "text-blue-600", bg: "bg-blue-50" },
-          { label: "Avg Response", value: telemetry.avg_response_ms ? `${telemetry.avg_response_ms.toFixed(0)}ms` : "—", icon: Clock, color: "text-green-600", bg: "bg-green-50" },
+          { label: "Avg Response", value: telemetry.avg_response_ms ? `${(telemetry?.avg_response_ms ?? 0).toFixed(0)}ms` : "—", icon: Clock, color: "text-green-600", bg: "bg-green-50" },
           { label: "Districts Monitored", value: telemetry.districts_monitored ?? 38, icon: Activity, color: "text-indigo-600", bg: "bg-indigo-50" },
         ].map(({ label, value, icon: Icon, color, bg }) => (
           <div key={label} className={`glass-card-flat p-4 ${bg}`}>

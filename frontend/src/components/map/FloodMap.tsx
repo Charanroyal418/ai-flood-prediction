@@ -124,7 +124,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
   };
 
   // Pre-process districts to ensure they have valid coordinates (or use fallback)
-  const validDistricts = districts
+  const validDistricts = (districts || [])
     .map((d) => {
       let lat = d.lat;
       let lon = d.lon;
@@ -158,7 +158,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
           <LayersControl.BaseLayer checked name="Light Map">
             <TileLayer
               attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
             />
           </LayersControl.BaseLayer>
           <LayersControl.BaseLayer name="Satellite">
@@ -265,7 +265,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                           <div className="grid grid-cols-2 gap-2 mb-3">
                             {[
                               { label: "Risk Score", value: `${district.risk_score}/100` },
-                              { label: "AI Confidence", value: `${(district.ai_confidence * 100).toFixed(1)}%` },
+                              { label: "AI Confidence", value: `${((district?.ai_confidence ?? 0) * 100).toFixed(1)}%` },
                               { label: "Rainfall 24h", value: `${district.rainfall_mm}mm` },
                               { label: "Humidity", value: `${district.humidity}%` },
                               { label: "River Level", value: `${district.river_level_m}m` },
@@ -282,7 +282,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                           <div className="mb-2">
                             <div className="flex justify-between text-[10px] text-slate-500 mb-1">
                               <span>Flood Probability</span>
-                              <span className="font-semibold">{(district.flood_probability * 100).toFixed(1)}%</span>
+                              <span className="font-semibold">{((district?.flood_probability ?? 0) * 100).toFixed(1)}%</span>
                             </div>
                             <div className="w-full bg-slate-100 rounded-full h-1.5">
                               <div

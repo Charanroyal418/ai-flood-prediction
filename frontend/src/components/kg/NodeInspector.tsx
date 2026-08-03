@@ -135,9 +135,9 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                   </span>
                 </div>
                 <div className="flex items-end gap-3 mb-3">
-                  <span className="text-4xl font-heading font-extrabold text-white">{nodeData.risk_score.toFixed(1)}</span>
+                  <span className="text-4xl font-heading font-extrabold text-white">{(nodeData?.risk_score ?? 0).toFixed(1)}</span>
                   <span className="text-slate-400 text-sm mb-1">/100</span>
-                  <span className="ml-auto text-xs text-slate-400">{(nodeData.confidence * 100).toFixed(1)}% confidence</span>
+                  <span className="ml-auto text-xs text-slate-400">{((nodeData?.confidence ?? 0) * 100).toFixed(1)}% confidence</span>
                 </div>
                 <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
                   <motion.div
@@ -163,7 +163,7 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                     { icon: Thermometer, label: "Temperature", val: `${nodeData.telemetry.temperature_c}°C`, color: "text-orange-400" },
                     { icon: Wind, label: "Humidity", val: `${nodeData.telemetry.humidity_pct}%`, color: "text-teal-400" },
                     { icon: Mountain, label: "Elevation", val: `${nodeData.telemetry.elevation_m}m`, color: "text-green-400" },
-                    { icon: Users, label: "Population", val: `${(nodeData.telemetry.population / 1e6).toFixed(2)}M`, color: "text-purple-400" },
+                    { icon: Users, label: "Population", val: `${((nodeData?.telemetry?.population ?? 0) / 1e6).toFixed(2)}M`, color: "text-purple-400" },
                   ].map(({ icon: Icon, label, val, color }) => (
                     <div key={label} className="rounded-lg bg-slate-800/40 border border-slate-700/30 p-3">
                       <div className="flex items-center gap-1.5 mb-1">
@@ -178,7 +178,7 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                 <div className="mt-2 rounded-lg bg-slate-800/40 border border-slate-700/30 p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] text-slate-400">{nodeData.telemetry.river_name} — Danger Level</span>
-                    <span className="text-[10px] font-bold text-white">{nodeData.telemetry.river_ratio_pct.toFixed(1)}%</span>
+                    <span className="text-[10px] font-bold text-white">{((nodeData?.telemetry?.river_ratio_pct ?? 0)).toFixed(1)}%</span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
                     <motion.div
@@ -199,11 +199,11 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   <div>
                     <p className="text-[10px] text-slate-400">Embedding Norm</p>
-                    <p className="text-sm font-bold text-white font-mono">{nodeData.gnn_state.embedding_norm.toFixed(3)}</p>
+                    <p className="text-sm font-bold text-white font-mono">{(nodeData?.gnn_state?.embedding_norm ?? 0).toFixed(3)}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400">Incoming Influence</p>
-                    <p className="text-sm font-bold text-indigo-300 font-mono">{nodeData.gnn_state.incoming_influence.toFixed(3)}</p>
+                    <p className="text-sm font-bold text-indigo-300 font-mono">{(nodeData?.gnn_state?.incoming_influence ?? 0).toFixed(3)}</p>
                   </div>
                 </div>
                 {/* Embedding vector mini visualization */}
@@ -239,7 +239,7 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                       <div key={i}>
                         <div className="flex justify-between mb-0.5">
                           <span className="text-[10px] text-slate-300">{sv.label}</span>
-                          <span className="text-[10px] font-mono font-bold text-white">{sv.contribution_pct.toFixed(1)}%</span>
+                          <span className="text-[10px] font-mono font-bold text-white">{(sv?.contribution_pct ?? 0).toFixed(1)}%</span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
                           <motion.div
@@ -268,14 +268,14 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                       <div key={i} className="rounded-lg bg-slate-800/40 border border-slate-700/30 p-2.5">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-semibold text-white">{edge.from_label}</span>
-                          <span className="text-[10px] font-mono text-rose-400">+{edge.influence.toFixed(1)} risk</span>
+                          <span className="text-[10px] font-mono text-rose-400">+{(edge?.influence ?? 0).toFixed(1)} risk</span>
                         </div>
                         <div className="flex gap-3 text-[10px] text-slate-400">
                           <span>{RELATION_LABELS[edge.relationship_type] || edge.relationship_type}</span>
                           <span>·</span>
                           <span>~{edge.travel_time_min}m travel</span>
                           <span>·</span>
-                          <span>{(edge.confidence * 100).toFixed(1)}% conf</span>
+                          <span>{((edge?.confidence ?? 0) * 100).toFixed(1)}% conf</span>
                         </div>
                       </div>
                     ))}
@@ -292,7 +292,7 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                       <div key={cls}>
                         <div className="flex justify-between mb-0.5">
                           <span className="text-[10px] text-slate-300">{cls}</span>
-                          <span className="text-[10px] font-mono text-slate-400">{(prob * 100).toFixed(1)}%</span>
+                          <span className="text-[10px] font-mono text-slate-400">{((prob ?? 0) * 100).toFixed(1)}%</span>
                         </div>
                         <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
                           <motion.div
