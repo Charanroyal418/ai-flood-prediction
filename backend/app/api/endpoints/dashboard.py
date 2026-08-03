@@ -82,11 +82,11 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         risk_score = p.current_risk_score if p else 0.0
         confidence = p.confidence if p else 0.0
         shap_values = (p.shap_values or []) if p else []
-        rainfall_mm = w.rainfall_mm if w else 0.0
-        humidity = w.humidity if w else 0.0
-        temperature = w.temperature if w else 0.0
-        pressure = w.pressure if w else 0.0
-        wind_speed = w.wind_speed if w else 0.0
+        rainfall_mm = (w.rainfall_mm or 0.0) if w else 0.0
+        humidity = (w.humidity or 0.0) if w else 0.0
+        temperature = (w.temperature or 0.0) if w else 0.0
+        pressure = (w.pressure or 0.0) if w else 0.0
+        wind_speed = (w.wind_speed or 0.0) if w else 0.0
         risk_level_str = p.current_risk_level if p else "Safe"
             
         risk_lvl, color = get_risk_level_and_color(risk_score)
