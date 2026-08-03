@@ -54,10 +54,24 @@ async def lifespan(app: FastAPI):
         # Auto-migration for existing Render database that misses elevation_m or community_idx
         db.execute(text("ALTER TABLE districts ADD COLUMN IF NOT EXISTS elevation_m FLOAT;"))
         db.execute(text("ALTER TABLE districts ADD COLUMN IF NOT EXISTS community_idx INTEGER DEFAULT 0;"))
+        db.execute(text("ALTER TABLE weather ADD COLUMN IF NOT EXISTS wind_speed FLOAT;"))
+        db.execute(text("ALTER TABLE weather ADD COLUMN IF NOT EXISTS rainfall_mm FLOAT;"))
         db.commit()
     except Exception as e:
         db.rollback()
-        logger.warning(f"[FloodSense] Schema update skipped or failed: {e}")
+        logger.warning(f"[FloodSense] Raw SQL schema update skipped or failed: {e}")
+        
+    logger.info("[FloodSense] Running Alembic Migrations safely...")
+    try:
+        import alembic.config
+        import os
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if os.path.exists(os.path.join(backend_dir, "alembic.ini")):
+            alembic_args = ["-c", os.path.join(backend_dir, "alembic.ini"), "upgrade", "head"]
+            alembic.config.main(argv=alembic_args)
+            logger.info("[FloodSense] Alembic migrations successfully applied.")
+    except Exception as e:
+        logger.error(f"[FloodSense] Alembic migration failed: {e}")
     
     db = SessionLocal()
     try:
