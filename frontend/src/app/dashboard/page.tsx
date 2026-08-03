@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import { Outfit } from "next/font/google";
+
+const outfit = Outfit({ subsets: ["latin"] });
 
 const FloodMap = dynamicImport(() => import("@/components/map/FloodMap"), { ssr: false, loading: () => <MapSkeleton /> });
 
@@ -127,7 +130,7 @@ export default function CommandCenter() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={`flex flex-col gap-4 ${outfit.className}`}>
       {/* ── Action Header ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>

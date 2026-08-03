@@ -432,7 +432,7 @@ export default function PredictionEnginePage() {
                       margin={{ top: 0, right: 30, left: 30, bottom: 0 }}
                     >
                       <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="feature" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} width={80} />
+                      <YAxis type="category" dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} width={80} />
                       <Bar dataKey="abs" radius={[0, 2, 2, 0]} isAnimationActive={false}>
                         {(d.shap_values || []).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={(entry.contribution ?? 0) >= 0 ? 'var(--risk-severe)' : 'var(--risk-low)'} />
