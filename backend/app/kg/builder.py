@@ -501,7 +501,7 @@ class KnowledgeGraphBuilder:
             "nodes": nodes,
             "edges": edges,
             "stats": stats,
-            "communities": [],
+            "communities": self.compute_louvain_communities(),
             "feature_matrix": H
         }
 

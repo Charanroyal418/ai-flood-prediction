@@ -368,18 +368,18 @@ export default function PredictionEnginePage() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Flood Prob</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{d.risk_score.toFixed(1)}%</p>
+                      <p className="text-sm font-mono font-semibold text-text-primary">{(d.risk_score ?? 0).toFixed(1)}%</p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Confidence</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {(d.confidence <= 1.0 ? (d.confidence * 100) : d.confidence).toFixed(1)}%
+                        {((d.confidence ?? 0) <= 1.0 ? ((d.confidence ?? 0) * 100) : (d.confidence ?? 0)).toFixed(1)}%
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Rainfall 24H</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {d.rainfall_24h.toFixed(1)} mm
+                        {(d.rainfall_24h ?? 0).toFixed(1)} mm
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
@@ -424,14 +424,14 @@ export default function PredictionEnginePage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       layout="vertical"
-                      data={d.shap_values.map(s => ({ ...s, positive: s.contribution >= 0, abs: Math.abs(s.contribution) }))}
+                      data={(d.shap_values || []).map(s => ({ ...s, positive: (s.contribution ?? 0) >= 0, abs: Math.abs(s.contribution ?? 0) }))}
                       margin={{ top: 0, right: 30, left: 30, bottom: 0 }}
                     >
                       <XAxis type="number" hide />
                       <YAxis type="category" dataKey="feature" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} width={80} />
                       <Bar dataKey="abs" radius={[0, 2, 2, 0]} isAnimationActive={false}>
-                        {d.shap_values.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.contribution >= 0 ? 'var(--risk-severe)' : 'var(--risk-low)'} />
+                        {(d.shap_values || []).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={(entry.contribution ?? 0) >= 0 ? 'var(--risk-severe)' : 'var(--risk-low)'} />
                         ))}
                       </Bar>
                     </BarChart>

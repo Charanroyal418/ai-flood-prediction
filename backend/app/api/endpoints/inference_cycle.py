@@ -496,8 +496,14 @@ def _execute_inference_pipeline(db: Session) -> Any:
 
     try:
         db_districts = db.query(District).all()
+        weather_map = {w.district_id: w for w in db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(200).all()}
+        river_map = {r.district_id: r for r in db.query(RiverLevel).all()}
+        dem_map = {d.district_id: d for d in db.query(DemTile).all()}
     except Exception:
         db_districts = []
+        weather_map = {}
+        river_map = {}
+        dem_map = {}
 
     for d in db_districts:
         nid = f"d-{d.id}"

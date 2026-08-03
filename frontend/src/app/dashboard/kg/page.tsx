@@ -596,7 +596,7 @@ export default function DynamicKnowledgeGraph() {
               </span>
             </div>
             <div className="mt-4 overflow-y-auto space-y-3 flex-1 pr-1">
-              {(topConnections.length > 0 ? topConnections : data.explainability.critical_edges.filter((e: any) => e.source.startsWith('d-') && e.target.startsWith('d-')).slice(0, 4)).map((edge: any, i: number) => {
+              {(topConnections.length > 0 ? topConnections : (data?.explainability?.critical_edges || []).filter((e: any) => e.source.startsWith('d-') && e.target.startsWith('d-')).slice(0, 4)).map((edge: any, i: number) => {
                 const sourceNode = data.nodes.find((n: any) => n.id === edge.source);
                 const targetNode = data.nodes.find((n: any) => n.id === edge.target);
                 if (!sourceNode || !targetNode) return null;

@@ -51,14 +51,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     # Get all districts
     districts = db.query(District).all()
     
-    try:
-        from app.models.graph import GraphEdge
-        edges = db.query(GraphEdge).limit(5).all()
-        with open("C:/Users/Sekar Harshitha/Downloads/flood prediction/backend/edges_dump.txt", "w") as f:
-            for e in edges:
-                f.write(f"Edge: {e.source_id} -> {e.target_id} ({e.edge_type})\n")
-    except Exception as e:
-        pass
+    # File dump removed for performance
     # Using a subquery or just fetching latest 500 and grouping by district
     all_preds = db.query(PredictionHistory).order_by(PredictionHistory.created_at.desc()).limit(200).all()
     pred_map = {}
