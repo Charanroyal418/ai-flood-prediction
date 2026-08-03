@@ -171,11 +171,11 @@ class KnowledgeGraphBuilder:
             edge_type = e.edge_type or "adjacency"
             meta = EDGE_TYPE_META.get(edge_type, EDGE_TYPE_META["adjacency"])
             # Travel time scales with inverse of weight (higher weight = faster propagation)
-            travel_time = round(meta["travel_time_base_min"] / max(0.1, float(e.weight)))
-            confidence = min(0.99, meta["confidence_base"] * float(e.weight) + 0.1)
+            travel_time = round(meta["travel_time_base_min"] / max(0.1, float(e.weight if e.weight is not None else 1.0)))
+            confidence = min(0.99, meta["confidence_base"] * float(e.weight if e.weight is not None else 1.0) + 0.1)
             self.graph.add_edge(
                 f"d-{e.source_id}", f"d-{e.target_id}",
-                weight=float(e.weight),
+                weight=float(e.weight if e.weight is not None else 1.0),
                 type=edge_type,
                 relationship_type=edge_type,
                 confidence=round(confidence, 2),
@@ -225,25 +225,28 @@ class KnowledgeGraphBuilder:
             r_lvl = river_map.get(d.id)
             pred = pred_map.get(d.id)
 
-            rain_mm = float(rf.mm_24h if rf else 0.0)
+            rain_mm = float(rf.mm_24h if (rf and rf.mm_24h is not None) else 0.0)
             river_ratio = float(r_lvl.current_level / r_lvl.danger_level
-                                if r_lvl and r_lvl.danger_level > 0 else 0.15)
+                                if (r_lvl and r_lvl.danger_level and r_lvl.danger_level > 0 and r_lvl.current_level is not None) else 0.15)
             telemetry_risk = min(95.0, max(10.0, rain_mm * 0.4 + river_ratio * 40.0))
-            elev = float(dem.elevation if dem else 15.0)
+            elev = float(dem.elevation if (dem and dem.elevation is not None) else 15.0)
 
             # Coordinates from DB geom_json
             lat, lon = 10.5, 78.5
             if d.geom_json and "coordinates" in d.geom_json:
-                lon, lat = d.geom_json["coordinates"]
+                try:
+                    lon, lat = d.geom_json["coordinates"]
+                except Exception:
+                    pass
 
             self.graph.nodes[node_id].update({
                 "label": d.name,
                 "risk_score": telemetry_risk,
                 "elevation": elev,
                 "rainfall": rain_mm,
-                "humidity": float(w.humidity if w else 70.0),
-                "temperature": float(w.temperature if w else 28.0),
-                "pressure": float(w.pressure if w else 1010.0),
+                "humidity": float(w.humidity if (w and w.humidity is not None) else 70.0),
+                "temperature": float(w.temperature if (w and w.temperature is not None) else 28.0),
+                "pressure": float(w.pressure if (w and w.pressure is not None) else 1010.0),
                 "population": int(d.population or 1000000),
                 "lat": lat,
                 "lon": lon,

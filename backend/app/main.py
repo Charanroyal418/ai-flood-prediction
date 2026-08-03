@@ -60,12 +60,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         db.rollback()
         logger.warning(f"[FloodSense] Raw SQL schema update skipped or failed: {e}")
+    finally:
+        db.close()
         
     logger.info("[FloodSense] Running Alembic Migrations safely...")
     try:
         import alembic.config
         import os
-        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if os.path.exists(os.path.join(backend_dir, "alembic.ini")):
             alembic_args = ["-c", os.path.join(backend_dir, "alembic.ini"), "upgrade", "head"]
             alembic.config.main(argv=alembic_args)
