@@ -81,7 +81,7 @@ const config: Config = {
       fontFamily: {
         sans: ['var(--font-inter)', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         heading: ['var(--font-inter)', 'Inter', '-apple-system', 'sans-serif'],
-        mono: ['var(--font-inter)', 'Inter', 'monospace'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace'],
       },
       fontSize: {
         xs: ['12px', '16px'],

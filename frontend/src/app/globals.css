@@ -171,7 +171,7 @@
 /* ── Leaflet Map Overrides (Muted) ──────────────────────────────────────── */
 .leaflet-container {
   background: var(--paper-100) !important;
-  font-family: 'Inter', sans-serif !important;
+  font-family: var(--font-inter), 'Inter', sans-serif !important;
 }
 
 .leaflet-control-zoom a {

@@ -82,11 +82,11 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         risk_score = p.current_risk_score if p else 0.0
         confidence = p.confidence if p else 0.0
         shap_values = (p.shap_values or []) if p else []
-        rainfall_mm = w.rainfall_mm if w else None
-        humidity = w.humidity if w else None
-        temperature = w.temperature if w else None
-        pressure = w.pressure if w else None
-        wind_speed = w.wind_speed if w else None
+        rainfall_mm = w.rainfall_mm if w else 0.0
+        humidity = w.humidity if w else 0.0
+        temperature = w.temperature if w else 0.0
+        pressure = w.pressure if w else 0.0
+        wind_speed = w.wind_speed if w else 0.0
         risk_level_str = p.current_risk_level if p else "Safe"
             
         risk_lvl, color = get_risk_level_and_color(risk_score)
@@ -95,8 +95,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         if d.geom_json and "coordinates" in d.geom_json:
             lon, lat = d.geom_json["coordinates"]
             
-        river_level_m = None
-        river_danger_m = None
+        river_level_m = 0.0
+        river_danger_m = 0.0
         r_lvl = river_map.get(d.id)
         if r_lvl:
             river_level_m = r_lvl.current_level

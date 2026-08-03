@@ -72,6 +72,7 @@ export default function PredictionEnginePage() {
   const [showLogs, setShowLogs] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [stoppingSim, setStoppingSim] = useState(false);
 
   const { pipelineData: contextData, refetchPipeline } = useFloodData();
   const data = contextData ? {
@@ -110,10 +111,13 @@ export default function PredictionEnginePage() {
 
   const handleStopSimulation = async () => {
     try {
+      setStoppingSim(true);
       await api.post("/dashboard/simulate-storm?active=false");
       await refetchPipeline();
       queryClient.invalidateQueries({ queryKey: ["dashboard", "live"] });
-    } catch (err) {} 
+    } catch (err) {} finally {
+      setStoppingSim(false);
+    }
   };
 
   const { districts: wsDistricts, stormSimulationActive } = useFloodData();
@@ -159,7 +163,7 @@ export default function PredictionEnginePage() {
 
   const s = data?.model_status || {};
   const breakdown = data?.latency_breakdown || {};
-  const totalLatencySum = Object.values(breakdown).reduce((a: any, b: any) => a + b, 0);
+  const totalLatencySum = Object.values(breakdown).reduce((a: any, b: any) => Number(a || 0) + Number(b || 0), 0);
   const filteredDistricts = data?.districts?.filter((d: any) => 
     d.district.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
@@ -241,7 +245,7 @@ export default function PredictionEnginePage() {
               <Zap className="w-3 h-3"/> Total Latency
             </p>
           </div>
-          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || totalLatencySum.toFixed(1)} ms</p>
+          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || Number(totalLatencySum || 0).toFixed(1)} ms</p>
         </div>
         
         <div className="col-span-2 xl:col-span-2 metric-card !h-auto grid grid-cols-3 gap-2">
@@ -368,18 +372,18 @@ export default function PredictionEnginePage() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Flood Prob</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{(d.risk_score ?? 0).toFixed(1)}%</p>
+                      <p className="text-sm font-mono font-semibold text-text-primary">{Number(d.risk_score ?? 0).toFixed(1)}%</p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Confidence</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {((d.confidence ?? 0) <= 1.0 ? ((d.confidence ?? 0) * 100) : (d.confidence ?? 0)).toFixed(1)}%
+                        {Number(((d.confidence ?? 0) <= 1.0 ? ((d.confidence ?? 0) * 100) : (d.confidence ?? 0))).toFixed(1)}%
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Rainfall 24H</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {(d.rainfall_24h ?? 0).toFixed(1)} mm
+                        {Number(d.rainfall_24h ?? 0).toFixed(1)} mm
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">

@@ -356,7 +356,7 @@ export default function DynamicKnowledgeGraph() {
     );
   }
 
-  if (isLoading || isInitialLoading) {
+  if (isLoading) {
     // Return early without rendering if data is totally empty and it's fetching.
     // If we have nodes though, don't show full-page loading!
     if (!data?.nodes || data.nodes.length === 0) {
