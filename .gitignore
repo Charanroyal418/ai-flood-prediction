@@ -36,3 +36,13 @@ Thumbs.db
 
 .vercel
 .env*
+api_keys.*
+secret*
+credentials*
+token*
+vercel_api.html
+api_test.html
+debug.html
+*_api.html
+*_logs.txt
+*.log
