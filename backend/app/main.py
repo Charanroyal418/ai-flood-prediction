@@ -50,6 +50,17 @@ async def lifespan(app: FastAPI):
     
     db = SessionLocal()
     try:
+        from sqlalchemy import text
+        # Auto-migration for existing Render database that misses elevation_m or community_idx
+        db.execute(text("ALTER TABLE districts ADD COLUMN IF NOT EXISTS elevation_m FLOAT;"))
+        db.execute(text("ALTER TABLE districts ADD COLUMN IF NOT EXISTS community_idx INTEGER DEFAULT 0;"))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning(f"[FloodSense] Schema update skipped or failed: {e}")
+    
+    db = SessionLocal()
+    try:
         if db.query(District).count() == 0:
             logger.info("[FloodSense] Database is empty. Seeding initial data...")
             seed_districts(db)

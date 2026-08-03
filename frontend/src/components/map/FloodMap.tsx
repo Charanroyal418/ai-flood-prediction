@@ -339,19 +339,71 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
 
           <LayersControl.Overlay name="Risk Polygons (Simulated)">
             <LayerGroup>
-              {/* Empty state overlay for EOC requirements */}
+              {validDistricts.map((district, i) => (
+                <CircleMarker
+                  key={`riskpoly-${district.id}-${i}`}
+                  center={[district.lat, district.lon]}
+                  radius={45}
+                  pathOptions={{
+                    fillColor: getRiskColor(district.risk_score, district.risk_level),
+                    fillOpacity: 0.1,
+                    color: getRiskColor(district.risk_score, district.risk_level),
+                    weight: 1,
+                    dashArray: "4 4",
+                    className: district.risk_score >= 60 ? "animate-pulse" : "",
+                  }}
+                />
+              ))}
             </LayerGroup>
           </LayersControl.Overlay>
           
           <LayersControl.Overlay name="Live Weather Overlays">
             <LayerGroup>
-              {/* Empty state overlay for EOC requirements */}
+              {validDistricts.filter(d => d.rainfall_mm > 0).map((district, i) => (
+                <CircleMarker
+                  key={`weather-${district.id}-${i}`}
+                  center={[district.lat + 0.02, district.lon + 0.02]}
+                  radius={Math.max(8, Math.min(25, district.rainfall_mm * 1.5))}
+                  pathOptions={{
+                    fillColor: "#3b82f6",
+                    fillOpacity: 0.3,
+                    color: "#2563eb",
+                    weight: 1,
+                  }}
+                >
+                  <Tooltip direction="center" permanent className="bg-transparent border-0 text-blue-900 font-bold shadow-none text-[10px]">
+                    {district.rainfall_mm}mm
+                  </Tooltip>
+                </CircleMarker>
+              ))}
             </LayerGroup>
           </LayersControl.Overlay>
 
           <LayersControl.Overlay name="River Network & Reservoirs">
             <LayerGroup>
-              {/* Empty state overlay for EOC requirements */}
+              {validDistricts.filter(d => d.river_level_m > 0).map((district, i) => {
+                const dangerRatio = district.river_level_m / Math.max(1, district.river_danger_m);
+                const riverColor = dangerRatio >= 0.9 ? "#ef4444" : dangerRatio >= 0.7 ? "#f59e0b" : "#0ea5e9";
+                return (
+                  <CircleMarker
+                    key={`river-${district.id}-${i}`}
+                    center={[district.lat - 0.03, district.lon + 0.03]}
+                    radius={6}
+                    pathOptions={{
+                      fillColor: riverColor,
+                      fillOpacity: 1,
+                      color: "#ffffff",
+                      weight: 2,
+                    }}
+                  >
+                    <Tooltip direction="right">
+                      <span className="text-xs font-bold" style={{ color: riverColor }}>River Level: {district.river_level_m}m</span>
+                      <br/>
+                      <span className="text-[10px] text-slate-500">Danger Mark: {district.river_danger_m}m</span>
+                    </Tooltip>
+                  </CircleMarker>
+                );
+              })}
             </LayerGroup>
           </LayersControl.Overlay>
         </LayersControl>
