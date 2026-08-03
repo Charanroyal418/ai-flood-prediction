@@ -69,7 +69,7 @@ TN_DISTRICTS: Dict[str, tuple] = {
 }
 
 # Batch size to avoid URL length limits (Open-Meteo supports up to ~50 coords)
-_BATCH_SIZE = 10
+_BATCH_SIZE = 38
 _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 

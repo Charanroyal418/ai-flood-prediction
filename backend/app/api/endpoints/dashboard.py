@@ -158,7 +158,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         if match:
             rainfall_val = float(match.group(1))
         else:
-            w = db.query(WeatherHistory).filter(WeatherHistory.district_id == a.district_id).order_by(WeatherHistory.recorded_at.desc()).first()
+            w = weather_map.get(a.district_id)
             rainfall_val = w.rainfall_mm if w else 0.0
         
         alerts_data.append({

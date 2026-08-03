@@ -871,8 +871,9 @@ def run_inference_cycle(db: Session = Depends(deps.get_db), background_tasks: Ba
     """
     global _cycle_cache
     
-    # 1. Trigger async pipeline execution in background task if available and cache is empty
-    if _cycle_cache["payload"] is None and background_tasks:
+    # 1. Trigger async pipeline execution in background task if cache is empty OR stale
+    is_stale = _cycle_cache["payload"] is None or (time.time() - _cycle_cache["ts"] > _CYCLE_CACHE_TTL)
+    if is_stale and background_tasks:
         background_tasks.add_task(_async_pipeline_execution, db)
 
     # 2. Serve pre-computed payload from RAM cache

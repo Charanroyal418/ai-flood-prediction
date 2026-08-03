@@ -241,7 +241,7 @@ export default function PredictionEnginePage() {
               <Zap className="w-3 h-3"/> Total Latency
             </p>
           </div>
-          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || (Number(totalLatencySum) || 0).toFixed(1)} ms</p>
+          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || totalLatencySum.toFixed(1)} ms</p>
         </div>
         
         <div className="col-span-2 xl:col-span-2 metric-card !h-auto grid grid-cols-3 gap-2">
@@ -368,18 +368,18 @@ export default function PredictionEnginePage() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Flood Prob</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{(Number(d?.risk_score) || 0).toFixed(1)}%</p>
+                      <p className="text-sm font-mono font-semibold text-text-primary">{d.risk_score.toFixed(1)}%</p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Confidence</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {(Number(d?.confidence <= 1.0 ? (d.confidence * 100) : d.confidence) || 0).toFixed(1)}%
+                        {(d.confidence <= 1.0 ? (d.confidence * 100) : d.confidence).toFixed(1)}%
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
                       <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Rainfall 24H</p>
                       <p className="text-sm font-mono font-semibold text-text-primary">
-                        {(d?.rainfall_24h !== undefined && d?.rainfall_24h !== null) ? `${Number(d.rainfall_24h).toFixed(1)} mm` : "0.0 mm"}
+                        {d.rainfall_24h.toFixed(1)} mm
                       </p>
                     </div>
                     <div className="border border-line rounded p-3 bg-paper-50">
@@ -456,9 +456,9 @@ export default function PredictionEnginePage() {
              <div className="flex-1 w-full h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)', fontFamily: 'var(--font-ibm-plex-mono)' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)', fontFamily: 'var(--font-ibm-plex-mono)' }} />
-                    <Tooltip cursor={{fill: 'var(--line)', opacity: 0.2}} contentStyle={{ backgroundColor: 'var(--paper-100)', borderColor: 'var(--line)', borderRadius: '4px' }} itemStyle={{ fontFamily: 'var(--font-ibm-plex-mono)', fontSize: '12px' }} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)', fontFamily: 'var(--font-inter)' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)', fontFamily: 'var(--font-inter)' }} />
+                    <Tooltip cursor={{fill: 'var(--line)', opacity: 0.2}} contentStyle={{ backgroundColor: 'var(--paper-100)', borderColor: 'var(--line)', borderRadius: '4px' }} itemStyle={{ fontFamily: 'var(--font-inter)', fontSize: '12px' }} />
                     <Bar dataKey="risk" radius={[2, 2, 0, 0]} isAnimationActive={false}>
                       {chartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={getBarColor(entry.risk)} />

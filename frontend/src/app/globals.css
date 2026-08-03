@@ -70,7 +70,7 @@
   }
 
   code, pre, .font-mono, .mono-data {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-inter), monospace;
   }
 }
 
@@ -155,7 +155,7 @@
 
 @layer utilities {
   .mono-data {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: var(--font-inter), monospace;
     font-variant-numeric: tabular-nums;
   }
 
