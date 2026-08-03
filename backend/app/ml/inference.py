@@ -249,6 +249,7 @@ class GNNInferenceEngine:
                                     "label": f"Attention from {friendly_src}",
                                     "value": round(weight, 3),
                                     "color": "#f43f5e", # Rose color for graph attention
+                                    "contribution": round(weight * 100, 1),
                                     "contribution_pct": round(weight * 100, 1),
                                 })
                                 # Re-sort so highest contribution is first
@@ -437,6 +438,7 @@ class GNNInferenceEngine:
                     "label": str(name),
                     "value": round(float(pct), 3),
                     "color": str(color_map.get(name, "#6b7280")),
+                    "contribution": round(float(pct * 100), 1),
                     "contribution_pct": round(float(pct * 100), 1),
                 })
 

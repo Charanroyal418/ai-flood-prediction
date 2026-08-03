@@ -170,7 +170,10 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     # For any active district that doesn't have an explicit DB alert, add active alert entry
     for d in districts_with_risk:
         if d["id"] in active_district_ids and d["id"] not in seen_districts:
-            top_reason = d["shap_values"][0]["label"] if d.get("shap_values") else "High risk telemetry"
+            top_reason = "High risk telemetry"
+            if d.get("shap_values") and len(d["shap_values"]) > 0:
+                sv = d["shap_values"][0]
+                top_reason = sv.get("label", sv.get("feature", sv.get("name", sv.get("metric", "High risk telemetry"))))
             alerts_data.append({
                 "id": f"alert-synth-{d['id']}",
                 "district_id": d["id"],
@@ -227,7 +230,10 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         for idx, top_d in enumerate(districts_with_risk[:5]):
             if any(e["district"] == top_d["name"] for e in events_data):
                 continue
-            top_reason = top_d["shap_values"][0]["label"] if top_d.get("shap_values") else "Heavy Rainfall"
+            top_reason = "Heavy Rainfall"
+            if top_d.get("shap_values") and len(top_d["shap_values"]) > 0:
+                sv = top_d["shap_values"][0]
+                top_reason = sv.get("label", sv.get("feature", sv.get("name", sv.get("metric", "Heavy Rainfall"))))
             op_name, src_name, el_time = stage_timings[idx % len(stage_timings)]
             events_data.append({
                 "id": f"evt-top-{top_d['id']}",

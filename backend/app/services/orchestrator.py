@@ -551,9 +551,10 @@ class RealtimeOrchestrator:
                         should_alert = True
                         
                     if should_alert:
-                        top_reason = (
-                            shap_values[0]["label"] if shap_values else "High rainfall"
-                        )
+                        top_reason = "High rainfall"
+                        if shap_values and len(shap_values) > 0:
+                            sv = shap_values[0]
+                            top_reason = sv.get("label", sv.get("feature", sv.get("name", sv.get("metric", "High rainfall"))))
                         alert = Alert(
                             district_id=district.id,
                             level=risk_level,

@@ -517,9 +517,10 @@ def _execute_inference_pipeline(db: Session) -> Any:
         if isinstance(r.get("shap_values"), list):
             for sv in r["shap_values"]:
                 if isinstance(sv, dict):
-                    label = sv.get("label", "Unknown")
-                    contrib = sv.get("contribution_pct", 0)
-                    shap_values.append({"feature": str(label), "contribution": float(contrib)})
+                    label = sv.get("label", sv.get("feature", sv.get("name", "Unknown")))
+                    contrib = sv.get("contribution_pct", sv.get("contribution", 0))
+                    val = sv.get("value", contrib)
+                    shap_values.append({"label": str(label), "value": float(val), "contribution": float(contrib)})
                     reasoning_chain.append(f"{label} contributes {contrib}%")
 
         w_record = weather_map.get(d.id)
@@ -539,16 +540,16 @@ def _execute_inference_pipeline(db: Session) -> Any:
             base_elev_contrib = max(-25.0, 15.0 - elev_val * 0.2)
             
             contributions = [
-                {"feature": "Heavy Rainfall (24h)", "contribution": base_rain_contrib},
-                {"feature": "River Level Overflow", "contribution": base_river_contrib},
-                {"feature": "Topographical Elevation", "contribution": base_elev_contrib},
-                {"feature": "Reservoir Release Discharge", "contribution": 18.5 * (risk_score/50.0)},
-                {"feature": "Terrain Slope Gradient", "contribution": 8.4 * (elev_val/20.0)},
-                {"feature": "Historical Flood Benchmark", "contribution": 6.2 * (river_pct/30.0)},
-                {"feature": "Spatial Neighbor Influence", "contribution": 5.1 * (risk_score/80.0)},
-                {"feature": "Knowledge Graph Edge Density", "contribution": 4.3},
-                {"feature": "GATv2 Multi-Head Attention", "contribution": 3.8},
-                {"feature": "Temporal GRU Encoder Lag", "contribution": 2.9},
+                {"label": "Heavy Rainfall (24h)", "value": base_rain_contrib, "contribution": base_rain_contrib},
+                {"label": "River Level Overflow", "value": base_river_contrib, "contribution": base_river_contrib},
+                {"label": "Topographical Elevation", "value": base_elev_contrib, "contribution": base_elev_contrib},
+                {"label": "Reservoir Release Discharge", "value": 18.5 * (risk_score/50.0), "contribution": 18.5 * (risk_score/50.0)},
+                {"label": "Terrain Slope Gradient", "value": 8.4 * (elev_val/20.0), "contribution": 8.4 * (elev_val/20.0)},
+                {"label": "Historical Flood Benchmark", "value": 6.2 * (river_pct/30.0), "contribution": 6.2 * (river_pct/30.0)},
+                {"label": "Spatial Neighbor Influence", "value": 5.1 * (risk_score/80.0), "contribution": 5.1 * (risk_score/80.0)},
+                {"label": "Knowledge Graph Edge Density", "value": 4.3, "contribution": 4.3},
+                {"label": "GATv2 Multi-Head Attention", "value": 3.8, "contribution": 3.8},
+                {"label": "Temporal GRU Encoder Lag", "value": 2.9, "contribution": 2.9},
             ]
             
             # Normalize to 100%
