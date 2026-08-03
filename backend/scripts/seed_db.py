@@ -2,7 +2,7 @@ import os
 import sys
 import uuid
 from sqlalchemy.orm import Session
-from werkzeug.security import generate_password_hash
+from app.core.security import get_password_hash
 
 # Add backend directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -48,7 +48,7 @@ def seed_users(db: Session):
             name="State Admin",
             email=admin_email,
             role="Admin",
-            password_hash=generate_password_hash("admin123")
+            password_hash=get_password_hash("admin123")
         )
         db.add(admin)
         
@@ -57,7 +57,7 @@ def seed_users(db: Session):
             name="Chennai Collector",
             email=collector_email,
             role="Collector",
-            password_hash=generate_password_hash("collector123")
+            password_hash=get_password_hash("collector123")
         )
         db.add(collector)
     db.commit()
