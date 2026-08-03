@@ -72,6 +72,18 @@ def fix_vercel(vercel_token):
                 headers=headers,
                 json={"key": key, "value": val, "type": "plain", "target": ["production", "preview", "development"]}
             )
+            
+    # FORCE the correct framework and root directory in Vercel
+    proj_patch = requests.patch(
+        f"https://api.vercel.com/v9/projects/{project_id}",
+        headers=headers,
+        json={"rootDirectory": "frontend", "framework": "nextjs"}
+    )
+    if proj_patch.ok:
+        print("✅ Vercel Root Directory explicitly set to 'frontend'.")
+    else:
+        print(f"⚠️ Failed to update Vercel Root Directory: {proj_patch.text}")
+        
     print("✅ Environment variables updated.")
     return project["name"]
 
@@ -87,6 +99,8 @@ def trigger_github_push(github_token):
             check=True
         )
 
+        # Force add frontend/src just in case it was ignored
+        subprocess.run(["git", "add", "-f", "frontend/src"], check=False)
         subprocess.run(["git", "add", "."], check=True)
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
         if status.stdout.strip():
