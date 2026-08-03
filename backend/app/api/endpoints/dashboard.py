@@ -135,7 +135,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     critical = [d for d in districts_with_risk if d["risk_level"] in ["Critical", "Severe"]]
     high = [d for d in districts_with_risk if d["risk_level"] == "High"]
     avg_risk = sum(d["risk_score"] for d in districts_with_risk) / len(districts_with_risk) if districts_with_risk else 0
-    avg_rainfall = sum(d["rainfall_mm"] for d in districts_with_risk) / len(districts_with_risk) if districts_with_risk else 0
+    valid_rainfalls = [d["rainfall_mm"] for d in districts_with_risk if d.get("rainfall_mm") is not None]
+    avg_rainfall = sum(valid_rainfalls) / len(valid_rainfalls) if valid_rainfalls else 0.0
     
     # Active alerts
     # An alert is considered active if the district is currently in a "Critical", "Severe", or "High" risk state.
