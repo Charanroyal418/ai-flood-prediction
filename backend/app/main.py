@@ -29,6 +29,10 @@ from app.core.exceptions import (
     global_exception_handler,
 )
 from app.scheduler.manager import init_scheduler, shutdown_scheduler
+from app.db.session import engine, SessionLocal
+from app.db.base_class import Base
+from app.models.district import District
+from scripts.seed_db import seed_districts, seed_users, seed_facilities_and_rivers
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +43,24 @@ async def lifespan(app: FastAPI):
     logger.info(f"[FloodSense] Starting {settings.PROJECT_NAME} v{settings.VERSION}")
     logger.info(f"[FloodSense] Environment: {settings.ENVIRONMENT}")
     logger.info(f"[FloodSense] Database: {settings.DATABASE_URL[:40]}...")
+    
+    # Auto-initialize database on startup (Needed for Docker / Ephemeral environments)
+    logger.info("[FloodSense] Verifying database schema...")
+    Base.metadata.create_all(bind=engine)
+    
+    db = SessionLocal()
+    try:
+        if db.query(District).count() == 0:
+            logger.info("[FloodSense] Database is empty. Seeding initial data...")
+            seed_districts(db)
+            seed_users(db)
+            seed_facilities_and_rivers(db)
+            logger.info("[FloodSense] Seeding completed.")
+    except Exception as e:
+        logger.error(f"[FloodSense] Error during database initialization: {e}")
+    finally:
+        db.close()
+
     init_scheduler()
     yield
     logger.info("[FloodSense] Shutting down...")
