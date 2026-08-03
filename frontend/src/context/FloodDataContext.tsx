@@ -206,6 +206,8 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
       const res = await api.get("/predict/inference-cycle");
       if (res.data && res.data.status !== "waiting_for_telemetry") {
         setPipelineData(res.data);
+      } else {
+        setTimeout(refetchPipeline, 3000);
       }
     } catch (err) {
       console.warn("Pipeline fetch failed:", err);

@@ -317,7 +317,8 @@ def _execute_inference_pipeline(db: Session) -> Any:
 
     except Exception as e:
         log(f"Feature engineering error: {str(e)[:60]}")
-        H = torch.zeros((142, 3, 12))
+        actual_nodes = len(kg_builder.node_ids)
+        H = torch.zeros((actual_nodes, 3, 12))
         edge_index = torch.zeros((2, 0), dtype=torch.long)
         num_nodes, seq_len, num_features = 0, 3, 12
         feature_stats = []

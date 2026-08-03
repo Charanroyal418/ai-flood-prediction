@@ -219,6 +219,15 @@ class KnowledgeGraphBuilder:
             pop_id = f"pop-{d.id}"
             district_name_map[d.id] = d.name
 
+            if node_id not in self.graph:
+                self.graph.add_node(node_id, type="district")
+                if node_id not in self.node_ids:
+                    self.node_ids.append(node_id)
+            if pop_id not in self.graph:
+                self.graph.add_node(pop_id, type="population")
+                if pop_id not in self.node_ids:
+                    self.node_ids.append(pop_id)
+
             w = weather_map.get(d.id)
             rf = rainfall_map.get(d.id)
             dem = dem_map.get(d.id)
@@ -288,6 +297,16 @@ class KnowledgeGraphBuilder:
         for idx, r in enumerate(rivers):
             node_id = f"rv-{(idx % 9) + 1}"
             catch_id = f"c-{(idx % 9) + 1}"
+            
+            if node_id not in self.graph:
+                self.graph.add_node(node_id, type="river")
+                if node_id not in self.node_ids:
+                    self.node_ids.append(node_id)
+            if catch_id not in self.graph:
+                self.graph.add_node(catch_id, type="catchment")
+                if catch_id not in self.node_ids:
+                    self.node_ids.append(catch_id)
+
             ratio = r.current_level / r.danger_level if r.danger_level > 0 else 0.0
             risk = float(ratio * 100.0)
             self.graph.nodes[node_id].update({
@@ -310,6 +329,16 @@ class KnowledgeGraphBuilder:
             for idx, stats in enumerate(res_stats):
                 node_id = f"rs-{(idx % 6) + 1}"
                 dam_id = f"dam-{(idx % 6) + 1}"
+                
+                if node_id not in self.graph:
+                    self.graph.add_node(node_id, type="reservoir")
+                    if node_id not in self.node_ids:
+                        self.node_ids.append(node_id)
+                if dam_id not in self.graph:
+                    self.graph.add_node(dam_id, type="dam")
+                    if dam_id not in self.node_ids:
+                        self.node_ids.append(dam_id)
+
                 risk = float(stats["fill_pct"])
                 self.graph.nodes[node_id].update({
                     "label": stats["name"],
@@ -333,6 +362,12 @@ class KnowledgeGraphBuilder:
             if idx < 5:
                 fe_id = f"fe-{idx+1}"
                 d_name = district_name_map.get(pred.district_id, "Unknown")
+                
+                if fe_id not in self.graph:
+                    self.graph.add_node(fe_id, type="historical_flood")
+                    if fe_id not in self.node_ids:
+                        self.node_ids.append(fe_id)
+
                 self.graph.nodes[fe_id].update({
                     "label": f"{d_name} Flood",
                     "risk_score": float(pred.current_risk_score),
