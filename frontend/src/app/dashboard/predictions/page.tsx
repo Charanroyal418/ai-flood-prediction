@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useState, useEffect, memo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import React, { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useFloodData } from "@/context/FloodDataContext";
 import {
   Brain, Cpu, Zap, Target,
-  CheckCircle, RefreshCw, GitBranch, Terminal, MapPin, 
+  CheckCircle, GitBranch, Terminal, MapPin,
   Eye, ChevronRight, ChevronDown, ChevronUp, Search, BarChart2, AlertTriangle, Network,
-  X, Activity, Sliders, ShieldAlert
+  Activity, Sliders, ShieldAlert, RefreshCw
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -63,6 +63,65 @@ const RISK_LEVELS: Record<string, string> = {
   Low: "risk-badge-low",
   Safe: "risk-badge-safe",
 };
+
+// ── Risk glow & accent by level ──────────────────────────────────────────────
+const RISK_GLOW: Record<string, string> = {
+  Critical: "rgba(248,113,113,0.12)",
+  High:     "rgba(251,146,60,0.12)",
+  Moderate: "rgba(251,191,36,0.12)",
+  Low:      "rgba(52,211,153,0.12)",
+  Safe:     "rgba(148,163,184,0.08)",
+};
+
+const RISK_ACCENT: Record<string, string> = {
+  Critical: "var(--risk-severe)",
+  High:     "var(--risk-high)",
+  Moderate: "var(--risk-moderate)",
+  Low:      "var(--risk-low)",
+  Safe:     "var(--text-secondary)",
+};
+
+// ── Arc Gauge Component ───────────────────────────────────────────────────────
+function ArcGauge({ value, label, color }: { value: number; label: string; color: string }) {
+  const pct = Math.min(100, Math.max(0, value));
+  const r = 44;
+  const cx = 56;
+  const cy = 56;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const arcPath = (start: number, end: number) => {
+    const x1 = cx + r * Math.cos(toRad(start));
+    const y1 = cy + r * Math.sin(toRad(start));
+    const x2 = cx + r * Math.cos(toRad(end));
+    const y2 = cy + r * Math.sin(toRad(end));
+    const large = end - start > 180 ? 1 : 0;
+    return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
+  };
+  const sweepEnd = 210 + 120 * (pct / 100);
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <svg width="112" height="80" viewBox="0 0 112 80">
+        <path d={arcPath(210, 330)} fill="none" stroke="var(--line)" strokeWidth="8" strokeLinecap="round" />
+        {pct > 0 && (
+          <path d={arcPath(210, sweepEnd)} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" />
+        )}
+        <text x={cx} y={cy - 2} textAnchor="middle" fontSize="15" fontWeight="700" fill="var(--text-primary)">
+          {pct.toFixed(0)}%
+        </text>
+      </svg>
+      <span className="text-[10px] uppercase tracking-widest font-medium text-text-secondary">{label}</span>
+    </div>
+  );
+}
+
+// ── Mini Metric Row ───────────────────────────────────────────────────────────
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-line last:border-0">
+      <span className="text-[10px] uppercase tracking-widest font-medium text-text-secondary">{label}</span>
+      <span className="text-sm font-semibold text-text-primary tabular-nums">{value}</span>
+    </div>
+  );
+}
 
 export default function PredictionEnginePage() {
   const queryClient = useQueryClient();
@@ -194,6 +253,19 @@ export default function PredictionEnginePage() {
   const { mode } = useFloodData();
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
+  // SHAP sorted descending by absolute contribution
+  const sortedShap = d?.shap_values
+    ? [...d.shap_values].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+    : [];
+  const maxShap = sortedShap.length > 0 ? Math.max(...sortedShap.map(sv => Math.abs(sv.contribution))) : 1;
+
+  const confidencePct = Number(
+    ((d?.confidence ?? 0) <= 1.0 ? (d?.confidence ?? 0) * 100 : (d?.confidence ?? 0))
+  );
+  const riskLevel = d?.risk_level || "Safe";
+  const riskGlow = RISK_GLOW[riskLevel] || RISK_GLOW.Safe;
+  const riskAccent = RISK_ACCENT[riskLevel] || RISK_ACCENT.Safe;
+
   return (
     <div className="flex flex-col gap-4">
       {/* ── HEADER ACTION STRIP ── */}
@@ -236,7 +308,7 @@ export default function PredictionEnginePage() {
           <p className="text-[10px] text-text-secondary uppercase tracking-widest font-medium mb-1 flex items-center gap-1.5">
             <Cpu className="w-3 h-3"/> Engine
           </p>
-          <p className="text-sm font-bold text-text-primary font-mono truncate">{s.compute_device || "CPU"}</p>
+          <p className="text-sm font-bold text-text-primary truncate">{s.compute_device || "CPU"}</p>
         </div>
 
         <div className="col-span-2 xl:col-span-3 metric-card !h-auto flex flex-col justify-center">
@@ -245,21 +317,21 @@ export default function PredictionEnginePage() {
               <Zap className="w-3 h-3"/> Total Latency
             </p>
           </div>
-          <p className="text-base font-bold text-text-primary font-mono">{data?.total_latency_ms || Number(totalLatencySum || 0).toFixed(1)} ms</p>
+          <p className="text-base font-bold text-text-primary tabular-nums">{data?.total_latency_ms || Number(totalLatencySum || 0).toFixed(1)} ms</p>
         </div>
         
         <div className="col-span-2 xl:col-span-2 metric-card !h-auto grid grid-cols-3 gap-2">
           <div>
             <p className="text-[9px] text-text-secondary uppercase tracking-widest flex items-center gap-1"><Network className="w-2.5 h-2.5"/> Nodes</p>
-            <p className="text-sm font-bold text-text-primary font-mono">{s.node_count ?? 0}</p>
+            <p className="text-sm font-bold text-text-primary tabular-nums">{s.node_count ?? 0}</p>
           </div>
           <div>
             <p className="text-[9px] text-text-secondary uppercase tracking-widest flex items-center gap-1"><GitBranch className="w-2.5 h-2.5"/> Edges</p>
-            <p className="text-sm font-bold text-text-primary font-mono">{s.edge_count ?? 0}</p>
+            <p className="text-sm font-bold text-text-primary tabular-nums">{s.edge_count ?? 0}</p>
           </div>
           <div>
             <p className="text-[9px] text-text-secondary uppercase tracking-widest flex items-center gap-1"><Brain className="w-2.5 h-2.5"/> Heads</p>
-            <p className="text-sm font-bold text-text-primary font-mono">{s.attention_heads ?? 4}</p>
+            <p className="text-sm font-bold text-text-primary tabular-nums">{s.attention_heads ?? 4}</p>
           </div>
         </div>
 
@@ -268,7 +340,7 @@ export default function PredictionEnginePage() {
             <div className="h-full bg-signal-500" style={{ width: `${(countdown / 30) * 100}%`, transition: 'width 1s linear' }} />
           </div>
           <p className="text-[10px] text-text-secondary uppercase tracking-widest font-medium mb-1 mt-1">Next Cycle</p>
-          <p className="text-xl font-bold text-text-primary font-mono">{countdown}s</p>
+          <p className="text-xl font-bold text-text-primary tabular-nums">{countdown}s</p>
         </div>
       </div>
       
@@ -282,11 +354,19 @@ export default function PredictionEnginePage() {
           const isCompleted = i < flowStage;
           return (
             <div key={step.id} className="flex items-center gap-2 shrink-0">
-              <div className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1.5 ${
-                isActive ? "bg-signal-100 text-signal-600 border-signal-500" :
-                isCompleted ? "bg-paper-50 text-text-primary border-line" : "bg-transparent text-text-secondary border-line"
+              <div className={`px-2 py-1 rounded text-[10px] font-bold border transition-all flex items-center gap-1.5 ${
+                isActive
+                  ? "bg-signal-100 text-signal-600 border-signal-500 shadow-sm ring-2 ring-signal-500/20"
+                  : isCompleted
+                  ? "bg-paper-50 text-text-primary border-line"
+                  : "bg-transparent text-text-secondary border-line"
               }`}>
-                {isActive && <RefreshCw className="w-3 h-3 animate-spin" />}
+                {isActive && (
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-signal-500 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-signal-600"></span>
+                  </span>
+                )}
                 {isCompleted && <CheckCircle className="w-3 h-3 text-signal-500" />}
                 {step.label}
               </div>
@@ -339,143 +419,159 @@ export default function PredictionEnginePage() {
 
         {/* ── RIGHT: OUTPUT & EXPLAINABILITY ── */}
         <div className="xl:col-span-9 flex flex-col gap-4 h-full overflow-y-auto no-scrollbar">
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            
-            {/* GDNN Risk Assessment */}
-            <div className="bg-paper-100 border border-line rounded-lg p-5">
-              <div className="flex justify-between items-center mb-4 border-b border-line pb-3">
-                <h2 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2 text-text-primary">
-                  <Target className="w-4 h-4 text-signal-500" /> GDNN Risk Assessment
-                </h2>
-                <span className="text-[10px] font-mono font-bold text-text-secondary">
-                  Cycle #{d?.inference_cycle || 1}
-                </span>
-              </div>
+            {/* ══ HERO: GDNN Risk Assessment ═══════════════════════════════════════ */}
+          {d ? (
+            <div
+              className="bg-paper-100 border border-line rounded-xl p-6 relative overflow-hidden"
+              style={{ boxShadow: `0 0 0 1px var(--line), inset 0 0 60px ${riskGlow}` }}
+            >
+              {/* Subtle colored glow blob */}
+              <div
+                className="absolute -top-12 -right-12 w-48 h-48 rounded-full blur-3xl pointer-events-none"
+                style={{ background: riskGlow, opacity: 0.9 }}
+              />
 
-              {d ? (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <p className="text-[10px] text-text-secondary uppercase tracking-widest font-medium mb-1">Target District</p>
-                      <h3 className="text-2xl font-bold text-text-primary">{d.district}</h3>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] text-text-secondary uppercase tracking-widest font-medium mb-1">Risk Level</p>
-                      <div className={`risk-badge px-3 py-1 text-sm ${RISK_LEVELS[d.risk_level] || RISK_LEVELS.Safe}`}>
-                        {d.risk_level.toUpperCase()} ({d.risk_score}%)
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Metrics Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div className="border border-line rounded p-3 bg-paper-50">
-                      <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Flood Prob</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{Number(d.risk_score ?? 0).toFixed(1)}%</p>
-                    </div>
-                    <div className="border border-line rounded p-3 bg-paper-50">
-                      <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Confidence</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">
-                        {Number(((d.confidence ?? 0) <= 1.0 ? ((d.confidence ?? 0) * 100) : (d.confidence ?? 0))).toFixed(1)}%
-                      </p>
-                    </div>
-                    <div className="border border-line rounded p-3 bg-paper-50">
-                      <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Rainfall 24H</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">
-                        {Number(d.rainfall_24h ?? 0).toFixed(1)} mm
-                      </p>
-                    </div>
-                    <div className="border border-line rounded p-3 bg-paper-50">
-                      <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">River Level</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{d.river_level_m || 1.2}m</p>
-                    </div>
-                    <div className="border border-line rounded p-3 bg-paper-50">
-                      <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Reservoir</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{d.reservoir_storage || 68.5}%</p>
-                    </div>
-                    <div className="border border-line rounded p-3 bg-paper-50">
-                      <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Elevation</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{d.elevation || 15.0} m</p>
-                    </div>
-                    <div className="border border-line rounded p-3 bg-paper-50">
-                      <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Hist Match</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{d.historical_similarity || 88.5}%</p>
-                    </div>
-                    <div className="border border-line rounded p-3 bg-paper-50">
-                      <p className="text-[9px] text-text-secondary font-medium uppercase mb-1">Attn Score</p>
-                      <p className="text-sm font-mono font-semibold text-text-primary">{d.attention_score || 0.88}</p>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-signal-100/10 rounded border border-signal-500/20 text-xs text-text-primary leading-relaxed">
-                    <span className="font-semibold text-signal-600">Reasoning: </span>
-                    {d.reasoning_chain?.[0] || `Rainfall (${d.rainfall_24h || 0}mm) and river discharge drive risk.`}
-                  </div>
-                </div>
-              ) : (
-                <div className="h-48 flex items-center justify-center text-text-secondary text-sm font-mono">Select a district...</div>
-              )}
-            </div>
-
-            {/* SHAP Feature Attribution - Horizontal Bar Chart */}
-            <div className="bg-paper-100 border border-line rounded-lg p-5 flex flex-col">
-              <h2 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2 mb-4 text-text-primary">
-                <Eye className="w-4 h-4 text-signal-500" /> SHAP Feature Attribution
-              </h2>
-              {d ? (
-                <div className="flex-1 w-full h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      layout="vertical"
-                      data={(d.shap_values || []).map(s => ({ ...s, positive: (s.contribution ?? 0) >= 0, abs: Math.abs(s.contribution ?? 0) }))}
-                      margin={{ top: 0, right: 30, left: 30, bottom: 0 }}
-                    >
-                      <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} width={80} />
-                      <Bar dataKey="abs" radius={[0, 2, 2, 0]} isAnimationActive={false}>
-                        {(d.shap_values || []).map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={(entry.contribution ?? 0) >= 0 ? 'var(--risk-severe)' : 'var(--risk-low)'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                 <div className="flex-1 flex items-center justify-center text-text-secondary text-sm font-mono">Select a district...</div>
-              )}
-            </div>
-          </div>
-
-          {/* Temporal Forecasting Chart */}
-          <div className="bg-paper-100 border border-line rounded-lg p-5 flex flex-col">
-             <div className="flex justify-between items-start mb-4">
-               <div>
+              <div className="relative z-10">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-5">
                   <h2 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2 text-text-primary">
-                    <BarChart2 className="w-4 h-4 text-signal-500" /> Temporal Risk Projection
+                    <Target className="w-4 h-4 text-signal-500" /> GDNN Risk Assessment
                   </h2>
-               </div>
-             </div>
-             
-             <div className="flex-1 w-full h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)', fontFamily: 'var(--font-inter)' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)', fontFamily: 'var(--font-inter)' }} />
-                    <Tooltip cursor={{fill: 'var(--line)', opacity: 0.2}} contentStyle={{ backgroundColor: 'var(--paper-100)', borderColor: 'var(--line)', borderRadius: '4px' }} itemStyle={{ fontFamily: 'var(--font-inter)', fontSize: '12px' }} />
-                    <Bar dataKey="risk" radius={[2, 2, 0, 0]} isAnimationActive={false}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={getBarColor(entry.risk)} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-             </div>
+                  <span className="text-[10px] text-text-secondary tabular-nums">
+                    Cycle #{d?.inference_cycle || 1}
+                  </span>
+                </div>
+
+                {/* District name + big risk badge */}
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+                  <div>
+                    <p className="text-[10px] text-text-secondary uppercase tracking-widest font-medium mb-1">Target District</p>
+                    <h3 className="text-3xl font-bold text-text-primary leading-tight">{d.district}</h3>
+                  </div>
+                  <div className="flex flex-col items-start sm:items-end gap-1">
+                    <p className="text-[10px] text-text-secondary uppercase tracking-widest font-medium">Risk Level</p>
+                    {/* Big prominent badge */}
+                    <div
+                      className={`risk-badge text-base px-4 py-2 rounded-md font-bold tracking-wide ${RISK_LEVELS[d.risk_level] || RISK_LEVELS.Safe}`}
+                      style={{ fontSize: '15px', letterSpacing: '0.08em' }}
+                    >
+                      {d.risk_level.toUpperCase()}
+                    </div>
+                    <span className="text-xl font-bold tabular-nums" style={{ color: riskAccent }}>
+                      {Number(d.risk_score ?? 0).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Arc Gauges: Flood Prob + Confidence */}
+                <div className="flex items-center justify-around py-3 mb-5 border-y border-line">
+                  <ArcGauge
+                    value={Number(d.risk_score ?? 0)}
+                    label="Flood Probability"
+                    color={riskAccent}
+                  />
+                  <div className="w-px h-16 bg-line" />
+                  <ArcGauge
+                    value={confidencePct}
+                    label="Model Confidence"
+                    color="var(--signal-500)"
+                  />
+                </div>
+
+                {/* Secondary metrics: 2-column mini-grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 mb-5">
+                  <div>
+                    <MiniMetric label="Rainfall 24H" value={`${Number(d.rainfall_24h ?? 0).toFixed(1)} mm`} />
+                    <MiniMetric label="River Level" value={`${d.river_level_m || 1.2} m`} />
+                    <MiniMetric label="Reservoir" value={`${d.reservoir_storage || 68.5}%`} />
+                  </div>
+                  <div>
+                    <MiniMetric label="Elevation" value={`${d.elevation || 15.0} m`} />
+                    <MiniMetric label="Hist. Match" value={`${d.historical_similarity || 88.5}%`} />
+                    <MiniMetric label="Attn. Score" value={`${Number(d.attention_score || 0.88).toFixed(3)}`} />
+                  </div>
+                </div>
+
+                {/* Reasoning chain */}
+                <div className="p-3 bg-signal-100/10 rounded-lg border border-signal-500/20 text-xs text-text-primary leading-relaxed">
+                  <span className="font-semibold text-signal-600">Reasoning: </span>
+                  {d.reasoning_chain?.[0] || `Rainfall (${d.rainfall_24h || 0}mm) and river discharge drive risk.`}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-paper-100 border border-line rounded-xl p-6 h-48 flex items-center justify-center text-text-secondary text-sm">
+              Select a district…
+            </div>
+          )}
+
+          {/* ══ SHAP Feature Attribution ════════════════════════════════════════ */}
+          <div className="bg-paper-100 border border-line rounded-lg p-5 flex flex-col">
+            <h2 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2 mb-4 text-text-primary">
+              <Eye className="w-4 h-4 text-signal-500" /> SHAP Feature Attribution
+            </h2>
+            {d && sortedShap.length > 0 ? (
+              <div className="space-y-2.5">
+                {sortedShap.map((entry, i) => {
+                  const barPct = maxShap > 0 ? (Math.abs(entry.contribution) / maxShap) * 100 : 0;
+                  const isPositive = (entry.contribution ?? 0) >= 0;
+                  const barColor = isPositive ? 'var(--risk-severe)' : 'var(--risk-low)';
+                  const pctLabel = (Math.abs(entry.contribution) * 100).toFixed(1);
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="text-[10px] text-text-secondary w-28 shrink-0 truncate text-right">{entry.feature}</span>
+                      <div className="flex-1 h-4 bg-line/40 rounded-sm overflow-hidden">
+                        <div
+                          className="h-full rounded-sm transition-all duration-500"
+                          style={{ width: `${barPct}%`, background: barColor }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-semibold tabular-nums w-10 text-right" style={{ color: barColor }}>
+                        {pctLabel}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-text-secondary text-sm">
+                {d ? "No SHAP data available" : "Select a district…"}
+              </div>
+            )}
+          </div>
+        </div>
+
+          {/* ══ Temporal Forecasting Chart ══════════════════════════════════ */}
+          <div className="bg-paper-100 border border-line rounded-lg p-5 flex flex-col">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2 text-text-primary">
+                <BarChart2 className="w-4 h-4 text-signal-500" /> Temporal Risk Projection
+              </h2>
+            </div>
+            <div className="flex-1 w-full h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
+                  <Tooltip
+                    cursor={{ fill: 'var(--line)', opacity: 0.2 }}
+                    contentStyle={{ backgroundColor: 'var(--paper-100)', borderColor: 'var(--line)', borderRadius: '4px', fontSize: '12px' }}
+                  />
+                  <Bar dataKey="risk" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={getBarColor(entry.risk)} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          {/* Collapsible Logs */}
+          {/* ══ Collapsible Logs ════════════════════════════════════════════ */}
           <div className="bg-paper-100 border border-line rounded-lg">
-            <button 
+            <button
               onClick={() => setShowLogs(!showLogs)}
               className="w-full flex items-center justify-between p-4 focus:outline-none"
             >
@@ -485,14 +581,14 @@ export default function PredictionEnginePage() {
               {showLogs ? <ChevronUp className="w-4 h-4 text-text-secondary" /> : <ChevronDown className="w-4 h-4 text-text-secondary" />}
             </button>
             {showLogs && (
-              <div className="p-4 pt-0 h-[200px] flex flex-col font-mono text-[10px] border-t border-line text-text-secondary">
+              <div className="p-4 pt-0 h-[200px] flex flex-col text-[10px] border-t border-line text-text-secondary">
                 <div className="flex-1 overflow-y-auto space-y-2 custom-scroll">
-                    {data?.logs?.map((log: any, i: number) => (
-                      <div key={i} className="flex items-start gap-3 border-b border-line/50 pb-2">
-                        <span className="shrink-0 text-text-secondary">[{log.ts}]</span>
-                        <span className="text-signal-600">{log.message}</span>
-                      </div>
-                    ))}
+                  {data?.logs?.map((log: any, i: number) => (
+                    <div key={i} className="flex items-start gap-3 border-b border-line/50 pb-2">
+                      <span className="shrink-0 text-text-secondary tabular-nums">[{log.ts}]</span>
+                      <span className="text-signal-600">{log.message}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

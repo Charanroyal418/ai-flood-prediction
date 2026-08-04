@@ -14,7 +14,7 @@ export default function Error({ statusCode }: { statusCode?: number }) {
         justifyContent: 'center',
         background: '#0f172a',
         color: '#f8fafc',
-        fontFamily: 'sans-serif',
+        fontFamily: '"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif',
         flexDirection: 'column',
         gap: '1rem',
       }}

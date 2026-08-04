@@ -40,7 +40,7 @@
   }
 
   html {
-    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--font-jakarta), -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
@@ -61,16 +61,11 @@
     position: relative;
   }
 
-  /* Typography Base */
+  /* Typography Base — headings inherit from html, no override needed */
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif;
     font-weight: 600;
     letter-spacing: -0.02em;
     line-height: 1.2;
-  }
-
-  code, pre, .font-mono, .mono-data {
-    font-family: var(--font-inter), monospace;
   }
 }
 
@@ -95,7 +90,7 @@
 
   /* ── Risk Badges (Strictly Institutional) ─────────────────────────────── */
   .risk-badge {
-    @apply inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-sm border font-mono;
+    @apply inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-sm border;
   }
   
   .risk-badge-severe { @apply bg-[rgba(248,113,113,0.1)] text-risk-severe border-[rgba(248,113,113,0.3)]; }
@@ -123,7 +118,7 @@
   /* ── Data Tables ──────────────────────────────────────────────────────── */
   .data-table th {
     @apply text-xs font-medium uppercase tracking-wider text-text-secondary
-           py-2 px-3 text-left border-b border-line font-mono;
+           py-2 px-3 text-left border-b border-line;
   }
 
   .data-table td {
@@ -155,7 +150,7 @@
 
 @layer utilities {
   .mono-data {
-    font-family: var(--font-inter), monospace;
+    /* Inter is already set globally — only tabular-nums matters here */
     font-variant-numeric: tabular-nums;
   }
 
@@ -171,11 +166,10 @@
 /* ── Leaflet Map Overrides (Muted) ──────────────────────────────────────── */
 .leaflet-container {
   background: var(--paper-100) !important;
-  font-family: var(--font-inter), 'Inter', sans-serif !important;
+  /* font-family inherits from html — no override needed */
 }
 
 .leaflet-control-zoom a {
-  @apply font-mono;
   color: var(--text-primary) !important;
   background: var(--paper-100) !important;
   border-color: var(--line) !important;

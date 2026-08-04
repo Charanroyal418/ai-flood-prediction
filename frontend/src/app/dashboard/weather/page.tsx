@@ -91,7 +91,7 @@ function WeatherIntelligenceCard({ district, index }: { district: any; index: nu
           </p>
         </div>
         <div className="text-right">
-          <span className={`text-xl font-bold font-mono ${isStormActive ? "text-amber-600" : "text-indigo-600"}`}>
+          <span className={`text-xl font-bold ${isStormActive ? "text-amber-600" : "text-indigo-600"}`}>
             {district.rainfall_mm ?? "N/A"}
           </span>
           <span className="text-xs text-slate-500 ml-1">mm/24h</span>

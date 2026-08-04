@@ -22,7 +22,7 @@ function HistoryTimeline({ events }: { events: any[] }) {
       trigger: "axis",
       formatter: (p: any) => {
         const d = events.find(e => e.year === p[0].name);
-        return d ? `<div style="font-family:Inter;padding:4px"><b>${d.year} — ${d.event}</b><br/>Affected: ${d.affected_people.toLocaleString()}<br/>Deaths: ${d.deaths}<br/>Damage: ₹${d.damage_cr} Cr</div>` : "";
+        return d ? `<div style="padding:4px"><b>${d.year} — ${d.event}</b><br/>Affected: ${d.affected_people.toLocaleString()}<br/>Deaths: ${d.deaths}<br/>Damage: ₹${d.damage_cr} Cr</div>` : "";
       },
     },
     grid: { left: 8, right: 8, top: 20, bottom: 60, containLabel: true },
@@ -72,7 +72,7 @@ function DamageChart({ events }: { events: any[] }) {
   const option = {
     backgroundColor: "transparent",
     tooltip: {
-      formatter: (p: any) => `<div style="font-family:Inter"><b>${events[p.dataIndex]?.year}</b><br/>₹${p.value} Crores</div>`,
+      formatter: (p: any) => `<div><b>${events[p.dataIndex]?.year}</b><br/>₹${p.value} Crores</div>`,
     },
     grid: { left: 8, right: 8, top: 20, bottom: 50, containLabel: true },
     xAxis: {

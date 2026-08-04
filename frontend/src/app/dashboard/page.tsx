@@ -11,9 +11,6 @@ import {
 } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
-import { Outfit } from "next/font/google";
-
-const outfit = Outfit({ subsets: ["latin"] });
 
 const FloodMap = dynamicImport(() => import("@/components/map/FloodMap"), { ssr: false, loading: () => <MapSkeleton /> });
 
@@ -50,17 +47,17 @@ function MetricCard({ title, value, unit, icon: Icon, sparklineData, colorToken 
   return (
     <div className="metric-card flex flex-col justify-between h-24">
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2 text-text-secondary text-xs uppercase tracking-wide font-medium">
+        <div className="flex items-center gap-2 text-text-secondary text-xs font-medium">
           <Icon className="w-4 h-4" />
           <span>{title}</span>
         </div>
         {sparklineData && <Sparkline data={sparklineData} color={strokeColor} />}
       </div>
       <div className="flex items-baseline gap-1">
-        <span className="text-2xl font-mono font-semibold text-text-primary">
+        <span className="text-xl font-semibold text-text-primary">
           {typeof value === 'number' ? value.toLocaleString('en-US', { maximumFractionDigits: 1 }) : value}
         </span>
-        {unit && <span className="text-sm font-mono text-text-secondary">{unit}</span>}
+        {unit && <span className="text-sm text-text-secondary">{unit}</span>}
       </div>
     </div>
   );
@@ -130,7 +127,7 @@ export default function CommandCenter() {
   };
 
   return (
-    <div className={`flex flex-col gap-4 ${outfit.className}`}>
+    <div className={`flex flex-col gap-4`}>
       {/* ── Action Header ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -150,21 +147,21 @@ export default function CommandCenter() {
       {/* ── Hero Status Readout ───────────────────────────────────────── */}
       <div className="bg-paper-100 border border-line rounded-lg p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
-          <p className="text-xs uppercase tracking-widest text-text-secondary font-medium mb-2">Current System State</p>
+          <p className="text-xs text-text-secondary font-medium mb-2">Current System State</p>
           <div className="flex items-baseline gap-4">
-            <h2 className="text-4xl text-text-primary uppercase tracking-tight">
-              {highestRiskLevel === "Critical" ? "CRITICAL RISK DETECTED" : highestRiskLevel === "High" ? "ELEVATED RISK" : "NOMINAL OPERATIONS"}
+            <h2 className="text-4xl text-text-primary tracking-tight font-semibold">
+              {highestRiskLevel === "Critical" ? "Critical Risk Detected" : highestRiskLevel === "High" ? "Elevated Risk" : "Nominal Operations"}
             </h2>
           </div>
         </div>
         <div className="flex gap-8">
           <div className="text-right">
-            <p className="text-xs uppercase text-text-secondary mb-1">Statewide Avg Risk</p>
-            <p className="text-2xl font-mono text-text-primary">{(Number(metrics?.avg_risk_score) || 0).toFixed(1) || "0.0"}<span className="text-sm text-text-secondary ml-1">/100</span></p>
+            <p className="text-xs text-text-secondary font-medium mb-1">Statewide Avg Risk</p>
+            <p className="text-xl text-text-primary font-medium">{(Number(metrics?.avg_risk_score) || 0).toFixed(1) || "0.0"}<span className="text-sm text-text-secondary ml-1">/100</span></p>
           </div>
           <div className="text-right">
-            <p className="text-xs uppercase text-text-secondary mb-1">Active Alerts</p>
-            <p className="text-2xl font-mono text-risk-severe">{metrics?.active_alerts_count || 0}</p>
+            <p className="text-xs text-text-secondary font-medium mb-1">Active Alerts</p>
+            <p className="text-xl text-risk-severe font-medium">{metrics?.active_alerts_count || 0}</p>
           </div>
         </div>
       </div>
@@ -191,12 +188,12 @@ export default function CommandCenter() {
         {/* Map */}
         <div className="xl:col-span-2 bg-paper-100 border border-line rounded-lg overflow-hidden flex flex-col relative">
           <div className="absolute top-4 left-4 z-[1000] bg-paper-100/90 backdrop-blur-sm border border-line px-3 py-2 rounded-sm shadow-card">
-            <p className="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">Risk Legend</p>
+            <p className="text-xs font-semibold text-text-primary mb-2">Risk Legend</p>
             <div className="flex gap-3">
               {["Critical", "High", "Moderate", "Low"].map(level => (
                 <div key={level} className="flex items-center gap-1.5">
                   <div className={`w-2.5 h-2.5 rounded-full ${level === 'Critical' ? 'bg-risk-severe' : level === 'High' ? 'bg-risk-high' : level === 'Moderate' ? 'bg-risk-moderate' : 'bg-risk-low'}`} />
-                  <span className="text-[10px] text-text-secondary font-mono">{level}</span>
+                  <span className="text-[10px] text-text-secondary">{level}</span>
                 </div>
               ))}
             </div>
@@ -216,10 +213,10 @@ export default function CommandCenter() {
         {/* Side Panel: Alerts & Top Risks */}
         <div className="flex flex-col gap-4 overflow-hidden">
           
-          {/* Top Risks Table */}
-          <div className="bg-paper-100 border border-line rounded-lg flex flex-col flex-1 min-h-0 overflow-hidden">
-            <div className="p-3 border-b border-line flex justify-between items-center bg-paper-50">
-              <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider">Top Risk Nodes</h3>
+          {/* High Risk Targets */}
+          <div className="bg-paper-100 border border-line rounded-lg p-4 flex flex-col flex-1">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold text-text-primary">Top Risk Nodes</h3>
             </div>
             <div className="overflow-y-auto custom-scroll p-0">
               <table className="w-full data-table">
@@ -234,7 +231,7 @@ export default function CommandCenter() {
                   {topDistricts.map((d: any) => (
                     <tr key={d.name}>
                       <td className="font-medium text-text-primary">{d.name}</td>
-                      <td className="text-right font-mono text-text-primary">
+                      <td className="text-right text-text-primary">
                         {typeof d.risk_score === 'number' ? (Number(d?.risk_score) || 0).toFixed(1) : d.risk_score}
                       </td>
                       <td className="text-right">
@@ -248,10 +245,10 @@ export default function CommandCenter() {
           </div>
 
           {/* Active Alerts Feed */}
-          <div className="bg-paper-100 border border-line rounded-lg flex flex-col flex-1 min-h-0 overflow-hidden">
-             <div className="p-3 border-b border-line flex justify-between items-center bg-paper-50">
-              <h3 className="text-xs font-semibold text-text-primary uppercase tracking-wider">Active Alerts</h3>
-              <a href="/dashboard/alerts" className="text-[10px] uppercase font-semibold text-signal-500 hover:underline">View All</a>
+          <div className="bg-paper-100 border border-line rounded-lg p-4 flex flex-col h-[280px]">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold text-text-primary">Active Alerts</h3>
+              <a href="/dashboard/alerts" className="text-[10px] font-semibold text-signal-500 hover:underline">View All</a>
             </div>
             <div className="overflow-y-auto custom-scroll p-3 space-y-2">
               {alerts.length === 0 ? (
@@ -261,7 +258,7 @@ export default function CommandCenter() {
                   <div key={alert.id} className="p-2 border border-line/50 rounded-sm bg-paper-50 hover:bg-line/20 transition-colors">
                     <div className="flex justify-between items-start mb-1">
                       <span className={`risk-badge ${RISK_LEVELS[alert.level] || RISK_LEVELS.Safe}`}>{alert.district}</span>
-                      <span className="text-[10px] font-mono text-text-secondary">
+                      <span className="text-[10px] text-text-secondary">
                         {new Date(alert.timestamp).toLocaleTimeString('en-US', { hour12: false })}
                       </span>
                     </div>

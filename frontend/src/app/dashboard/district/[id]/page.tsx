@@ -58,7 +58,7 @@ export default function DistrictDrilldown() {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: data.history.map((h: any) => new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
+      data: (data.history || []).map((h: any) => new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
     },
     yAxis: { type: 'value', max: 100 },
     series: [
@@ -66,7 +66,7 @@ export default function DistrictDrilldown() {
         name: 'Risk Score',
         type: 'line',
         smooth: true,
-        data: data.history.map((h: any) => h.risk_score),
+        data: (data.history || []).map((h: any) => h.risk_score),
         itemStyle: { color: data.risk_color },
         areaStyle: {
           color: {
