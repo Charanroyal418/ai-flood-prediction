@@ -816,19 +816,23 @@ def sanitize_numpy(obj):
 
 
 from fastapi import BackgroundTasks
+from app.db.session import SessionLocal
 
-def _async_pipeline_execution(db: Session):
+def _async_pipeline_execution():
     global _cycle_cache
+    db = SessionLocal()
     try:
         payload = _execute_inference_pipeline(db)
         clean_payload = sanitize_numpy(payload)
         _cycle_cache = {"ts": time.time(), "payload": clean_payload}
     except Exception as err:
         logger.error(f"[AsyncPipeline] Background pipeline execution error: {err}")
+    finally:
+        db.close()
 
 @router.get("/inference-cycle")
 @router.get("/latest")
-def run_inference_cycle(db: Session = Depends(deps.get_db), background_tasks: BackgroundTasks = None) -> Any:
+def run_inference_cycle(background_tasks: BackgroundTasks) -> Any:
     """
     Returns the most recently computed GDNN prediction instantly (< 10ms).
     Background worker runs pipeline on schedule. Never blocks HTTP thread.
@@ -838,7 +842,7 @@ def run_inference_cycle(db: Session = Depends(deps.get_db), background_tasks: Ba
     # 1. Trigger async pipeline execution in background task if cache is empty OR stale
     is_stale = _cycle_cache["payload"] is None or (time.time() - _cycle_cache["ts"] > _CYCLE_CACHE_TTL)
     if is_stale and background_tasks:
-        background_tasks.add_task(_async_pipeline_execution, db)
+        background_tasks.add_task(_async_pipeline_execution)
 
     # 2. Serve pre-computed payload from RAM cache
     if _cycle_cache["payload"] is not None:

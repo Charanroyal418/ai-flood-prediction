@@ -13,7 +13,12 @@ def get_latest_deployment():
             if not data.get("deployments"):
                 print("No deployments found.")
                 return None
-            return data["deployments"][0]["uid"]
+            dep = data["deployments"][0]
+            print(f"✅ Latest Deployment UID: {dep['uid']}")
+            print(f"🔗 Live URL: https://{dep['url']}")
+            if dep.get("alias"):
+                print(f"🔗 Aliases: {', '.join(['https://' + a for a in dep['alias']])}")
+            return dep["uid"]
     except Exception as e:
         print(f"Error fetching deployments: {e}")
         return None

@@ -203,7 +203,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
   const refetchPipeline = useCallback(async () => {
     try {
-      const res = await api.get("/predict/inference-cycle", { timeout: 15000 });
+      const res = await api.get("/predict/inference-cycle");
       if (res.data) {
         setPipelineData(res.data);
         if (res.data.status === "waiting_for_telemetry" || res.data.status === "processing") {
@@ -218,7 +218,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
   const refetchKg = useCallback(async () => {
     try {
-      const res = await api.get("/kg/graph", { timeout: 15000 });
+      const res = await api.get("/kg/graph");
       if (res.data) setKgData(res.data);
     } catch (err: any) {
       console.warn("KG fetch failed:", err);
