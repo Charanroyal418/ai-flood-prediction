@@ -72,7 +72,14 @@
 @layer components {
   /* ── Clean Metric Cards ─────────────────────────────────────────────────── */
   .metric-card {
-    @apply bg-paper-100 border border-line rounded-lg p-4 shadow-card transition-colors duration-150;
+    @apply bg-paper-100 rounded-2xl p-4 transition-all duration-300;
+    border: 1px solid #EEF0F9;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(79,70,229,0.04);
+  }
+  
+  .metric-card:hover {
+    @apply -translate-y-[2px];
+    box-shadow: 0 4px 6px rgba(0,0,0,0.06), 0 12px 32px rgba(79,70,229,0.08);
   }
 
   /* ── Command Center Buttons ────────────────────────────────────────────── */
@@ -90,13 +97,13 @@
 
   /* ── Risk Badges (Strictly Institutional) ─────────────────────────────── */
   .risk-badge {
-    @apply inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-sm border;
+    @apply inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-full;
   }
   
-  .risk-badge-severe { @apply bg-[rgba(248,113,113,0.1)] text-risk-severe border-[rgba(248,113,113,0.3)]; }
-  .risk-badge-high { @apply bg-[rgba(251,146,60,0.1)] text-risk-high border-[rgba(251,146,60,0.3)]; }
-  .risk-badge-moderate { @apply bg-[rgba(251,191,36,0.1)] text-risk-moderate border-[rgba(251,191,36,0.3)]; }
-  .risk-badge-low { @apply bg-[rgba(52,211,153,0.1)] text-risk-low border-[rgba(52,211,153,0.3)]; }
+  .risk-badge-severe { @apply bg-[#FEF2F2] text-[#DC2626] border border-[#FCA5A5]/30; }
+  .risk-badge-high { @apply bg-[#FFF7ED] text-[#EA580C] border border-[#FDBA74]/30; }
+  .risk-badge-moderate { @apply bg-[#FEFCE8] text-[#CA8A04] border border-[#FDE047]/30; }
+  .risk-badge-low { @apply bg-[#ECFDF5] text-[#059669] border border-[#6EE7B7]/30; }
   
   /* Safe fallback for data missing/safe */
   .risk-badge-safe { @apply bg-paper-100 text-muted-foreground border-line; }
@@ -112,13 +119,13 @@
   }
 
   .sidebar-item.active {
-    @apply text-signal-600 bg-signal-100 border-l-4 border-signal-500 pl-2 font-semibold;
+    @apply bg-signal-600 text-white font-semibold rounded-r-full mr-4 border-l-4 border-signal-900 shadow-md;
   }
 
   /* ── Data Tables ──────────────────────────────────────────────────────── */
   .data-table th {
-    @apply text-xs font-medium uppercase tracking-wider text-text-secondary
-           py-2 px-3 text-left border-b border-line;
+    @apply text-[10px] font-bold uppercase tracking-widest text-[#9AA1B2]
+           py-3 px-4 text-left border-b border-line;
   }
 
   .data-table td {
@@ -126,7 +133,7 @@
   }
 
   .data-table tr:hover td {
-    @apply bg-paper-50;
+    @apply bg-indigo-50/50;
   }
 
   /* ── Skeleton Loaders (Solid Shapes) ──────────────────────────────────── */

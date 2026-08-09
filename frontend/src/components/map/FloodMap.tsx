@@ -187,11 +187,12 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
             <LayerGroup>
               {validDistricts.map((district) => {
                 const markerColor = getRiskColor(district.risk_score, district.risk_level);
+                const isCriticalOrHigh = district.risk_score >= 60 || district.risk_level === "Critical" || district.risk_level === "High";
                 const isCritical = district.risk_score >= 80 || district.risk_level === "Critical";
                 return (
                   <LayerGroup key={district.id}>
-                    {/* Animated pulse ring for critical districts */}
-                    {isCritical && (
+                    {/* Animated pulse ring for critical and high districts */}
+                    {isCriticalOrHigh && (
                       <CircleMarker
                         center={[district.lat, district.lon]}
                         radius={getRadius(district.risk_score) + 8}

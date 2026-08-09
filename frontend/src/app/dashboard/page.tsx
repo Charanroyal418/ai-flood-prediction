@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useFloodData } from "@/context/FloodDataContext";
 import {
   Brain, Droplets, AlertTriangle, Shield, Activity, MapPin, 
-  CloudRain, Zap, Network, ChevronRight
+  CloudRain, Zap, Network, ChevronRight, Info
 } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
@@ -47,17 +47,19 @@ function MetricCard({ title, value, unit, icon: Icon, sparklineData, colorToken 
   return (
     <div className="metric-card flex flex-col justify-between h-24">
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2 text-text-secondary text-xs font-medium">
-          <Icon className="w-4 h-4" />
+        <div className="flex items-center gap-1.5 text-[#9AA1B2] text-[10px] uppercase tracking-widest font-bold">
+          <Icon strokeWidth={1.5} className="w-[18px] h-[18px]" />
           <span>{title}</span>
         </div>
         {sparklineData && <Sparkline data={sparklineData} color={strokeColor} />}
       </div>
-      <div className="flex items-baseline gap-1">
-        <span className="text-xl font-semibold text-text-primary">
-          {typeof value === 'number' ? value.toLocaleString('en-US', { maximumFractionDigits: 1 }) : value}
+      <div className="flex items-baseline gap-1 mt-1">
+        <span className="text-2xl font-bold tabular-nums text-text-primary">
+          {typeof value === 'number' ? value.toLocaleString('en-US', { maximumFractionDigits: 1 }) : (value || (
+            <span className="text-slate-300">-</span>
+          ))}
         </span>
-        {unit && <span className="text-sm text-text-secondary">{unit}</span>}
+        {unit && <span className="text-xs text-text-secondary font-medium">{unit}</span>}
       </div>
     </div>
   );
@@ -137,7 +139,7 @@ export default function CommandCenter() {
         <button
           onClick={handleSimulate}
           disabled={simulating}
-          className={`btn-primary ${isStormActive ? '!bg-risk-severe hover:!bg-red-800' : ''}`}
+          className={`btn-primary shadow-md hover:shadow-lg transition-all ${isStormActive ? '!bg-risk-severe hover:!bg-red-800' : ''}`}
         >
           <Zap className="w-4 h-4" />
           {isStormActive ? "HALT SIMULATION" : "RUN SIMULATION"}
@@ -145,23 +147,23 @@ export default function CommandCenter() {
       </div>
 
       {/* ── Hero Status Readout ───────────────────────────────────────── */}
-      <div className="bg-paper-100 border border-line rounded-lg p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div className="bg-gradient-to-br from-white to-[#EEF0F9] border border-[#EEF0F9] border-l-4 border-l-indigo-600 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-[0_8px_24px_rgba(79,70,229,0.06)]">
         <div>
-          <p className="text-xs text-text-secondary font-medium mb-2">Current System State</p>
+          <p className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold mb-2">Current System State</p>
           <div className="flex items-baseline gap-4">
-            <h2 className="text-4xl text-text-primary tracking-tight font-semibold">
+            <h2 className="text-4xl text-text-primary tracking-tight font-bold">
               {highestRiskLevel === "Critical" ? "Critical Risk Detected" : highestRiskLevel === "High" ? "Elevated Risk" : "Nominal Operations"}
             </h2>
           </div>
         </div>
         <div className="flex gap-8">
           <div className="text-right">
-            <p className="text-xs text-text-secondary font-medium mb-1">Statewide Avg Risk</p>
-            <p className="text-xl text-text-primary font-medium">{(Number(metrics?.avg_risk_score) || 0).toFixed(1) || "0.0"}<span className="text-sm text-text-secondary ml-1">/100</span></p>
+            <p className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold mb-1">Statewide Avg Risk</p>
+            <p className="text-3xl text-text-primary font-bold tabular-nums">{(Number(metrics?.avg_risk_score) || 0).toFixed(1) || "0.0"}<span className="text-sm text-text-secondary ml-1">/100</span></p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-text-secondary font-medium mb-1">Active Alerts</p>
-            <p className="text-xl text-risk-severe font-medium">{metrics?.active_alerts_count || 0}</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold mb-1">Active Alerts</p>
+            <p className="text-3xl text-risk-severe font-bold tabular-nums">{metrics?.active_alerts_count || 0}</p>
           </div>
         </div>
       </div>
@@ -186,9 +188,9 @@ export default function CommandCenter() {
       {/* ── Main Layout: Map + Side Panel ─────────────────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 h-[600px]">
         {/* Map */}
-        <div className="xl:col-span-2 bg-paper-100 border border-line rounded-lg overflow-hidden flex flex-col relative">
-          <div className="absolute top-4 left-4 z-[1000] bg-paper-100/90 backdrop-blur-sm border border-line px-3 py-2 rounded-sm shadow-card">
-            <p className="text-xs font-semibold text-text-primary mb-2">Risk Legend</p>
+        <div className="xl:col-span-2 bg-paper-100 border border-[#EEF0F9] rounded-2xl overflow-hidden flex flex-col relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
+          <div className="absolute top-4 left-4 z-[1000] bg-white/60 backdrop-blur-md border border-white/40 px-4 py-3 rounded-xl shadow-lg">
+            <p className="text-[10px] uppercase tracking-widest font-bold text-[#9AA1B2] mb-3">Risk Legend</p>
             <div className="flex gap-3">
               {["Critical", "High", "Moderate", "Low"].map(level => (
                 <div key={level} className="flex items-center gap-1.5">
@@ -214,9 +216,9 @@ export default function CommandCenter() {
         <div className="flex flex-col gap-4 overflow-hidden">
           
           {/* High Risk Targets */}
-          <div className="bg-paper-100 border border-line rounded-lg p-4 flex flex-col flex-1">
+          <div className="premium-card bg-white border border-[#EEF0F9] rounded-2xl p-4 flex flex-col flex-1 shadow-[0_4px_12px_rgba(79,70,229,0.03)]">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-semibold text-text-primary">Top Risk Nodes</h3>
+              <h3 className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold">Top Risk Nodes</h3>
             </div>
             <div className="overflow-y-auto custom-scroll p-0">
               <table className="w-full data-table">
@@ -228,10 +230,14 @@ export default function CommandCenter() {
                   </tr>
                 </thead>
                 <tbody>
-                  {topDistricts.map((d: any) => (
+                  {topDistricts.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="text-center py-6 text-text-secondary text-xs">No risk data available.</td>
+                    </tr>
+                  ) : topDistricts.map((d: any) => (
                     <tr key={d.name}>
                       <td className="font-medium text-text-primary">{d.name}</td>
-                      <td className="text-right text-text-primary">
+                      <td className="text-right text-text-primary font-bold tabular-nums">
                         {typeof d.risk_score === 'number' ? (Number(d?.risk_score) || 0).toFixed(1) : d.risk_score}
                       </td>
                       <td className="text-right">
@@ -245,26 +251,34 @@ export default function CommandCenter() {
           </div>
 
           {/* Active Alerts Feed */}
-          <div className="bg-paper-100 border border-line rounded-lg p-4 flex flex-col h-[280px]">
+          <div className="premium-card bg-white border border-[#EEF0F9] rounded-2xl p-4 flex flex-col h-[280px] shadow-[0_4px_12px_rgba(79,70,229,0.03)]">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-semibold text-text-primary">Active Alerts</h3>
-              <a href="/dashboard/alerts" className="text-[10px] font-semibold text-signal-500 hover:underline">View All</a>
+              <h3 className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold">Active Alerts</h3>
+              <a href="/dashboard/alerts" className="text-[10px] font-bold text-signal-500 hover:underline">View All</a>
             </div>
             <div className="overflow-y-auto custom-scroll p-3 space-y-2">
               {alerts.length === 0 ? (
                 <div className="text-center py-6 text-text-secondary text-xs">No active alerts — all nodes nominal.</div>
               ) : (
-                alerts.map((alert: any) => (
-                  <div key={alert.id} className="p-2 border border-line/50 rounded-sm bg-paper-50 hover:bg-line/20 transition-colors">
-                    <div className="flex justify-between items-start mb-1">
+                alerts.map((alert: any) => {
+                  const isSevere = alert.level === 'Critical' || alert.level === 'Severe';
+                  const isHigh = alert.level === 'High';
+                  const borderColor = isSevere ? 'border-l-[#DC2626]' : isHigh ? 'border-l-[#EA580C]' : 'border-l-[#CA8A04]';
+                  return (
+                  <div key={alert.id} className={`p-3 border-y border-r border-[#EEF0F9] border-l-4 ${borderColor} rounded-r-lg bg-white shadow-sm hover:bg-slate-50 transition-colors`}>
+                    <div className="flex justify-between items-start mb-2">
                       <span className={`risk-badge ${RISK_LEVELS[alert.level] || RISK_LEVELS.Safe}`}>{alert.district}</span>
-                      <span className="text-[10px] text-text-secondary">
+                      <span className="text-[10px] text-[#9AA1B2] font-medium">
                         {new Date(alert.timestamp).toLocaleTimeString('en-US', { hour12: false })}
                       </span>
                     </div>
-                    <p className="text-xs text-text-primary">{alert.message}</p>
+                    <div className="flex items-start gap-2">
+                      <Info className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-text-primary leading-relaxed">{alert.message}</p>
+                    </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

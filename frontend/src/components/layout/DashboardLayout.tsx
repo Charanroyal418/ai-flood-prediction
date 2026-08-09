@@ -86,7 +86,7 @@ function NavItem({
       onClick={onNavigate}
       className={`sidebar-item ${isActive ? "active" : ""}`}
     >
-      <item.icon className="w-4 h-4 flex-shrink-0" />
+      <item.icon strokeWidth={1.5} className="w-[18px] h-[18px] flex-shrink-0" />
       
       {!collapsed && (
         <span className="flex-1 truncate">{item.name}</span>
@@ -269,14 +269,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
 
           <div className="flex-1 flex items-center gap-4 min-w-0 font-mono text-xs text-text-secondary">
-            <div className="flex items-center gap-1.5">
-              <Circle className={`w-2 h-2 fill-current ${isStormActive ? "text-risk-high" : "text-risk-low"}`} />
-              <span>{isStormActive ? "SYSTEM: SIMULATED" : "SYSTEM: NOMINAL"}</span>
+            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full ${isStormActive ? 'bg-[#FFF7ED] text-[#EA580C]' : 'bg-[#ECFDF5] text-[#059669]'}`}>
+              <Circle className={`w-2 h-2 fill-current ${isStormActive ? "text-[#EA580C]" : "text-[#059669]"}`} />
+              <span className="font-bold">{isStormActive ? "SYSTEM: SIMULATED" : "SYSTEM: NOMINAL"}</span>
             </div>
             <div className="h-4 w-px bg-line hidden sm:block" />
-            <div className="hidden sm:flex items-center gap-1.5">
+            <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">
               <span>LAST SYNC:</span>
-              <span className="text-text-primary">
+              <span>
                 {!mounted ? "..." : lastUpdated
                   ? new Date(lastUpdated).toLocaleTimeString("en-IN", { hour12: false })
                   : new Date().toLocaleTimeString("en-IN", { hour12: false })}
