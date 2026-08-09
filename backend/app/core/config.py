@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     CACHE_TTL_SECONDS: int = 30
 
     # ── Security ────────────────────────────────────────────────────────────
-    SECRET_KEY: str = "floodsense_dev_secret_key_change_in_production_tn_flood_ai_2026"
+    SECRET_KEY: str = "floodsense_dev_secret_key_change_in_production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7   # 7 days
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # ── Admin ────────────────────────────────────────────────────────────────
     FIRST_ADMIN_EMAIL: str = "admin@floodsense.ai"
-    FIRST_ADMIN_PASSWORD: str = "FloodSense@Admin2026"
+    FIRST_ADMIN_PASSWORD: str = "changeme_in_production_2026"
 
     model_config = SettingsConfigDict(
         env_file=".env",

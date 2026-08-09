@@ -532,34 +532,9 @@ def _execute_inference_pipeline(db: Session) -> Any:
         risk_score = round(float(r.get("risk_score", 0)), 1)
 
         # Build 10-feature SHAP drivers if not present
-        # Build 10-feature SHAP drivers dynamically based on district input if not present
+        # Ensure shap_values is a list
         if not shap_values:
-            # Baseline deterministic mapping to input features to simulate real-time feature impact variation
-            base_rain_contrib = min(45.0, rain_val * 0.4 + 10.0)
-            base_river_contrib = min(35.0, river_pct * 0.3)
-            base_elev_contrib = max(-25.0, 15.0 - elev_val * 0.2)
-            
-            contributions = [
-                {"label": "Heavy Rainfall (24h)", "value": base_rain_contrib, "contribution": base_rain_contrib},
-                {"label": "River Level Overflow", "value": base_river_contrib, "contribution": base_river_contrib},
-                {"label": "Topographical Elevation", "value": base_elev_contrib, "contribution": base_elev_contrib},
-                {"label": "Reservoir Release Discharge", "value": 18.5 * (risk_score/50.0), "contribution": 18.5 * (risk_score/50.0)},
-                {"label": "Terrain Slope Gradient", "value": 8.4 * (elev_val/20.0), "contribution": 8.4 * (elev_val/20.0)},
-                {"label": "Historical Flood Benchmark", "value": 6.2 * (river_pct/30.0), "contribution": 6.2 * (river_pct/30.0)},
-                {"label": "Spatial Neighbor Influence", "value": 5.1 * (risk_score/80.0), "contribution": 5.1 * (risk_score/80.0)},
-                {"label": "Knowledge Graph Edge Density", "value": 4.3, "contribution": 4.3},
-                {"label": "GATv2 Multi-Head Attention", "value": 3.8, "contribution": 3.8},
-                {"label": "Temporal GRU Encoder Lag", "value": 2.9, "contribution": 2.9},
-            ]
-            
-            # Normalize to 100%
-            total_abs = sum(abs(c["contribution"]) for c in contributions) or 1.0
-            for c in contributions:
-                c["contribution"] = round((c["contribution"] / total_abs) * 100.0, 1)
-                
-            # Re-sort and keep top 6 like the frontend expects for clarity
-            contributions.sort(key=lambda x: -abs(x["contribution"]))
-            shap_values = contributions[:6]
+            shap_values = []
 
         district_results.append({
             "district_id": d.id,
@@ -585,12 +560,7 @@ def _execute_inference_pipeline(db: Session) -> Any:
             "class_probabilities": r.get("class_probabilities", {}),
             "inference_mode": str(r.get("inference_mode", "Physics")),
             "shap_values": shap_values,
-            "forecast_horizons": {
-                "now": risk_score,
-                "6h": round(min(100.0, risk_score * (1.0 + (rain_val/100.0))), 1),
-                "12h": round(min(100.0, risk_score * (1.0 + (rain_val/100.0) * 0.8)), 1),
-                "24h": round(min(100.0, risk_score * 0.95), 1),
-            },
+            "forecast_horizons": None,
             "reasoning_chain": reasoning_chain or [f"Heavy rainfall ({rain_val}mm) and river level ({river_pct}%) drive risk score of {risk_score}%"],
             "inference_time_ms": round(gnn_total_ms / max(1, len(db_districts)), 1),
         })
@@ -697,21 +667,7 @@ def _execute_inference_pipeline(db: Session) -> Any:
     # ══════════════════════════════════════════════════════════════════════
     serialization_start = time.perf_counter()
 
-    # Calculate temporal multi-horizon forecasts (+1h, +3h, +6h, +12h, +24h) per district
-    for d_item in district_results:
-        base = d_item["risk_score"]
-        d_item["forecast_horizons"] = {
-            "past_24h": round(min(100.0, max(0.0, base * 0.88)), 1),
-            "now": round(base, 1),
-            "current": round(base, 1),
-            "1h": round(min(100.0, max(0.0, base * 1.04)), 1),
-            "3h": round(min(100.0, max(0.0, base * 1.09)), 1),
-            "6h": round(min(100.0, max(0.0, base * 1.15)), 1),
-            "12h": round(min(100.0, max(0.0, base * 1.12)), 1),
-            "24h": round(min(100.0, max(0.0, base * 1.05)), 1),
-            "48h": round(min(100.0, max(0.0, base * 0.95)), 1),
-            "7d": round(min(100.0, max(0.0, base * 0.82)), 1),
-        }
+    # (Removed fake temporal multi-horizon forecasts generation)
 
     # Sanitize all outputs with sanitize_numpy before DB commit
     district_results = sanitize_numpy(district_results)

@@ -129,7 +129,7 @@ export default function DynamicKnowledgeGraph() {
 
   const { kgData: data, refetchKg: refetch } = useFloodData();
   const isLoading = !data;
-  const isError = false;
+  const isError = data?.status === "error";
 
   const getRiskFromHistory = (node: any, idx: number) => {
     if (!node.history || node.history.length <= idx) return node.risk_score;

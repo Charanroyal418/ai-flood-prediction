@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from sqlalchemy import inspect
 from app.db.session import engine
 
@@ -10,6 +10,17 @@ def health_check():
     Check if the API is running and healthy.
     """
     return {"status": "ok", "message": "FloodSense AI API is running seamlessly."}
+
+@router.get("/ready", response_model=dict)
+def ready_check(request: Request):
+    """
+    Check if the API has finished initialization (DB migrations, seed data, model loading).
+    """
+    from fastapi import HTTPException
+    is_ready = getattr(request.app.state, "is_ready", False)
+    if not is_ready:
+        raise HTTPException(status_code=503, detail="API is initializing")
+    return {"status": "ready", "message": "API is fully initialized."}
 
 @router.get("/schema_dump", response_model=dict)
 def schema_dump():

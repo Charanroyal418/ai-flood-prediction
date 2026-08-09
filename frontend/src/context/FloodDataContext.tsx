@@ -203,26 +203,26 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
   const refetchPipeline = useCallback(async () => {
     try {
-      const res = await api.get("/predict/inference-cycle");
+      const res = await api.get("/predict/inference-cycle", { timeout: 15000 });
       if (res.data) {
         setPipelineData(res.data);
         if (res.data.status === "waiting_for_telemetry" || res.data.status === "processing") {
           setTimeout(refetchPipeline, 3000);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("Pipeline fetch failed:", err);
+      setPipelineData({ status: "error", message: err.message || "Pipeline engine offline or timed out." });
     }
   }, []);
 
   const refetchKg = useCallback(async () => {
     try {
-      const res = await api.get("/kg/graph");
-      if (res.data) {
-        setKgData(res.data);
-      }
-    } catch (err) {
+      const res = await api.get("/kg/graph", { timeout: 15000 });
+      if (res.data) setKgData(res.data);
+    } catch (err: any) {
       console.warn("KG fetch failed:", err);
+      setKgData({ status: "error", message: err.message, nodes: [] });
     }
   }, []);
 

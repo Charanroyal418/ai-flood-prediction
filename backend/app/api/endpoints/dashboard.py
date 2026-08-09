@@ -167,26 +167,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "rainfall_mm": rainfall_val,
         })
 
-    # For any active district that doesn't have an explicit DB alert, add active alert entry
-    for d in districts_with_risk:
-        if d["id"] in active_district_ids and d["id"] not in seen_districts:
-            top_reason = "High risk telemetry"
-            if d.get("shap_values") and len(d["shap_values"]) > 0:
-                sv = d["shap_values"][0]
-                top_reason = sv.get("label", sv.get("feature", sv.get("name", sv.get("metric", "High risk telemetry"))))
-            alerts_data.append({
-                "id": f"alert-synth-{d['id']}",
-                "district_id": d["id"],
-                "district": d["name"],
-                "level": d["risk_level"],
-                "severity": "Red" if d["risk_level"] in ["Critical", "Severe"] else "Orange",
-                "message": f"[{d['risk_level']}] Flood risk in {d['name']}: Score {d['risk_score']:.0f}/100. Primary driver: {top_reason}.",
-                "suggested_response": "Immediate evacuation of flood-prone zones. Open relief camps." if d["risk_level"] in ["Critical", "Severe"] else "Monitor water levels. Pre-position rescue teams.",
-                "created_at": now.isoformat(),
-                "confidence": d.get("ai_confidence", 0.0),
-                "rainfall_mm": d.get("rainfall_mm", 0.0),
-            })
-            seen_districts.add(d["id"])
+    # Removed synthetic alert generation
         
     # Latest Real-Time Operational Pipeline Events
     kg_events = db.query(KnowledgeGraphEvents).order_by(KnowledgeGraphEvents.created_at.desc()).limit(15).all()
@@ -225,27 +206,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "risk_level": d_obj["risk_level"] if d_obj else "Low"
         })
     
-    # Ensure at least 5 operational events exist from top risk districts
-    if len(events_data) < 5:
-        for idx, top_d in enumerate(districts_with_risk[:5]):
-            if any(e["district"] == top_d["name"] for e in events_data):
-                continue
-            top_reason = "Heavy Rainfall"
-            if top_d.get("shap_values") and len(top_d["shap_values"]) > 0:
-                sv = top_d["shap_values"][0]
-                top_reason = sv.get("label", sv.get("feature", sv.get("name", sv.get("metric", "Heavy Rainfall"))))
-            op_name, src_name, el_time = stage_timings[idx % len(stage_timings)]
-            events_data.append({
-                "id": f"evt-top-{top_d['id']}",
-                "type": "operational_event",
-                "district": top_d["name"],
-                "operation": op_name,
-                "elapsed_time": f"{el_time} ms",
-                "source": src_name,
-                "message": f"[{top_d['risk_level']}] GNN spatial risk influence: {top_d['name']} (Risk Score {top_d['risk_score']:.1f}). Primary driver: {top_reason}.",
-                "timestamp": now.isoformat(),
-                "risk_level": top_d["risk_level"]
-            })
+    # Removed synthetic operational event generation
     
     # 7-day Precipitation Forecast (State average)
     weekly_forecast = []
@@ -259,13 +220,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         except Exception:
             pass
             
-    if not weekly_forecast:
-        # Graceful fallback if ETL hasn't run yet
-        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        today_idx = datetime.now().weekday()
-        days_ordered = days[today_idx:] + days[:today_idx]
-        for day in days_ordered:
-            weekly_forecast.append({"day": day, "rainfall": 0.0})
+    # Fallback to empty forecast removed
 
     from app.services.orchestrator import get_storm_simulation_active, get_storm_simulation_meta
     sim_meta = get_storm_simulation_meta()

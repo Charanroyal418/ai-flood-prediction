@@ -169,7 +169,7 @@ export default function PredictionEnginePage() {
     districts: contextData.districts || contextData.stages?.gdnn_output?.district_ranking || []
   } : null;
   const isLoading = !data;
-  const isError = false; 
+  const isError = data?.status === "error"; 
   const dataUpdatedAt = contextData?.timestamp || 0;
 
   useEffect(() => {
@@ -213,7 +213,7 @@ export default function PredictionEnginePage() {
   const hasWsData = wsDistricts && wsDistricts.length > 0;
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
-  if (!data || data.status === "waiting_for_telemetry" || !data.districts || data.districts.length === 0) {
+  if (!data || data.status === "waiting_for_telemetry" || data.status === "error" || !data.districts || data.districts.length === 0) {
     if (hasWsData) {
       return (
         <div className="flex min-h-[50vh] items-center justify-center">
@@ -257,19 +257,12 @@ export default function PredictionEnginePage() {
   const selectedDistrict = data?.districts?.find((d: any) => d.district_id === selectedDistrictId) || data?.districts?.[0];
   const d: DistrictResult = selectedDistrict;
 
-  const forecastHorizons = d?.forecast_horizons || {
-    now: d?.risk_score || 25,
-    "6h": Math.min(100, (d?.risk_score || 25) * 1.04),
-    "12h": Math.min(100, (d?.risk_score || 25) * 1.09),
-    "24h": Math.min(100, (d?.risk_score || 25) * 1.05),
-  };
-
-  const chartData = [
-    { name: "Now", risk: forecastHorizons.now },
-    { name: "+6h", risk: forecastHorizons["6h"] },
-    { name: "+12h", risk: forecastHorizons["12h"] },
-    { name: "+24h", risk: forecastHorizons["24h"] },
-  ];
+  const chartData = d?.forecast_horizons ? [
+    { name: "Now", risk: d.forecast_horizons.now },
+    { name: "+6h", risk: d.forecast_horizons["6h"] },
+    { name: "+12h", risk: d.forecast_horizons["12h"] },
+    { name: "+24h", risk: d.forecast_horizons["24h"] },
+  ] : [];
 
   // SHAP sorted descending by absolute contribution
   const sortedShap = d?.shap_values
@@ -518,7 +511,7 @@ export default function PredictionEnginePage() {
                     <h2 className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 text-text-primary">
                       <Target className="w-4 h-4 text-signal-500" /> GDNN Risk Assessment
                     </h2>
-                    <span className="text-[10px] font-bold text-text-secondary tabular-nums uppercase tracking-widest bg-paper-50 px-2 py-1 rounded-md border border-line shadow-sm">
+                    <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest bg-paper-50 px-2 py-1 rounded-md border border-line shadow-sm">
                       Cycle #{d?.inference_cycle || 1}
                     </span>
                   </div>
@@ -643,33 +636,30 @@ export default function PredictionEnginePage() {
             </button>
             {showTemporal && (
               <div className="px-6 pb-6 h-[280px] border-t border-line/50 flex-1">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorRisk" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--signal-500)" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="var(--risk-low)" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)', fontWeight: 600 }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)', fontWeight: 600 }} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: 'var(--paper-100)', borderColor: 'var(--line)', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                      itemStyle={{ fontWeight: 'bold' }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="risk" 
-                      stroke="var(--signal-500)" 
-                      strokeWidth={3} 
-                      fillOpacity={1} 
-                      fill="url(#colorRisk)" 
-                      isAnimationActive={false} 
-                      activeDot={{ r: 6, fill: 'var(--signal-500)', stroke: 'var(--paper-100)', strokeWidth: 2 }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorRisk" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--signal-500)" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="var(--risk-low)" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--line)" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)', fontWeight: 600 }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)', fontWeight: 600 }} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: 'var(--paper-100)', borderColor: 'var(--line)', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                        itemStyle={{ fontWeight: 'bold' }}
+                      />
+                      <Area type="monotone" dataKey="risk" stroke="var(--signal-500)" strokeWidth={3} fillOpacity={1} fill="url(#colorRisk)" activeDot={{ r: 6, fill: 'var(--signal-600)', stroke: 'white', strokeWidth: 2 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex-1 h-full flex items-center justify-center text-text-secondary text-sm">
+                    No temporal projection data available
+                  </div>
+                )}
               </div>
             )}
           </div>
