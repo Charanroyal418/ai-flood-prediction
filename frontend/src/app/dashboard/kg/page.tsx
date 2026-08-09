@@ -298,7 +298,7 @@ export default function DynamicKnowledgeGraph() {
   }, [setNodes, setEdges, data?.communities]);
 
   useEffect(() => {
-    if (data?.nodes) {
+    if (data?.nodes && data?.edges && data?.communities && !isError) {
       updateGraphLayout(data.nodes, data.edges, timeIndex);
       if (selectedNode) {
         const updatedNode = data.nodes.find((n: any) => n.id === selectedNode.id);

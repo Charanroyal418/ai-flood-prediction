@@ -222,7 +222,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
       if (res.data) setKgData(res.data);
     } catch (err: any) {
       console.warn("KG fetch failed:", err);
-      setKgData({ status: "error", message: err.message, nodes: [] });
+      setKgData({ status: "error", message: err.message, nodes: [], edges: [], communities: [], stats: {} });
     }
   }, []);
 
