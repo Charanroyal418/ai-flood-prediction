@@ -103,7 +103,7 @@ export default function CommandCenter() {
     staleTime: 0,
   });
 
-  const hasWsData = wsDistricts.length > 0;
+
   const metrics = hasWsData
     ? {
         avg_risk_score: wsDistricts.reduce((s, d) => s + d.risk_score, 0) / (wsDistricts.length || 1),
