@@ -150,6 +150,7 @@ export default function DynamicKnowledgeGraph() {
 
     const d3Nodes = districtNodes.map((n: any) => {
       const currentRisk = getRiskFromHistory(n, timeIdx);
+      let status = "Safe";
       if (currentRisk >= 80) status = "Critical";
       else if (currentRisk >= 60) status = "High";
       else if (currentRisk >= 40) status = "Moderate";

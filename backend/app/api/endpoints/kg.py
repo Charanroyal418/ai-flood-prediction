@@ -26,6 +26,8 @@ from app.ml.inference import gnn_engine
 import torch
 import time
 
+import math
+
 def sanitize_numpy(obj):
     if isinstance(obj, dict):
         return {str(k): sanitize_numpy(v) for k, v in obj.items()}
@@ -40,10 +42,14 @@ def sanitize_numpy(obj):
         elif 'int' in type_str:
             return int(obj)
         elif 'float' in type_str:
-            return float(obj)
+            val = float(obj)
+            return 0.0 if math.isnan(val) or math.isinf(val) else val
         elif hasattr(obj, 'tolist'):
-            return obj.tolist()
-        return float(obj)
+            return sanitize_numpy(obj.tolist())
+        val = float(obj)
+        return 0.0 if math.isnan(val) or math.isinf(val) else val
+    elif isinstance(obj, float):
+        return 0.0 if math.isnan(obj) or math.isinf(obj) else obj
     return obj
 
 router = APIRouter()
