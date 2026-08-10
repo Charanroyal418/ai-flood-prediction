@@ -57,6 +57,8 @@ This project is configured for cloud deployment across Vercel (Frontend), Render
 - Connect your GitHub repository to Render and deploy as a Docker web service.
 - Add `DATABASE_URL` as an environment variable in the Render dashboard.
 
+> **Note on Render Free Tier:** Render spins down free tier instances after 15 minutes of inactivity. When a new request arrives, it may take 1-3 minutes for the backend to start up. If you notice slow loading times, please wait. Alternatively, you can use a free cron service like [cron-job.org](https://cron-job.org/) to ping the `/api/v1/health` endpoint every 10 minutes to keep the instance alive.
+
 ### 3. Frontend (Vercel)
 - The frontend contains a `vercel.json` which proxies `/api/*` calls to your Render backend URL.
 - Deploy the `frontend/` folder directly to Vercel.

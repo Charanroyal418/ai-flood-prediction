@@ -150,9 +150,9 @@ def model_status():
 from fastapi import BackgroundTasks
 
 @router.get("/inference-cycle")
-def get_inference_cycle_route(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def get_inference_cycle_route(background_tasks: BackgroundTasks):
     from app.api.endpoints.inference_cycle import run_inference_cycle
-    return run_inference_cycle(db, background_tasks)
+    return run_inference_cycle(background_tasks)
 
 import time
 import random

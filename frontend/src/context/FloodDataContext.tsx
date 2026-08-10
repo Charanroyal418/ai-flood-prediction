@@ -355,14 +355,14 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   // ─── Derived Stats ─────────────────────────────────────────────────
   const criticalCount = useMemo(
     () =>
-      districts.filter((d) =>
+      (districts || []).filter((d) =>
         ["Critical", "Severe"].includes(d.risk_level) || d.risk_score >= 80
       ).length,
     [districts]
   );
 
   const highCount = useMemo(
-    () => districts.filter((d) => d.risk_level === "High" || (d.risk_score >= 60 && d.risk_score < 80)).length,
+    () => (districts || []).filter((d) => d.risk_level === "High" || (d.risk_score >= 60 && d.risk_score < 80)).length,
     [districts]
   );
 

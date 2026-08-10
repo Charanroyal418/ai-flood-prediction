@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import QueryProvider from "@/components/QueryProvider";
 import { AuthProvider } from "@/context/AuthContext";
+import ColdStartLoader from "@/components/ColdStartLoader";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -55,6 +56,7 @@ export default function RootLayout({
       <body className="antialiased min-h-screen transition-colors duration-300 font-sans">
         <AuthProvider>
           <QueryProvider>
+            <ColdStartLoader />
             {children}
           </QueryProvider>
         </AuthProvider>

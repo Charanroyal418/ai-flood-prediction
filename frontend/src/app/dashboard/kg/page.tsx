@@ -559,10 +559,10 @@ export default function DynamicKnowledgeGraph() {
             </h2>
             <p className="text-[10px] text-slate-500 mt-2 mb-3">These districts share river systems — flooding in one raises risk in the others.</p>
             <div className="overflow-y-auto space-y-3 flex-1 pr-1">
-              {data.communities.map((comm: string[], i: number) => {
+              {(data.communities || []).map((comm: string[], i: number) => {
                 const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
-                const districts = comm.filter(id => id.startsWith("d-")).map(id => {
-                  const node = data.nodes.find((n: any) => n.id === id);
+                const districts = (comm || []).filter(id => id.startsWith("d-")).map(id => {
+                  const node = (data.nodes || []).find((n: any) => n.id === id);
                   return node ? node.label : "";
                 }).filter(Boolean);
 
@@ -664,7 +664,7 @@ export default function DynamicKnowledgeGraph() {
               <div className="space-y-3">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">Connected Districts</p>
                 <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2 overflow-y-auto max-h-40 text-xs text-slate-700 font-medium">
-                  {data.edges
+                  {(data.edges || [])
                     .filter((e: any) => e.source === selectedNode.id || e.target === selectedNode.id)
                     .map((edge: any, idx: number) => {
                       const isSource = edge.source === selectedNode.id;

@@ -18,7 +18,7 @@ import networkx.algorithms.community as nx_comm
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("build_graph")
-SHAPEFILE_PATH = os.path.join(os.path.dirname(__file__), "..", "raw", "File_584333_0767fb99b02d4e08846da7e9ad44eeaf", "91", "DISTRICT_BOUNDARY.shp")
+GEOJSON_PATH = os.path.join(os.path.dirname(__file__), "data", "districts.geojson")
 
 def standardize_name(name):
     """Normalize district names between DB and Shapefile."""
@@ -42,29 +42,31 @@ def build_graph_topology():
         # handle special cases
         dist_name_to_id['nilgiris'] = dist_name_to_id.get('the nilgiris')
         
-        # Load Shapefile
-        logger.info(f"Loading shapefile from {SHAPEFILE_PATH}...")
+        # Load GeoJSON
+        logger.info(f"Loading districts geojson from {GEOJSON_PATH}...")
         try:
-            gdf = gpd.read_file(SHAPEFILE_PATH)
-            # The shapefile likely contains districts for the whole state or country.
-            # Assuming 'dtname' or 'DISTRICT' is the column name.
-            col_name = None
-            for col in ['dtname', 'DISTRICT', 'NAME', 'name', 'District']:
-                if col in gdf.columns:
-                    col_name = col
-                    break
+            gdf = gpd.read_file(GEOJSON_PATH)
+            # The simplify script saves the district name in 'name' column
+            col_name = 'name'
+            
+            if col_name not in gdf.columns:
+                # Fallback in case the script didn't rename it
+                for col in ['dtname', 'DISTRICT', 'NAME', 'District']:
+                    if col in gdf.columns:
+                        col_name = col
+                        break
             
             if not col_name:
-                logger.error(f"Could not find district name column in shapefile. Columns: {gdf.columns}")
+                logger.error(f"Could not find district name column in geojson. Columns: {gdf.columns}")
                 return
             
             gdf['norm_name'] = gdf[col_name].apply(standardize_name)
             # Filter to TN districts only (those present in our DB)
             db_district_names = [standardize_name(d.name) for d in districts]
             tn_gdf = gdf[gdf['norm_name'].isin(db_district_names)].copy()
-            logger.info(f"Found {len(tn_gdf)} matching districts in shapefile out of {len(districts)} in DB.")
+            logger.info(f"Found {len(tn_gdf)} matching districts in geojson out of {len(districts)} in DB.")
         except Exception as e:
-            logger.error(f"Error loading shapefile: {e}")
+            logger.error(f"Error loading geojson: {e}")
             return
 
         # 1. Compute Adjacency Edges
