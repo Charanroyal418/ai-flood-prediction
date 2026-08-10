@@ -5,7 +5,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 8000, // 8-second timeout — fails fast if backend is unreachable
+  timeout: 60000, // 60-second timeout — allows enough time for backend cold start
 });
 
 // ── Request Interceptor: inject auth token ────────────────────────────────────

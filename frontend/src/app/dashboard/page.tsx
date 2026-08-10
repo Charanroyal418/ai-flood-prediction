@@ -79,6 +79,20 @@ export default function CommandCenter() {
     toggleStormSimulation,
   } = useFloodData();
 
+  const [isSlowLoading, setIsSlowLoading] = useState(false);
+  const hasWsData = wsDistricts.length > 0;
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    // Show slow loading indicator if it takes more than 5 seconds
+    if (!hasWsData) {
+      timer = setTimeout(() => setIsSlowLoading(true), 5000);
+    } else {
+      setIsSlowLoading(false);
+    }
+    return () => clearTimeout(timer);
+  }, [hasWsData]);
+
   const { data, isLoading, refetch, isError } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
@@ -171,7 +185,17 @@ export default function CommandCenter() {
       {/* ── KPI Row ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         {isLoading && !hasWsData ? (
-          Array.from({length: 7}).map((_, i) => <div key={i} className="h-24 skeleton" />)
+          isSlowLoading ? (
+            <div className="col-span-full h-24 flex items-center justify-center bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+              <div className="text-center flex flex-col items-center">
+                <p className="text-sm font-semibold text-indigo-600 flex items-center gap-2">
+                  <Activity className="w-4 h-4 animate-pulse" /> Waking up backend... this may take up to 60 seconds on the free tier.
+                </p>
+              </div>
+            </div>
+          ) : (
+            Array.from({length: 7}).map((_, i) => <div key={i} className="h-24 skeleton" />)
+          )
         ) : isError && !hasWsData ? (
           <div className="col-span-full h-24 flex items-center justify-center bg-red-50/50 border border-red-100 rounded-2xl">
             <div className="text-center flex flex-col items-center">

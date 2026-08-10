@@ -17,9 +17,9 @@ jobs:
             exit 1
           fi
           
-          echo "Pinging ${RENDER_BACKEND_URL}..."
+          echo "Pinging ${RENDER_BACKEND_URL}/api/v1/health..."
           
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "${{ secrets.RENDER_BACKEND_URL }}")
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 10 -H "User-Agent: GitHubActions/KeepAlive" "${{ secrets.RENDER_BACKEND_URL }}/api/v1/health")
           
           if [ "$HTTP_STATUS" -eq 200 ]; then
             echo "Success: Backend responded with 200 OK."
