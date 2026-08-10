@@ -14,10 +14,10 @@ engine_kwargs = {
     "connect_args": connect_args
 }
 
+from sqlalchemy.pool import NullPool
+
 if "sqlite" not in settings.DATABASE_URL:
-    engine_kwargs["pool_size"] = 20
-    engine_kwargs["max_overflow"] = 10
-    engine_kwargs["pool_timeout"] = 30
+    engine_kwargs["poolclass"] = NullPool
 
 engine = create_engine(
     settings.DATABASE_URL, 

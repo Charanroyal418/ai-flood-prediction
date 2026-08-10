@@ -79,7 +79,7 @@ export default function CommandCenter() {
     toggleStormSimulation,
   } = useFloodData();
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, refetch, isError } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
       const res = await api.get("/dashboard/live");
@@ -170,8 +170,19 @@ export default function CommandCenter() {
 
       {/* ── KPI Row ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-        {isLoading ? (
+        {isLoading && !hasWsData ? (
           Array.from({length: 7}).map((_, i) => <div key={i} className="h-24 skeleton" />)
+        ) : isError && !hasWsData ? (
+          <div className="col-span-full h-24 flex items-center justify-center bg-red-50/50 border border-red-100 rounded-2xl">
+            <div className="text-center flex flex-col items-center">
+              <p className="text-sm font-semibold text-red-600 mb-2 flex items-center gap-1">
+                <AlertTriangle className="w-4 h-4" /> Connection Failed
+              </p>
+              <button onClick={() => refetch()} className="text-xs px-4 py-1.5 bg-white border border-red-200 text-red-700 rounded-md shadow-sm hover:bg-red-50 transition-colors">
+                Retry Now
+              </button>
+            </div>
+          </div>
         ) : (
           <>
             <MetricCard title="Rainfall (24h)" value={metrics?.avg_rainfall_24h_mm} unit="mm" icon={CloudRain} sparklineData={[12, 14, 25, 45, 30, metrics?.avg_rainfall_24h_mm || 0]} colorToken="signal-500" />
@@ -230,7 +241,11 @@ export default function CommandCenter() {
                   </tr>
                 </thead>
                 <tbody>
-                  {topDistricts.length === 0 ? (
+                  {isError && !hasWsData ? (
+                    <tr>
+                      <td colSpan={3} className="text-center py-6 text-red-500 text-xs font-semibold">Failed to load risk data.</td>
+                    </tr>
+                  ) : topDistricts.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="text-center py-6 text-text-secondary text-xs">No risk data available.</td>
                     </tr>
@@ -257,7 +272,9 @@ export default function CommandCenter() {
               <a href="/dashboard/alerts" className="text-[10px] font-bold text-signal-500 hover:underline">View All</a>
             </div>
             <div className="overflow-y-auto custom-scroll p-3 space-y-2">
-              {alerts.length === 0 ? (
+              {isError && !hasWsData ? (
+                <div className="text-center py-6 text-red-500 text-xs font-semibold">Failed to load alerts.</div>
+              ) : alerts.length === 0 ? (
                 <div className="text-center py-6 text-text-secondary text-xs">No active alerts — all nodes nominal.</div>
               ) : (
                 alerts.map((alert: any) => {
