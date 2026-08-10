@@ -37,6 +37,7 @@ const config: Config = {
           100: 'var(--signal-100)',
           500: 'var(--signal-500)',
           600: 'var(--signal-600)',
+          900: 'var(--signal-900)',
         },
         risk: {
           low: 'var(--risk-low)',
