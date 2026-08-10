@@ -26,6 +26,26 @@ from app.ml.inference import gnn_engine
 import torch
 import time
 
+def sanitize_numpy(obj):
+    if isinstance(obj, dict):
+        return {str(k): sanitize_numpy(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, set)):
+        return [sanitize_numpy(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(sanitize_numpy(v) for v in obj)
+    elif type(obj).__module__ == 'numpy' or 'numpy' in str(type(obj)):
+        type_str = str(type(obj)).lower()
+        if 'bool' in type_str:
+            return bool(obj)
+        elif 'int' in type_str:
+            return int(obj)
+        elif 'float' in type_str:
+            return float(obj)
+        elif hasattr(obj, 'tolist'):
+            return obj.tolist()
+        return float(obj)
+    return obj
+
 router = APIRouter()
 
 # ─── Response Cache ───────────────────────────────────────────────────────────
@@ -380,8 +400,9 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     }
 
     _kg_cache["ts"] = now
-    _kg_cache["payload"] = payload
-    return payload
+    clean_payload = sanitize_numpy(payload)
+    _kg_cache["payload"] = clean_payload
+    return clean_payload
 
 
 # ─── Node Inspector Endpoint ──────────────────────────────────────────────────

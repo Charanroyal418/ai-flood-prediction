@@ -249,8 +249,8 @@ export default function CommandCenter() {
                     <tr>
                       <td colSpan={3} className="text-center py-6 text-text-secondary text-xs">No risk data available.</td>
                     </tr>
-                  ) : topDistricts.map((d: any) => (
-                    <tr key={d.name}>
+                  ) : topDistricts.map((d: any, idx: number) => (
+                    <tr key={d.id || d.name || idx}>
                       <td className="font-medium text-text-primary">{d.name}</td>
                       <td className="text-right text-text-primary font-bold tabular-nums">
                         {typeof d.risk_score === 'number' ? (Number(d?.risk_score) || 0).toFixed(1) : d.risk_score}
@@ -286,7 +286,7 @@ export default function CommandCenter() {
                     <div className="flex justify-between items-start mb-2">
                       <span className={`risk-badge ${RISK_LEVELS[alert.level] || RISK_LEVELS.Safe}`}>{alert.district}</span>
                       <span className="text-[10px] text-[#9AA1B2] font-medium">
-                        {new Date(alert.timestamp).toLocaleTimeString('en-US', { hour12: false })}
+                        {new Date(alert.created_at || alert.timestamp).toLocaleTimeString('en-US', { hour12: false })}
                       </span>
                     </div>
                     <div className="flex items-start gap-2">

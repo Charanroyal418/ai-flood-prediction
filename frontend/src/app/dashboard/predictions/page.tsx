@@ -171,6 +171,20 @@ export default function PredictionEnginePage() {
   const isLoading = !data;
   const isError = data?.status === "error"; 
   const dataUpdatedAt = contextData?.timestamp || 0;
+  
+  const [telemetryWaitTime, setTelemetryWaitTime] = useState(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (data?.status === "waiting_for_telemetry") {
+      interval = setInterval(() => {
+        setTelemetryWaitTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      setTelemetryWaitTime(0);
+    }
+    return () => clearInterval(interval);
+  }, [data?.status]);
 
   useEffect(() => {
     if (data && data.status !== "waiting_for_telemetry") {
@@ -223,8 +237,15 @@ export default function PredictionEnginePage() {
               Computing Prediction Pipeline
             </h2>
             <p className="text-xs text-text-secondary max-w-sm">
-              Live telemetry is active. Waiting for the GDNN cycle to complete.
+              Live telemetry is active. Waiting for the GDNN cycle to complete. {telemetryWaitTime > 0 ? `(${telemetryWaitTime}s)` : ""}
             </p>
+            {telemetryWaitTime > 15 && (
+               <div className="mt-4 flex gap-3">
+                 <button onClick={() => refetchPipeline()} className="btn-primary bg-signal-500 hover:bg-signal-600">
+                    <RefreshCw className="w-4 h-4" /> Force Retry
+                 </button>
+               </div>
+            )}
           </div>
         </div>
       );

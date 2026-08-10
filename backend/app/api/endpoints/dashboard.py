@@ -79,8 +79,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         w = weather_map.get(d.id)
 
         # Expose explicit None for missing telemetry to trigger UI 'Unavailable' states, avoid fake 0.0
-        risk_score = p.current_risk_score if p else 0.0
-        confidence = p.confidence if p else 0.0
+        risk_score = (p.current_risk_score if p.current_risk_score is not None else 0.0) if p else 0.0
+        confidence = (p.confidence if p.confidence is not None else 0.0) if p else 0.0
         shap_values = (p.shap_values or []) if p else []
         rainfall_mm = (w.rainfall_mm or 0.0) if w else 0.0
         humidity = (w.humidity or 0.0) if w else 0.0
@@ -147,7 +147,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         
         d_name = next((d["name"] for d in districts_with_risk if d["id"] == a.district_id), "Unknown")
         
-        match = re.search(r"due to ([\d.]+)mm rainfall", a.message)
+        msg = a.message or ""
+        match = re.search(r"due to ([\d.]+)mm rainfall", msg)
         if match:
             rainfall_val = float(match.group(1))
         else:
@@ -201,8 +202,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "operation": op_name,
             "elapsed_time": f"{el_time} ms",
             "source": src_name,
-            "message": evt.description,
-            "timestamp": evt.created_at.isoformat(),
+            "message": evt.description or "",
+            "timestamp": evt.created_at.isoformat() if evt.created_at else now.isoformat(),
             "risk_level": d_obj["risk_level"] if d_obj else "Low"
         })
     
@@ -229,8 +230,8 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     all_confidences = [d["ai_confidence"] for d in districts_with_risk if d.get("ai_confidence")]
     avg_confidence = round(sum(all_confidences) / len(all_confidences), 3) if all_confidences else 0.0
 
-    # Real inference time from ModelInference table
-    gdnn_ms = round(inf.latency_ms if inf and inf.latency_ms else (inf.inference_time_ms if inf and inf.inference_time_ms else 0.0), 1)
+    # Real inference time from ModelInference table (GNN pass only, not full ETL pipeline)
+    gdnn_ms = round(inf.inference_time_ms if inf and inf.inference_time_ms else 0.0, 1)
     kg_nodes = inf.node_count if inf else 0
     kg_edges = inf.edge_count if inf else 0
     attention_heads = 4 # Known configuration for GAT model
