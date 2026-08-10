@@ -11,6 +11,8 @@ function getQueryClient() {
         queries: {
           staleTime: 60 * 1000,
           refetchOnWindowFocus: false,
+          retry: 1,
+          retryDelay: 2000,
         },
       },
     });
@@ -20,6 +22,8 @@ function getQueryClient() {
         queries: {
           staleTime: 60 * 1000,
           refetchOnWindowFocus: false,
+          retry: 1,
+          retryDelay: 2000,
         },
       },
     });

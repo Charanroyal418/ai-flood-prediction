@@ -1,0 +1,29 @@
+name: Keep Backend Alive
+
+on:
+  schedule:
+    # Run every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Health Endpoint
+        run: |
+          if [ -z "${{ secrets.RENDER_BACKEND_URL }}" ]; then
+            echo "RENDER_BACKEND_URL secret is not set. Please set it in GitHub repository secrets."
+            exit 1
+          fi
+          
+          echo "Pinging ${RENDER_BACKEND_URL}..."
+          
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "${{ secrets.RENDER_BACKEND_URL }}")
+          
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "Success: Backend responded with 200 OK."
+          else
+            echo "Error: Backend responded with HTTP status $HTTP_STATUS."
+            exit 1
+          fi
