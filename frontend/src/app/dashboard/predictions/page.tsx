@@ -31,7 +31,7 @@ interface DistrictResult {
   inference_time_ms: number;
   inference_cycle?: number;
   model_version?: string;
-  shap_values: { feature: string; contribution: number }[];
+  shap_values: { feature?: string; label?: string; contribution: number }[];
   reasoning_chain: string[];
   forecast_horizons?: {
     now: number;
@@ -81,7 +81,6 @@ const RISK_ACCENT: Record<string, string> = {
   Safe:     "var(--text-secondary)",
 };
 
-// ── Circular Gauge Component ───────────────────────────────────────────────────────
 function CircularGauge({ value, label, color }: { value: number; label: string; color: string }) {
   const pct = Math.min(100, Math.max(0, value));
   const r = 36;
@@ -92,9 +91,9 @@ function CircularGauge({ value, label, color }: { value: number; label: string; 
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="relative" style={{ filter: `drop-shadow(0 4px 8px ${color}40)` }}>
+      <div className="relative">
         <svg width="90" height="90" viewBox="0 0 100 100" className="-rotate-90">
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--line)" strokeWidth="8" />
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--line)" strokeWidth="6" opacity="0.4" />
           <circle 
             cx={cx} 
             cy={cy} 
@@ -105,14 +104,15 @@ function CircularGauge({ value, label, color }: { value: number; label: string; 
             strokeLinecap="round" 
             strokeDasharray={circumference} 
             strokeDashoffset={offset} 
-            className="transition-all duration-1000 ease-out" 
+            className="transition-all duration-1000 ease-out"
+            style={{ filter: `drop-shadow(0 2px 6px ${color}40)` }} 
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xl font-bold text-text-primary tabular-nums">{pct.toFixed(0)}%</span>
+          <span className="text-2xl font-heading font-extrabold text-text-primary tabular-nums tracking-wide">{pct.toFixed(0)}%</span>
         </div>
       </div>
-      <span className="text-[11px] uppercase tracking-wider font-semibold text-text-secondary">{label}</span>
+      <span className="text-xs uppercase tracking-widest font-bold text-text-secondary">{label}</span>
     </div>
   );
 }
@@ -121,30 +121,39 @@ function CircularGauge({ value, label, color }: { value: number; label: string; 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between py-3 border-b border-line last:border-0">
-      <span className="text-[11px] uppercase tracking-widest font-semibold text-text-secondary">{label}</span>
-      <span className="text-sm font-bold text-text-primary tabular-nums">{value}</span>
+      <span className="text-xs uppercase tracking-widest font-semibold text-text-secondary">{label}</span>
+      <span className="text-base font-bold text-text-primary tabular-nums">{value}</span>
     </div>
   );
 }
 
-// ── Stat Card Component ───────────────────────────────────────────────────────
 function StatCard({ icon: Icon, title, value, subtitle, accent = false, children, extraIcon }: any) {
+  // Map title to a custom pastel color combo
+  const getColors = (t: string) => {
+    if (t === 'Model') return 'bg-purple-100 text-purple-600';
+    if (t === 'Engine') return 'bg-blue-100 text-blue-600';
+    if (t === 'Total Latency') return 'bg-amber-100 text-amber-600';
+    if (t === 'Graph Config') return 'bg-emerald-100 text-emerald-600';
+    return 'bg-indigo-100 text-indigo-600';
+  };
+  const colorClass = getColors(title);
+
   return (
-    <div className="bg-paper-100 rounded-xl p-3 sm:p-4 shadow-sm border border-line flex items-center gap-3 sm:gap-4 relative overflow-hidden group min-w-0">
-      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 ${accent ? 'bg-signal-100 text-signal-600' : 'bg-paper-50 text-text-secondary border border-line'}`}>
-        <Icon className="w-4 h-4" />
+    <div className="bg-paper-100 rounded-3xl p-6 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] border border-[rgba(99,102,241,0.1)] flex items-center gap-4 relative overflow-hidden group min-w-0 transition-all duration-300 hover:-translate-y-1">
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${colorClass}`}>
+        <Icon className="w-7 h-7" strokeWidth={2} />
       </div>
       <div className="flex-1 min-w-0 flex flex-col justify-center">
-        <div className="flex items-center justify-between gap-1 mb-0.5">
-          <p className="text-[9px] text-text-secondary uppercase tracking-wider font-bold truncate">
+        <div className="flex items-center justify-between gap-1 mb-1">
+          <p className="text-[11px] text-text-secondary uppercase tracking-widest font-bold truncate">
             {title}
           </p>
           {extraIcon}
         </div>
         {children ? children : (
           <div className="flex flex-col">
-            <p className="text-xs xl:text-sm font-bold text-text-primary leading-tight tracking-tight break-words">{value}</p>
-            {subtitle && <p className="text-[9px] text-text-secondary truncate mt-0.5">{subtitle}</p>}
+            <p className="text-lg xl:text-xl font-heading font-extrabold text-text-primary leading-tight tracking-wide break-words">{value}</p>
+            <p className="text-xs text-text-secondary truncate mt-1">{subtitle}</p>
           </div>
         )}
       </div>
@@ -310,36 +319,41 @@ export default function PredictionEnginePage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-2">
+    <div className="flex flex-col gap-8 p-4 font-sans">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
+        .font-heading { font-family: 'Nunito', sans-serif !important; }
+        .font-sans { font-family: 'Nunito', sans-serif !important; }
+      `}</style>
       {/* ── HEADER ACTION STRIP ── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-text-primary tracking-tight">Prediction Engine</h1>
+            <h1 className="text-4xl font-heading font-extrabold text-text-primary tracking-tight">Prediction Engine</h1>
             {isStormActive ? (
-              <span className="risk-badge risk-badge-severe !py-1 !px-3 !text-[11px] shadow-sm">SIMULATION ACTIVE</span>
+              <span className="risk-badge risk-badge-severe !py-1 !px-3 !text-[11px] shadow-sm rounded-full">SIMULATION ACTIVE</span>
             ) : (
-              <div className="flex items-center gap-2 px-3 py-1 bg-risk-low/10 text-risk-low rounded-full border border-risk-low/20 shadow-sm">
+              <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full shadow-sm">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-risk-low opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-risk-low"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
                 <span className="text-[10px] font-bold tracking-widest uppercase">Live Telemetry</span>
               </div>
             )}
-            <div className="flex items-center gap-2 px-3 py-1 bg-signal-100/50 text-signal-600 rounded-full border border-signal-500/20 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-signal-500" />
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full shadow-sm">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-soft" />
               <span className="text-[10px] font-bold tracking-widest uppercase">System: Nominal</span>
             </div>
           </div>
           <p className="text-sm text-text-secondary mt-1.5 font-medium">Knowledge Graph & Graph Dynamic Neural Network (GDNN v2)</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setShowDiagnostics(true)} className="btn-secondary shadow-sm hover:shadow-md transition-shadow">
+          <button onClick={() => setShowDiagnostics(true)} className="btn-secondary">
             <Sliders className="w-4 h-4" /> Diagnostics
           </button>
           {isStormActive && (
-            <button onClick={handleStopSimulation} disabled={stoppingSim} className="btn-primary !bg-risk-severe hover:!bg-red-800 shadow-sm hover:shadow-md transition-shadow">
+            <button onClick={handleStopSimulation} disabled={stoppingSim} className="btn-primary !bg-risk-severe hover:!bg-red-800">
               <ShieldAlert className="w-4 h-4" />
               {stoppingSim ? "Restoring..." : "Stop Simulation"}
             </button>
@@ -361,43 +375,43 @@ export default function PredictionEnginePage() {
         <StatCard icon={Network} title="Graph Config" extraIcon={<GitBranch className="w-3 h-3 text-text-secondary/50"/>}>
           <div className="grid grid-cols-3 gap-1 mt-0.5">
             <div className="flex flex-col">
-              <span className="text-[8px] text-text-secondary uppercase font-bold tracking-wider">Nodes</span>
-              <span className="text-xs font-bold text-text-primary tabular-nums">{s.node_count ?? 0}</span>
+              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Nodes</span>
+              <span className="text-sm font-bold text-text-primary tabular-nums">{s.node_count ?? 0}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[8px] text-text-secondary uppercase font-bold tracking-wider">Edges</span>
-              <span className="text-xs font-bold text-text-primary tabular-nums">{s.edge_count ?? 0}</span>
+              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Edges</span>
+              <span className="text-sm font-bold text-text-primary tabular-nums">{s.edge_count ?? 0}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[8px] text-text-secondary uppercase font-bold tracking-wider">Heads</span>
-              <span className="text-xs font-bold text-text-primary tabular-nums">{s.attention_heads ?? 4}</span>
+              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Heads</span>
+              <span className="text-sm font-bold text-text-primary tabular-nums">{s.attention_heads ?? 4}</span>
             </div>
           </div>
         </StatCard>
         <StatCard icon={Activity} title="Next Cycle" accent>
-          <div className="absolute bottom-0 left-0 w-full h-1 bg-line/50">
-            <div className="h-full bg-signal-500" style={{ width: `${(countdown / 30) * 100}%`, transition: 'width 1s linear' }} />
+          <div className="absolute bottom-0 left-0 w-full h-1.5 bg-paper-50 rounded-b-full">
+            <div className="h-full bg-signal-400 rounded-r-full shadow-[0_0_8px_rgba(99,102,241,0.5)]" style={{ width: `${(countdown / 30) * 100}%`, transition: 'width 1s linear' }} />
           </div>
           <div className="flex flex-col">
-            <p className="text-sm lg:text-base font-bold text-text-primary truncate leading-tight tracking-tight tabular-nums">{countdown}s</p>
-            <p className="text-[9px] text-text-secondary truncate mt-0.5">Until inference</p>
+            <p className="text-xl lg:text-2xl font-heading font-extrabold text-text-primary truncate leading-tight tracking-wide tabular-nums">{countdown}s</p>
+            <p className="text-xs text-text-secondary truncate mt-1">Until inference</p>
           </div>
         </StatCard>
       </div>
       
       {/* ── PIPELINE STATUS STRIP ── */}
-      <div className="bg-paper-100 border border-line rounded-2xl p-6 shadow-sm overflow-hidden flex flex-col gap-4">
-        <div className="text-[11px] font-bold text-text-primary uppercase tracking-widest flex items-center gap-2">
+      <div className="bg-paper-100 border border-[rgba(99,102,241,0.1)] rounded-3xl p-8 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col gap-4 relative">
+        <div className="text-sm font-bold text-text-primary uppercase tracking-widest flex items-center gap-2">
           <Layers className="w-4 h-4 text-signal-500" /> Pipeline Flow
         </div>
         <div className="relative flex items-center justify-between w-full mt-2">
           {/* Background connecting line */}
-          <div className="absolute left-6 right-6 top-3 h-[2px] bg-line/50 -translate-y-1/2 z-0" />
+          <div className="absolute left-8 right-8 top-5 h-[4px] bg-paper-50 -translate-y-1/2 z-0 rounded-full" />
           
           {/* Active connecting line */}
           <div 
-            className="absolute left-6 top-3 h-[2px] bg-signal-400 -translate-y-1/2 z-0 transition-all duration-500 ease-in-out" 
-            style={{ width: `calc(${Math.max(0, flowStage) / (GDNN_FLOW.length - 1) * 100}% - 48px)` }} 
+            className="absolute left-8 top-5 h-[4px] bg-signal-300 -translate-y-1/2 z-0 transition-all duration-500 ease-in-out rounded-full shadow-sm" 
+            style={{ width: `calc(${Math.max(0, flowStage) / (GDNN_FLOW.length - 1) * 100}% - 64px)` }} 
           />
           
           {GDNN_FLOW.map((step, i) => {
@@ -405,17 +419,17 @@ export default function PredictionEnginePage() {
             const isCompleted = i < flowStage;
             return (
               <div key={step.id} className="relative z-10 flex flex-col items-center gap-3 bg-paper-100 px-2 sm:px-4">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all border-2 ${
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-heading font-extrabold transition-all border-[4px] ${
                   isActive
-                    ? "border-signal-500 bg-signal-100 text-signal-600 shadow-[0_0_0_4px_var(--signal-100)]"
+                    ? "border-signal-200 bg-signal-100 text-signal-600 shadow-[0_4px_12px_rgba(99,102,241,0.2)] scale-110"
                     : isCompleted
-                    ? "border-signal-400 bg-signal-50 text-signal-600"
-                    : "border-line bg-paper-50 text-text-secondary"
+                    ? "border-transparent bg-signal-100 text-signal-500"
+                    : "border-transparent bg-paper-50 text-text-secondary/60"
                 }`}>
-                  {isCompleted ? <CheckCircle className="w-3 h-3" /> : (i + 1)}
+                  {isCompleted ? <CheckCircle className="w-5 h-5" /> : (i + 1)}
                 </div>
-                <span className={`text-[9px] uppercase tracking-widest font-bold hidden md:block transition-colors ${
-                  isActive ? 'text-signal-600' : isCompleted ? 'text-text-primary' : 'text-text-secondary'
+                <span className={`text-xs uppercase tracking-widest font-bold hidden md:block transition-colors mt-1 ${
+                  isActive ? 'text-signal-600' : isCompleted ? 'text-text-primary' : 'text-text-secondary/60'
                 }`}>
                   {step.label}
                 </span>
@@ -425,11 +439,11 @@ export default function PredictionEnginePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-stretch">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
         
         {/* ── LEFT: DISTRICT SELECTOR ── */}
-        <div className="xl:col-span-3">
-          <div className="bg-paper-100 border border-line rounded-2xl flex flex-col overflow-hidden shadow-sm relative h-full">
+        <div className="xl:col-span-3 h-[900px]">
+          <div className="bg-paper-100 border border-line rounded-3xl flex flex-col overflow-hidden shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 relative h-full">
             <div className="p-6 border-b border-line bg-paper-50 shrink-0">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 text-text-primary">
@@ -444,7 +458,7 @@ export default function PredictionEnginePage() {
                 <input 
                   type="text" 
                   placeholder="Search district..." 
-                  className="w-full bg-paper-100 border border-line rounded-lg pl-9 pr-4 py-2 text-xs text-text-primary focus:outline-none focus:border-signal-500 focus:ring-1 focus:ring-signal-500 shadow-sm transition-shadow"
+                  className="w-full bg-paper-100 border border-line rounded-full pl-9 pr-4 py-2 text-xs text-text-primary focus:outline-none focus:border-signal-500 focus:ring-1 focus:ring-signal-500 shadow-sm transition-shadow"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -462,26 +476,27 @@ export default function PredictionEnginePage() {
                   return (
                     <div className="mb-2">
                       <div className="sticky top-0 bg-paper-100/90 backdrop-blur-md z-10 px-4 py-2 border-y border-line/50 mb-1 flex items-center justify-between">
-                        <span className="text-[9px] font-bold uppercase tracking-widest text-text-secondary">{title}</span>
-                        <span className="text-[9px] font-bold text-text-secondary bg-paper-50 px-1.5 rounded border border-line/50">{list.length}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-text-secondary">{title}</span>
+                        <span className="text-[10px] font-bold text-text-secondary bg-paper-50 px-2 rounded-full border border-line/50">{list.length}</span>
                       </div>
-                      <div className="flex flex-col px-2 gap-1">
+                      <div className="flex flex-col px-2 gap-1.5">
                         {list.map((dist: any, idx: number) => {
                           const isSelected = selectedDistrictId === dist.district_id;
                           const color = RISK_ACCENT[dist.risk_level] || RISK_ACCENT.Safe;
+                          const isLow = dist.risk_level === "Low" || dist.risk_level === "Safe";
                           return (
                             <div 
                               key={dist.district_id} 
                               onClick={() => setSelectedDistrictId(dist.district_id)}
-                              className={`grid grid-cols-[16px_1fr_auto] items-center gap-3 p-2.5 mx-2 rounded-lg cursor-pointer transition-all border ${
+                              className={`grid grid-cols-[16px_1fr_auto] items-center gap-3 p-3 mx-2 rounded-[12px] cursor-pointer transition-all border ${
                                 isSelected 
-                                  ? 'bg-paper-50 border-line shadow-sm' 
-                                  : 'border-transparent hover:bg-paper-50/80'
-                              } ${idx % 2 === 0 && !isSelected ? 'bg-paper-50/30' : ''}`}
+                                  ? 'bg-signal-50 border-[rgba(99,102,241,0.2)] shadow-sm' 
+                                  : 'border-transparent hover:bg-signal-50/50'
+                              }`}
                             >
-                              <div className="w-2 h-2 rounded-full shadow-sm justify-self-center" style={{ backgroundColor: color }} />
-                              <span className={`font-semibold text-xs truncate ${isSelected ? 'text-signal-600' : 'text-text-primary'}`}>{dist.district}</span>
-                              <span className={`risk-badge !px-2 !py-0.5 !text-[9px] ${RISK_LEVELS[dist.risk_level] || RISK_LEVELS.Safe}`}>{dist.risk_level}</span>
+                              <div className="w-2.5 h-2.5 rounded-full shadow-sm justify-self-center" style={{ backgroundColor: color }} />
+                                <span className={`font-bold text-base truncate ${isSelected ? 'text-signal-700' : 'text-text-primary'}`}>{dist.district}</span>
+                              <span className={`risk-badge !px-4 !py-1.5 !text-[11px] !rounded-full font-bold ${isLow ? '!bg-[#ECFDF5] !text-[#059669]' : RISK_LEVELS[dist.risk_level]}`}>{dist.risk_level}</span>
                             </div>
                           );
                         })}
@@ -515,9 +530,9 @@ export default function PredictionEnginePage() {
             {/* ══ HERO: GDNN Risk Assessment ═══════════════════════════════════════ */}
             {d ? (
               <div
-                className="bg-paper-100 rounded-2xl p-6 relative overflow-hidden border border-line flex flex-col shadow-sm"
+                className="bg-paper-100 rounded-[32px] p-8 relative overflow-hidden border border-line flex flex-col shadow-[0_12px_32px_rgba(99,102,241,0.08)] hover:shadow-[0_20px_48px_rgba(99,102,241,0.15)] hover:-translate-y-1 transition-all duration-300"
                 style={{ 
-                  boxShadow: `0 10px 30px -10px rgba(0,0,0,0.1), inset 0 0 100px ${riskGlow}`,
+                  background: `linear-gradient(135deg, var(--paper-100) 0%, color-mix(in srgb, ${riskAccent} 10%, transparent) 100%)`,
                 }}
               >
                 {/* Subtle colored glow blob */}
@@ -529,29 +544,29 @@ export default function PredictionEnginePage() {
                 <div className="relative z-10 flex-1 flex flex-col">
                   {/* Header */}
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 text-text-primary">
+                    <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-text-primary">
                       <Target className="w-4 h-4 text-signal-500" /> GDNN Risk Assessment
                     </h2>
-                    <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest bg-paper-50 px-2 py-1 rounded-md border border-line shadow-sm">
+                    <span className="text-xs font-bold text-text-secondary uppercase tracking-widest bg-paper-50 px-3 py-1 rounded-md border border-line shadow-sm">
                       Cycle #{d?.inference_cycle || 1}
                     </span>
                   </div>
 
                   {/* District name + big risk badge */}
-                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
-                    <div>
-                      <p className="text-[10px] text-text-secondary uppercase tracking-widest font-bold mb-1.5">Target District</p>
-                      <h3 className="text-4xl font-black text-text-primary leading-tight tracking-tight">{d.district}</h3>
+                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10 flex-wrap">
+                    <div className="flex-1 min-w-0 pr-4">
+                      <p className="text-xs text-text-secondary uppercase tracking-widest font-bold mb-2">Target District</p>
+                      <h3 className="text-4xl lg:text-5xl font-black text-text-primary leading-tight tracking-tight break-words">{d.district}</h3>
                     </div>
-                    <div className="flex flex-col items-start sm:items-end gap-1.5">
+                    <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0">
                       <p className="text-[10px] text-text-secondary uppercase tracking-widest font-bold">Risk Level</p>
                       {/* Big prominent badge */}
                       <div
-                        className={`risk-badge text-lg px-5 py-2.5 rounded-lg font-bold tracking-widest shadow-sm ${RISK_LEVELS[d.risk_level] || RISK_LEVELS.Safe}`}
+                        className={`risk-badge text-sm px-5 py-2 rounded-full font-heading font-bold tracking-widest shadow-sm ${d.risk_level === "Low" || d.risk_level === "Safe" ? "!bg-[#ECFDF5] !text-[#059669]" : RISK_LEVELS[d.risk_level] || RISK_LEVELS.Safe}`}
                       >
                         {d.risk_level.toUpperCase()}
                       </div>
-                      <span className="text-2xl font-black tabular-nums tracking-tight mt-1" style={{ color: riskAccent }}>
+                      <span className="text-3xl font-black tabular-nums tracking-tight mt-1" style={{ color: riskAccent }}>
                         {Number(d.risk_score ?? 0).toFixed(1)}%
                       </span>
                     </div>
@@ -587,9 +602,12 @@ export default function PredictionEnginePage() {
                   </div>
 
                   {/* Reasoning chain */}
-                  <div className="p-4 bg-signal-100/30 rounded-xl border border-signal-500/20 text-sm text-text-primary leading-relaxed shadow-inner mt-auto">
-                    <span className="font-bold text-signal-600 mr-1">Reasoning:</span>
-                    {d.reasoning_chain?.[0] || `Rainfall (${d.rainfall_24h || 0}mm) and river discharge drive risk.`}
+                  <div className="p-4 bg-signal-50 rounded-[16px] border border-signal-100/50 text-sm text-text-primary leading-relaxed mt-auto flex gap-3 shadow-[0_2px_8px_rgba(99,102,241,0.04)]">
+                    <div className="shrink-0 mt-0.5"><Zap className="w-4 h-4 text-signal-500" /></div>
+                    <div>
+                      <span className="font-bold text-signal-600 mr-1">Reasoning:</span>
+                      {d.reasoning_chain?.[0] || `Rainfall (${d.rainfall_24h || 0}mm) and river discharge drive risk.`}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -600,8 +618,8 @@ export default function PredictionEnginePage() {
             )}
 
             {/* ══ SHAP Feature Attribution ════════════════════════════════════════ */}
-            <div className="bg-paper-100 border border-line rounded-2xl p-6 flex flex-col shadow-sm">
-              <h2 className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 mb-6 text-text-primary">
+            <div className="bg-paper-100 border border-line rounded-3xl p-8 flex flex-col hover:-translate-y-1 transition-all duration-300 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)]">
+              <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 mb-6 text-text-primary">
                 <Eye className="w-4 h-4 text-signal-500" /> SHAP Feature Attribution
               </h2>
               {d && sortedShap.length > 0 ? (
@@ -613,25 +631,37 @@ export default function PredictionEnginePage() {
                       const barColor = isPositive ? 'var(--risk-severe)' : 'var(--risk-low)';
                       return (
                         <div key={i} className="flex items-center gap-3 group bg-paper-50/50 p-2.5 rounded-lg border border-line/50 hover:bg-paper-50 hover:border-line transition-all">
-                          <span className="text-[11px] font-bold text-text-secondary w-28 shrink-0 truncate group-hover:text-text-primary transition-colors">{formatName(entry.feature)}</span>
-                          <div className="flex-1 h-2 bg-line/40 rounded-full overflow-hidden relative">
+                          <span className="text-sm font-bold text-text-secondary w-36 shrink-0 truncate group-hover:text-text-primary transition-colors">{formatName(entry.feature || (entry as any).label)}</span>
+                          <div className="flex-1 h-4 bg-paper-50 rounded-full overflow-hidden relative shadow-inner border border-line/50">
                             <div
-                              className="h-full rounded-full transition-all duration-700 ease-out absolute left-0 top-0"
-                              style={{ width: `${pctLabel}%`, background: barColor }}
+                              className="h-full rounded-full transition-all duration-700 ease-out absolute left-0 top-0 shadow-sm"
+                              style={{ 
+                                width: `${pctLabel}%`, 
+                                background: isPositive ? 'linear-gradient(90deg, #F43F5E, #FB923C)' : 'linear-gradient(90deg, #10B981, #2DD4BF)'
+                              }}
                             />
                           </div>
-                          <span className="text-[11px] font-bold tabular-nums w-12 text-right" style={{ color: barColor }}>
+                          <span className="text-sm font-bold tabular-nums w-12 text-right" style={{ color: barColor }}>
                             {pctLabel.toFixed(1)}%
                           </span>
                         </div>
                       );
                     })}
                   </div>
-                  <div className="mt-2 pt-4 border-t border-line/60 flex items-center justify-between text-[11px] text-text-secondary font-medium">
-                    <span>Top 5 drivers shown</span>
-                    <button className="text-signal-600 font-bold hover:underline flex items-center gap-1">
-                      View all features <ChevronRight className="w-3 h-3"/>
-                    </button>
+                  <div className="mt-auto pt-6">
+                    <div className="bg-signal-50/50 rounded-2xl p-4 border border-signal-100/50 flex flex-col gap-2 mb-4">
+                      <p className="text-sm text-text-primary font-semibold">Rainfall and river level are the dominant risk drivers this cycle.</p>
+                      <div className="flex items-center gap-4 text-xs text-text-secondary">
+                        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-gradient-to-r from-rose-500 to-orange-400 shadow-sm"></span> Positive driver</div>
+                        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm"></span> Mitigating factor</div>
+                      </div>
+                    </div>
+                    <div className="border-t border-line/60 pt-4 flex items-center justify-between text-xs text-text-secondary font-bold">
+                      <span>Top 5 drivers shown</span>
+                      <button className="text-signal-600 font-extrabold hover:underline flex items-center gap-1 transition-all hover:translate-x-1">
+                        View all features <ChevronRight className="w-4 h-4"/>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -643,12 +673,12 @@ export default function PredictionEnginePage() {
           </div>
 
           {/* ══ Temporal Forecasting Chart ══════════════════════════════════ */}
-          <div className="bg-paper-100 border border-line rounded-2xl shadow-sm transition-all flex flex-col overflow-hidden">
+          <div className="bg-paper-100 border border-line rounded-3xl hover:-translate-y-1 transition-all duration-300 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] flex flex-col overflow-hidden">
             <button
               onClick={() => setShowTemporal(!showTemporal)}
-              className="w-full flex items-center justify-between p-6 focus:outline-none hover:bg-paper-50 transition-colors group shrink-0"
+              className="w-full flex items-center justify-between p-8 focus:outline-none hover:bg-paper-50 transition-colors group shrink-0"
             >
-              <h2 className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 text-text-primary group-hover:text-signal-600 transition-colors">
+              <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-text-primary group-hover:text-signal-600 transition-colors">
                 <BarChart2 className="w-4 h-4 text-signal-500" /> Temporal Risk Projection
               </h2>
               <div className="p-1 rounded-full bg-paper-50 group-hover:bg-line transition-colors">
@@ -677,8 +707,11 @@ export default function PredictionEnginePage() {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="flex-1 h-full flex items-center justify-center text-text-secondary text-sm">
-                    No temporal projection data available
+                  <div className="flex-1 h-full flex flex-col items-center justify-center text-text-secondary text-sm gap-3">
+                    <div className="w-12 h-12 rounded-full bg-paper-50 flex items-center justify-center">
+                      <BarChart2 className="w-5 h-5 text-text-secondary/50" />
+                    </div>
+                    <p className="font-semibold text-text-secondary/70">No temporal projection data available</p>
                   </div>
                 )}
               </div>
@@ -686,12 +719,12 @@ export default function PredictionEnginePage() {
           </div>
 
           {/* ══ Collapsible Logs ════════════════════════════════════════════ */}
-          <div className="bg-paper-100 border border-line rounded-2xl shadow-sm transition-all flex flex-col overflow-hidden">
+          <div className="bg-paper-100 border border-line rounded-3xl hover:-translate-y-1 transition-all duration-300 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] flex flex-col overflow-hidden">
             <button
               onClick={() => setShowLogs(!showLogs)}
-              className="w-full flex items-center justify-between p-6 focus:outline-none hover:bg-paper-50 transition-colors group shrink-0"
+              className="w-full flex items-center justify-between p-8 focus:outline-none hover:bg-paper-50 transition-colors group shrink-0"
             >
-              <h2 className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 text-text-secondary group-hover:text-text-primary transition-colors">
+              <h2 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-text-secondary group-hover:text-text-primary transition-colors">
                 <Terminal className="w-4 h-4 text-signal-500" /> Execution Logs
               </h2>
               <div className="p-1 rounded-full bg-paper-50 group-hover:bg-line transition-colors">
@@ -709,8 +742,8 @@ export default function PredictionEnginePage() {
                     
                     return (
                       <div key={i} className={`flex items-start gap-3 p-3 px-6 border-l-[3px] ${accent} ${bg} border-b border-line/30 last:border-b-0`}>
-                        <span className="shrink-0 text-text-secondary/60 font-mono text-[10px] mt-[3px]">[{log.ts}]</span>
-                        <span className={`font-mono text-[11px] leading-relaxed ${isError ? 'text-risk-severe font-bold' : isWarn ? 'text-risk-moderate font-bold' : 'text-text-primary'}`}>{log.message}</span>
+                        <span className="shrink-0 text-text-secondary/60 font-mono text-xs mt-[3px]">[{log.ts}]</span>
+                        <span className={`font-mono text-sm leading-relaxed ${isError ? 'text-risk-severe font-bold' : isWarn ? 'text-risk-moderate font-bold' : 'text-text-primary'}`}>{log.message}</span>
                       </div>
                     );
                   })}

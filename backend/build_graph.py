@@ -42,49 +42,54 @@ def build_graph_topology():
         # handle special cases
         dist_name_to_id['nilgiris'] = dist_name_to_id.get('the nilgiris')
         
-        # Load GeoJSON
+        adjacency_edges = set()
         logger.info(f"Loading districts geojson from {GEOJSON_PATH}...")
         try:
             gdf = gpd.read_file(GEOJSON_PATH)
-            # The simplify script saves the district name in 'name' column
             col_name = 'name'
-            
             if col_name not in gdf.columns:
-                # Fallback in case the script didn't rename it
                 for col in ['dtname', 'DISTRICT', 'NAME', 'District']:
                     if col in gdf.columns:
                         col_name = col
                         break
-            
             if not col_name:
-                logger.error(f"Could not find district name column in geojson. Columns: {gdf.columns}")
-                return
+                raise ValueError("No district name column found")
             
             gdf['norm_name'] = gdf[col_name].apply(standardize_name)
-            # Filter to TN districts only (those present in our DB)
             db_district_names = [standardize_name(d.name) for d in districts]
             tn_gdf = gdf[gdf['norm_name'].isin(db_district_names)].copy()
-            logger.info(f"Found {len(tn_gdf)} matching districts in geojson out of {len(districts)} in DB.")
+            logger.info(f"Found {len(tn_gdf)} matching districts in geojson.")
+            
+            logger.info("Computing spatial adjacency edges (shared borders)...")
+            for i, row1 in tn_gdf.iterrows():
+                for j, row2 in tn_gdf.iterrows():
+                    if i >= j:
+                        continue
+                    if row1.geometry.touches(row2.geometry) or row1.geometry.intersects(row2.geometry):
+                        id1 = dist_name_to_id.get(row1['norm_name'].lower())
+                        id2 = dist_name_to_id.get(row2['norm_name'].lower())
+                        if id1 and id2:
+                            adjacency_edges.add((id1, id2))
+                            adjacency_edges.add((id2, id1))
         except Exception as e:
-            logger.error(f"Error loading geojson: {e}")
-            return
-
-        # 1. Compute Adjacency Edges
-        logger.info("Computing spatial adjacency edges (shared borders)...")
-        adjacency_edges = set()
-        
-        # Spatial join or manual intersection to find neighbors
-        for i, row1 in tn_gdf.iterrows():
-            for j, row2 in tn_gdf.iterrows():
-                if i >= j:
-                    continue
-                # If they touch, they share a border
-                if row1.geometry.touches(row2.geometry) or row1.geometry.intersects(row2.geometry):
-                    id1 = dist_name_to_id.get(row1['norm_name'].lower())
-                    id2 = dist_name_to_id.get(row2['norm_name'].lower())
-                    if id1 and id2:
+            logger.warning(f"Failed to load GeoJSON ({e}). Falling back to distance-based adjacency.")
+            from seed_geo_data import TN_DISTRICTS
+            import math
+            
+            dist_coords = {}
+            for dname, coords in TN_DISTRICTS.items():
+                did = dist_name_to_id.get(standardize_name(dname).lower())
+                if did:
+                    dist_coords[did] = (coords[0], coords[1]) # lat, lon
+            
+            for id1, p1 in dist_coords.items():
+                for id2, p2 in dist_coords.items():
+                    if id1 >= id2: continue
+                    dist = math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+                    if dist < 0.85: # roughly 90km threshold for adjacency
                         adjacency_edges.add((id1, id2))
                         adjacency_edges.add((id2, id1))
+            logger.info(f"Distance fallback generated {len(adjacency_edges)} adjacency edges.")
 
         # 2. Compute River Flow Edges
         logger.info("Parsing directional river flow paths...")
@@ -141,12 +146,13 @@ def build_graph_topology():
         # Insert new data
         logger.info("Persisting to database...")
         edges_to_insert = []
+        import uuid
         for u, v in adjacency_edges:
-            edges_to_insert.append(GraphEdge(source_id=u, target_id=v, edge_type="adjacency", weight=1.0))
+            edges_to_insert.append(GraphEdge(id=uuid.uuid4(), source_id=u, target_id=v, edge_type="adjacency", weight=1.0))
         for u, v in river_edges:
-            edges_to_insert.append(GraphEdge(source_id=u, target_id=v, edge_type="river_flow", weight=2.0))
+            edges_to_insert.append(GraphEdge(id=uuid.uuid4(), source_id=u, target_id=v, edge_type="river_flow", weight=2.0))
         
-        db.bulk_save_objects(edges_to_insert)
+        db.add_all(edges_to_insert)
 
         for d in districts:
             d.community_idx = community_map.get(d.id, 0)

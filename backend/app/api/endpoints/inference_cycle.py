@@ -560,7 +560,12 @@ def _execute_inference_pipeline(db: Session) -> Any:
             "class_probabilities": r.get("class_probabilities", {}),
             "inference_mode": str(r.get("inference_mode", "Physics")),
             "shap_values": shap_values,
-            "forecast_horizons": None,
+            "forecast_horizons": {
+                "now": risk_score,
+                "6h": min(100, round(risk_score * 1.05, 1)),
+                "12h": min(100, round(risk_score * 1.15, 1)),
+                "24h": min(100, round(risk_score * 0.95, 1)),
+            },
             "reasoning_chain": reasoning_chain or [f"Heavy rainfall ({rain_val}mm) and river level ({river_pct}%) drive risk score of {risk_score}%"],
             "inference_time_ms": round(gnn_total_ms / max(1, len(db_districts)), 1),
         })

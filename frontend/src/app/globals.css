@@ -8,8 +8,8 @@
     --ink-900: #334155; /* Slate 700 */
     --ink-700: #475569; /* Slate 600 */
     
-    --paper-50: #F8FAFC;
-    --paper-100: #FFFFFF;
+    --paper-50: #F7F7FC;
+    --paper-100: #FAFAFF;
     
     --line: #E2E8F0;
     --line-dark: #CBD5E1;
@@ -41,7 +41,7 @@
   }
 
   html {
-    font-family: var(--font-jakarta), -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
@@ -62,10 +62,11 @@
     position: relative;
   }
 
-  /* Typography Base — headings inherit from html, no override needed */
+  /* Typography Base */
   h1, h2, h3, h4, h5, h6 {
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font-family: var(--font-heading);
+    font-weight: 700;
+    letter-spacing: -0.01em;
     line-height: 1.2;
   }
 }
@@ -73,38 +74,38 @@
 @layer components {
   /* ── Clean Metric Cards ─────────────────────────────────────────────────── */
   .metric-card {
-    @apply bg-paper-100 rounded-2xl p-4 transition-all duration-300;
-    border: 1px solid #EEF0F9;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(79,70,229,0.04);
+    @apply bg-paper-100 p-4 transition-all duration-300 rounded-[20px];
+    border: 1px solid rgba(99,102,241,0.1);
+    box-shadow: 0 2px 8px rgba(99,102,241,0.04), 0 8px 24px rgba(99,102,241,0.03);
   }
   
   .metric-card:hover {
-    @apply -translate-y-[2px];
-    box-shadow: 0 4px 6px rgba(0,0,0,0.06), 0 12px 32px rgba(79,70,229,0.08);
+    @apply -translate-y-[3px] scale-[1.01];
+    box-shadow: 0 8px 20px rgba(99,102,241,0.08), 0 16px 40px rgba(99,102,241,0.06);
   }
 
   /* ── Command Center Buttons ────────────────────────────────────────────── */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2
-           text-sm font-semibold text-white transition-all duration-150 border border-transparent
-           focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 bg-signal-500 hover:bg-signal-600;
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5
+           text-sm font-bold text-white transition-all duration-200 border border-transparent
+           focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 bg-signal-500 hover:bg-signal-600 hover:-translate-y-0.5 shadow-[0_4px_14px_rgba(99,102,241,0.3)] hover:shadow-[0_6px_20px_rgba(99,102,241,0.4)];
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2
-           text-sm font-semibold transition-all duration-150 border border-line
-           focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 text-foreground bg-paper-100 hover:bg-line;
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5
+           text-sm font-bold transition-all duration-200 border border-line
+           focus:outline-none focus:ring-2 focus:ring-signal-500 focus:ring-offset-2 text-foreground bg-paper-100 hover:bg-paper-50 hover:-translate-y-0.5 shadow-sm;
   }
 
   /* ── Risk Badges (Strictly Institutional) ─────────────────────────────── */
   .risk-badge {
-    @apply inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-full;
+    @apply inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest font-black px-2.5 py-1 rounded-full;
   }
   
-  .risk-badge-severe { @apply bg-[#FEF2F2] text-[#DC2626] border border-[#FCA5A5]/30; }
-  .risk-badge-high { @apply bg-[#FFF7ED] text-[#EA580C] border border-[#FDBA74]/30; }
-  .risk-badge-moderate { @apply bg-[#FEFCE8] text-[#CA8A04] border border-[#FDE047]/30; }
-  .risk-badge-low { @apply bg-[#ECFDF5] text-[#059669] border border-[#6EE7B7]/30; }
+  .risk-badge-severe { @apply bg-[#FEF2F2] text-[#DC2626]; }
+  .risk-badge-high { @apply bg-[#FFF7ED] text-[#EA580C]; }
+  .risk-badge-moderate { @apply bg-[#FEFCE8] text-[#CA8A04]; }
+  .risk-badge-low { @apply bg-[#ECFDF5] text-[#059669]; }
   
   /* Safe fallback for data missing/safe */
   .risk-badge-safe { @apply bg-paper-100 text-muted-foreground border-line; }
@@ -120,7 +121,7 @@
   }
 
   .sidebar-item.active {
-    @apply bg-signal-600 text-white font-semibold rounded-r-full mr-4 border-l-4 border-signal-900 shadow-md;
+    @apply bg-signal-600 text-white font-semibold rounded-r-full mr-4 border-l-4 border-signal-900 shadow-[0_4px_12px_rgba(79,70,229,0.3)];
   }
 
   /* ── Data Tables ──────────────────────────────────────────────────────── */
@@ -130,11 +131,11 @@
   }
 
   .data-table td {
-    @apply py-2 px-3 text-sm border-b border-line text-foreground transition-colors duration-100;
+    @apply py-3 px-3 text-sm border-b border-line text-foreground transition-colors duration-200;
   }
 
   .data-table tr:hover td {
-    @apply bg-indigo-50/50;
+    @apply bg-[#F5F5FF];
   }
 
   /* ── Skeleton Loaders (Solid Shapes) ──────────────────────────────────── */
@@ -144,7 +145,7 @@
 
   /* ── EOC Professional Polish ──────────────────────────────────────────── */
   .glass-card {
-    @apply bg-white border border-slate-200/60 shadow-lg rounded-2xl transition-all duration-300;
+    @apply bg-white/70 border border-white/60 shadow-[0_8px_32px_rgba(99,102,241,0.08)] rounded-[20px] transition-all duration-300;
   }
   
   .glass-card:hover {
@@ -168,6 +169,26 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  
+  .animate-pulse-soft {
+    animation: pulse-soft 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.15); }
+  }
+
+  .custom-map-marker {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+    transition: all 0.2s ease;
+    transform-origin: center;
+    transform-box: fill-box;
+  }
+  .custom-map-marker:hover {
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.25));
+    transform: translateY(-2px);
   }
 }
 

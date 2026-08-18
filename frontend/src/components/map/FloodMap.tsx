@@ -211,10 +211,11 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                       radius={getRadius(district.risk_score)}
                       pathOptions={{
                         fillColor: markerColor,
-                        fillOpacity: 0.8,
-                        color: markerColor,
+                        fillOpacity: 1,
+                        color: "#ffffff",
                         weight: 2,
-                        opacity: 1,
+                        opacity: 0.9,
+                        className: "custom-map-marker cursor-pointer"
                       }}
                       eventHandlers={{ click: () => setSelected(district) }}
                     >

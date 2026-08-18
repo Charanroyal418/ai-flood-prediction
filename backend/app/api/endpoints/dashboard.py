@@ -31,6 +31,21 @@ def test_edges(db: Session = Depends(deps.get_db)):
     except Exception as e:
         return {"error": str(e)}
 
+@router.get("/trigger-graph")
+def trigger_graph(db: Session = Depends(deps.get_db)):
+    try:
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
+        from build_graph import build_graph_topology
+        build_graph_topology()
+        
+        from app.models.graph import GraphEdge
+        count = db.query(GraphEdge).count()
+        return {"status": "done", "new_count": count}
+    except Exception as e:
+        return {"error": str(e)}
+
 @router.get("/live")
 def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     """

@@ -182,7 +182,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     >
       {/* ── Desktop Sidebar (Dark Ink) ─────────────────────────────────────────────── */}
       <nav
-        className={`hidden md:flex flex-col h-full bg-paper-100 text-text-primary border-r border-line z-20 relative overflow-hidden transition-all duration-200 ${
+        className={`hidden md:flex flex-col h-full bg-paper-100 text-text-primary border-r border-line z-20 relative overflow-visible transition-all duration-200 ${
           collapsed ? "w-16" : "w-64"
         }`}
         style={{ flexShrink: 0 }}
@@ -216,7 +216,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         )}
 
         {/* Navigation */}
-        <div className="flex-1 py-4 px-2 overflow-y-auto custom-scroll relative z-10">
+        <div className="flex-1 py-4 px-2 overflow-y-auto no-scrollbar relative z-10">
           <NavSections collapsed={collapsed} alertCount={alertCount} />
         </div>
 
@@ -269,12 +269,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
 
           <div className="flex-1 flex items-center gap-4 min-w-0 font-mono text-xs text-text-secondary">
-            <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full ${isStormActive ? 'bg-[#FFF7ED] text-[#EA580C]' : 'bg-[#ECFDF5] text-[#059669]'}`}>
-              <Circle className={`w-2 h-2 fill-current ${isStormActive ? "text-[#EA580C]" : "text-[#059669]"}`} />
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${isStormActive ? 'bg-orange-50 text-orange-600' : 'bg-emerald-50 text-emerald-600'}`}>
+              <Circle className={`w-2 h-2 fill-current animate-pulse-soft ${isStormActive ? "text-orange-500" : "text-emerald-500"}`} />
               <span className="font-bold">{isStormActive ? "SYSTEM: SIMULATED" : "SYSTEM: NOMINAL"}</span>
             </div>
             <div className="h-4 w-px bg-line hidden sm:block" />
-            <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold shadow-sm">
               <span>LAST SYNC:</span>
               <span>
                 {!mounted ? "..." : lastUpdated

@@ -80,11 +80,9 @@ const config: Config = {
         "2xl": "1rem",
       },
       fontFamily: {
-        // ONE font site-wide: Plus Jakarta Sans for everything
-        sans: ['var(--font-jakarta)', '"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        heading: ['var(--font-jakarta)', '"Plus Jakarta Sans"', '-apple-system', 'sans-serif'],
-        // font-mono also resolves to Plus Jakarta Sans — tabular-nums applied via .mono-data utility
-        mono: ['var(--font-jakarta)', '"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sans: ['var(--font-sans)', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        heading: ['var(--font-heading)', 'Nunito', '-apple-system', 'sans-serif'],
+        mono: ['var(--font-sans)', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
       },
       fontSize: {
         xs: ['12px', '16px'],

@@ -34,17 +34,29 @@ function DistrictNode({ data }: { data: any }) {
   const statusColor = STATUS_COLORS[data.status] || STATUS_COLORS.Safe;
 
   return (
-    <div className="flex flex-col items-center select-none" style={{ minWidth: 140 }}>
-      <Handle type="target" position={Position.Left} className="w-2 h-2 !bg-slate-400 !border-white" />
-      <div
-        className="rounded-xl bg-white px-3 py-2 shadow-md transition-all duration-300 w-full hover:shadow-lg hover:z-20"
+    <div className="group flex flex-col items-center select-none relative">
+      <Handle type="target" position={Position.Left} className="w-1 h-1 !bg-slate-400 !border-none !opacity-0" />
+      
+      {/* Compact View */}
+      <div className="flex flex-col items-center gap-1">
+        <div 
+          className="w-4 h-4 rounded-full shadow-sm border-2 transition-transform duration-300 group-hover:scale-110"
+          style={{
+            backgroundColor: statusColor,
+            borderColor: "white",
+            boxShadow: `0 0 10px ${statusColor}40`
+          }}
+        />
+        <span className="text-[8px] font-bold text-slate-600 bg-white/80 px-1 rounded backdrop-blur-sm pointer-events-none whitespace-nowrap group-hover:opacity-0 transition-opacity">
+          {data.label}
+        </span>
+      </div>
+
+      {/* Expanded View (Hover) */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 z-50 group-hover:scale-100 scale-95 shadow-xl rounded-xl bg-white p-2 min-w-[140px]"
         style={{
-          borderStyle: "solid",
-          borderWidth: data.risk_score >= 75 ? 4 : data.risk_score >= 50 ? 2.5 : 1,
-          borderColor: data.risk_score >= 75 ? statusColor : data.risk_score >= 50 ? statusColor : "#cbd5e1",
-          borderLeftWidth: 6,
+          borderLeftWidth: 4,
           borderLeftColor: statusColor,
-          backgroundColor: "white",
         }}
       >
         <div className="flex items-center justify-between gap-2">
@@ -65,7 +77,7 @@ function DistrictNode({ data }: { data: any }) {
           <span>{data.data?.rainfall_24h ?? 0}mm rain</span>
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="w-2 h-2 !bg-slate-400 !border-white" />
+      <Handle type="source" position={Position.Right} className="w-1 h-1 !bg-slate-400 !border-none !opacity-0" />
     </div>
   );
 }
@@ -112,6 +124,7 @@ export default function DynamicKnowledgeGraph() {
   const [topConnections, setTopConnections] = useState<any[]>([]);
   
   const playInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const layoutPositions = useRef<Record<string, { x: number, y: number }>>({});
 
   // Must be called at top level — before any early returns
   const { mode, stormSimulationActive, modelMeta } = useFloodData();
@@ -136,7 +149,7 @@ export default function DynamicKnowledgeGraph() {
     return node.history[idx];
   };
 
-  const updateGraphLayout = useCallback((rawNodes: any[], rawEdges: any[], timeIdx: number) => {
+  const updateGraphLayout = useCallback((rawNodes: any[], rawEdges: any[], timeIdx: number, selectedId: string | undefined, showAll: boolean) => {
     // 1. Community map
     const communityMap: Record<string, number> = {};
     if (data?.communities) {
@@ -188,6 +201,14 @@ export default function DynamicKnowledgeGraph() {
                         : sourceRisk >= 20 ? STATUS_COLORS.Low 
                         : STATUS_COLORS.Safe;
 
+      let baseOpacity = showAll ? (dynamicInfluence > 15 || e.attention > 0.4 ? 0.6 : 0.25) : 
+                                 (dynamicInfluence > 15 || e.attention > 0.05 ? 0.6 : 0);
+      
+      let opacity = baseOpacity;
+      if (selectedId) {
+         opacity = (e.source === selectedId || e.target === selectedId) ? 0.9 : 0.05;
+      }
+
       return {
         id: e.id,
         source: e.source,
@@ -199,7 +220,7 @@ export default function DynamicKnowledgeGraph() {
         style: {
           stroke: statusColor,
           strokeWidth: Math.max(1.2, Math.min(5.0, dynamicInfluence / 4)),
-          opacity: 0.85,
+          opacity: opacity,
         },
         markerEnd: { type: MarkerType.ArrowClosed, color: statusColor },
         dynamicInfluence,
@@ -216,34 +237,58 @@ export default function DynamicKnowledgeGraph() {
 
     // 3. D3 Force Simulation with Strict Node Collision & Inter-Cluster Spacing
     const totalCommunities = Math.max(1, data?.communities?.length || 4);
-    const radius = 650; // Radial distance between community centroids
+    const radius = 400; // Radial distance between community centroids
 
     // Clone formattedEdges for D3 simulation to prevent mutation of string IDs
     const d3Links = formattedEdges.map((e: any) => ({ ...e }));
 
-    const simulation = d3.forceSimulation(d3Nodes)
-      .force("charge", d3.forceManyBody().strength(-600))
-      .force("collide", d3.forceCollide(100).iterations(4)) // Sized collision zone prevents overlaps
-      .force("x", d3.forceX((d: any) => {
-        const angle = (d.data.communityIdx / totalCommunities) * Math.PI * 2;
-        return Math.cos(angle) * radius;
-      }).strength(0.6))
-      .force("y", d3.forceY((d: any) => {
-        const angle = (d.data.communityIdx / totalCommunities) * Math.PI * 2;
-        return Math.sin(angle) * radius;
-      }).strength(0.6))
-      .force("link", d3.forceLink(d3Links).id((d: any) => d.id).distance(140).strength(0.2))
-      .stop();
+    const needsLayout = Object.keys(layoutPositions.current).length === 0;
 
-    simulation.tick(350);
+    if (needsLayout) {
+      const simulation = d3.forceSimulation(d3Nodes)
+        .force("charge", d3.forceManyBody().strength(-250))
+        .force("collide", d3.forceCollide(40).iterations(4)) // Sized collision zone prevents overlaps
+        .force("x", d3.forceX((d: any) => {
+          const angle = (d.data.communityIdx / totalCommunities) * Math.PI * 2;
+          return Math.cos(angle) * radius;
+        }).strength(0.3))
+        .force("y", d3.forceY((d: any) => {
+          const angle = (d.data.communityIdx / totalCommunities) * Math.PI * 2;
+          return Math.sin(angle) * radius;
+        }).strength(0.3))
+        .force("link", d3.forceLink(d3Links).id((d: any) => d.id).distance(80).strength(0.2))
+        .stop();
 
-    const finalNodes = d3Nodes.map((n: any) => ({
-      id: n.id,
-      type: "districtNode",
-      position: { x: n.x, y: n.y },
-      data: n.data,
-      zIndex: 10
-    }));
+      simulation.tick(300);
+      d3Nodes.forEach((n: any) => {
+        layoutPositions.current[n.id] = { x: n.x, y: n.y };
+      });
+    }
+
+    const finalNodes = d3Nodes.map((n: any) => {
+      const pos = layoutPositions.current[n.id] || { x: 0, y: 0 };
+      
+      let opacity = 1;
+      let zIndex = 10;
+      if (selectedId) {
+         const isSelected = n.id === selectedId;
+         const isConnected = formattedEdges.some((e:any) => 
+           (e.source === selectedId && e.target === n.id) ||
+           (e.target === selectedId && e.source === n.id)
+         );
+         opacity = (isSelected || isConnected) ? 1 : 0.15;
+         zIndex = isSelected ? 50 : isConnected ? 40 : 10;
+      }
+
+      return {
+        id: n.id,
+        type: "districtNode",
+        position: pos,
+        data: n.data,
+        style: { opacity },
+        zIndex: zIndex
+      };
+    });
 
     // 4. Calculate Community Bounding Boxes for Soft Background Regions
     const communityBounds: Record<number, { minX: number, maxX: number, minY: number, maxY: number }> = {};
@@ -300,7 +345,7 @@ export default function DynamicKnowledgeGraph() {
 
   useEffect(() => {
     if (data?.nodes && data?.edges && data?.communities && !isError) {
-      updateGraphLayout(data.nodes, data.edges, timeIndex);
+      updateGraphLayout(data.nodes, data.edges, timeIndex, selectedNode?.id, showAllEdges);
       if (selectedNode) {
         const updatedNode = data.nodes.find((n: any) => n.id === selectedNode.id);
         if (updatedNode) {
@@ -318,7 +363,7 @@ export default function DynamicKnowledgeGraph() {
         }
       }
     }
-  }, [data, timeIndex, updateGraphLayout]);
+  }, [data, timeIndex, updateGraphLayout, selectedNode?.id, showAllEdges]);
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     if (node.type === "districtNode") {
@@ -498,7 +543,7 @@ export default function DynamicKnowledgeGraph() {
           <div className="flex-1 min-h-0 bg-slate-50 relative">
             <ReactFlow
               nodes={nodes}
-              edges={edges.filter((e: any) => showAllEdges || e.attention > 0.05)}
+              edges={edges.filter((e: any) => (e.style?.opacity ?? 1) > 0)}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}

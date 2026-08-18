@@ -5,10 +5,20 @@ import QueryProvider from "@/components/QueryProvider";
 import { AuthProvider } from "@/context/AuthContext";
 import ColdStartLoader from "@/components/ColdStartLoader";
 
-const jakarta = Plus_Jakarta_Sans({
+import { Nunito, Inter } from "next/font/google";
+
+const nunito = Nunito({
   subsets: ["latin"],
-  variable: "--font-jakarta",
+  variable: "--font-heading",
   display: "swap",
+  weight: ["400", "600", "700", "800", "900"],
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -50,7 +60,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${jakarta.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${nunito.variable} ${inter.variable}`}>
       <head>
       </head>
       <body className="antialiased min-h-screen transition-colors duration-300 font-sans">

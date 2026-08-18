@@ -8,5 +8,3 @@ from sqlalchemy import text
 
 db = SessionLocal()
 print('Edges count:', db.query(GraphEdge).count())
-res = db.execute(text("SELECT column_name, data_type, udt_name FROM information_schema.columns WHERE table_name = 'district'")).fetchall()
-print('District columns:', res)

@@ -41,25 +41,33 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 }
 
 function MetricCard({ title, value, unit, icon: Icon, sparklineData, colorToken }: any) {
-  // Use CSS variable mapping for Recharts stroke
   const strokeColor = colorToken ? `var(--${colorToken})` : "var(--signal-500)";
+  const iconBg = colorToken ? `color-mix(in srgb, var(--${colorToken}) 15%, transparent)` : "color-mix(in srgb, var(--signal-500) 15%, transparent)";
+  const iconColor = colorToken ? `var(--${colorToken})` : "var(--signal-500)";
   
+  let displayValue = value;
+  if (typeof value === 'number') {
+    displayValue = value >= 1000 ? new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(value) : value.toLocaleString('en-US', { maximumFractionDigits: 1 });
+  }
+
   return (
     <div className="metric-card flex flex-col justify-between h-24">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-1.5 text-[#9AA1B2] text-[10px] uppercase tracking-widest font-bold">
-          <Icon strokeWidth={1.5} className="w-[18px] h-[18px]" />
-          <span>{title}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 text-[#9AA1B2] text-[10px] uppercase tracking-[0.05em] font-bold">
+          <div className="w-7 h-7 rounded-[10px] flex items-center justify-center" style={{ backgroundColor: iconBg, color: iconColor }}>
+            <Icon strokeWidth={2} className="w-[14px] h-[14px]" />
+          </div>
+          <span className="truncate">{title}</span>
         </div>
         {sparklineData && <Sparkline data={sparklineData} color={strokeColor} />}
       </div>
       <div className="flex items-baseline gap-1 mt-1">
-        <span className="text-2xl font-bold tabular-nums text-text-primary">
-          {typeof value === 'number' ? value.toLocaleString('en-US', { maximumFractionDigits: 1 }) : (value || (
+        <span className="text-3xl font-heading font-extrabold tabular-nums tracking-wide text-text-primary">
+          {displayValue || (
             <span className="text-slate-300">-</span>
-          ))}
+          )}
         </span>
-        {unit && <span className="text-xs text-text-secondary font-medium">{unit}</span>}
+        {unit && <span className="text-sm text-text-secondary font-medium">{unit}</span>}
       </div>
     </div>
   );
@@ -153,15 +161,15 @@ export default function CommandCenter() {
         <button
           onClick={handleSimulate}
           disabled={simulating}
-          className={`btn-primary shadow-md hover:shadow-lg transition-all ${isStormActive ? '!bg-risk-severe hover:!bg-red-800' : ''}`}
+          className={`btn-primary shadow-sm hover:shadow hover:bg-signal-900 transition-all duration-200 ${isStormActive ? '!bg-risk-severe hover:!bg-red-800' : ''}`}
         >
-          <Zap className="w-4 h-4" />
+          <Zap strokeWidth={1.5} className="w-[18px] h-[18px]" />
           {isStormActive ? "HALT SIMULATION" : "RUN SIMULATION"}
         </button>
       </div>
 
       {/* ── Hero Status Readout ───────────────────────────────────────── */}
-      <div className="bg-gradient-to-br from-white to-[#EEF0F9] border border-[#EEF0F9] border-l-4 border-l-indigo-600 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-[0_8px_24px_rgba(79,70,229,0.06)]">
+      <div className="bg-gradient-to-br from-white to-indigo-50/50 border border-[#EEF0F9] border-l-[6px] border-l-signal-600 rounded-[14px] p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-[0_8px_24px_rgba(79,70,229,0.04)]">
         <div>
           <p className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold mb-2">Current System State</p>
           <div className="flex items-baseline gap-4">
@@ -223,10 +231,10 @@ export default function CommandCenter() {
       {/* ── Main Layout: Map + Side Panel ─────────────────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 h-[600px]">
         {/* Map */}
-        <div className="xl:col-span-2 bg-paper-100 border border-[#EEF0F9] rounded-2xl overflow-hidden flex flex-col relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-          <div className="absolute top-4 left-4 z-[1000] bg-white/60 backdrop-blur-md border border-white/40 px-4 py-3 rounded-xl shadow-lg">
-            <p className="text-[10px] uppercase tracking-widest font-bold text-[#9AA1B2] mb-3">Risk Legend</p>
-            <div className="flex gap-3">
+        <div className="xl:col-span-2 bg-paper-100 border border-[#EEF0F9] rounded-[20px] overflow-hidden flex flex-col relative shadow-[inset_0_0_0_1px_rgba(238,240,249,1)]">
+          <div className="absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-md border border-white/60 px-5 py-4 rounded-2xl shadow-[0_4px_12px_rgba(0,0,0,0.06)]">
+            <p className="text-[10px] uppercase tracking-[0.05em] font-bold text-[#9AA1B2] mb-3">Risk Legend</p>
+            <div className="flex gap-4">
               {["Critical", "High", "Moderate", "Low"].map(level => (
                 <div key={level} className="flex items-center gap-1.5">
                   <div className={`w-2.5 h-2.5 rounded-full ${level === 'Critical' ? 'bg-risk-severe' : level === 'High' ? 'bg-risk-high' : level === 'Moderate' ? 'bg-risk-moderate' : 'bg-risk-low'}`} />
@@ -251,11 +259,11 @@ export default function CommandCenter() {
         <div className="flex flex-col gap-4 overflow-hidden">
           
           {/* High Risk Targets */}
-          <div className="premium-card bg-white border border-[#EEF0F9] rounded-2xl p-4 flex flex-col flex-1 shadow-[0_4px_12px_rgba(79,70,229,0.03)]">
+          <div className="premium-card bg-paper-100 border border-[#EEF0F9] rounded-[20px] p-4 flex flex-col flex-1 shadow-[0_4px_12px_rgba(79,70,229,0.03)] transition-all duration-300 hover:shadow-[0_8px_24px_rgba(79,70,229,0.06)] hover:-translate-y-[2px]">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold">Top Risk Nodes</h3>
+              <h3 className="text-[10px] uppercase tracking-[0.05em] text-[#9AA1B2] font-bold">Top Risk Nodes</h3>
             </div>
-            <div className="overflow-y-auto custom-scroll p-0">
+            <div className="overflow-y-auto no-scrollbar p-0">
               <table className="w-full data-table">
                 <thead>
                   <tr>
@@ -290,12 +298,12 @@ export default function CommandCenter() {
           </div>
 
           {/* Active Alerts Feed */}
-          <div className="premium-card bg-white border border-[#EEF0F9] rounded-2xl p-4 flex flex-col h-[280px] shadow-[0_4px_12px_rgba(79,70,229,0.03)]">
+          <div className="premium-card bg-paper-100 border border-[#EEF0F9] rounded-[20px] p-4 flex flex-col h-[280px] shadow-[0_4px_12px_rgba(79,70,229,0.03)] transition-all duration-300 hover:shadow-[0_8px_24px_rgba(79,70,229,0.06)] hover:-translate-y-[2px]">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold">Active Alerts</h3>
-              <a href="/dashboard/alerts" className="text-[10px] font-bold text-signal-500 hover:underline">View All</a>
+              <h3 className="text-[10px] uppercase tracking-[0.05em] text-[#9AA1B2] font-bold">Active Alerts</h3>
+              <a href="/dashboard/alerts" className="text-[10px] font-bold text-signal-500 hover:text-signal-900 hover:underline transition-colors duration-200">View All</a>
             </div>
-            <div className="overflow-y-auto custom-scroll p-3 space-y-2">
+            <div className="overflow-y-auto no-scrollbar p-3 space-y-2">
               {isError && !hasWsData ? (
                 <div className="text-center py-6 text-red-500 text-xs font-semibold">Failed to load alerts.</div>
               ) : alerts.length === 0 ? (
@@ -306,15 +314,15 @@ export default function CommandCenter() {
                   const isHigh = alert.level === 'High';
                   const borderColor = isSevere ? 'border-l-[#DC2626]' : isHigh ? 'border-l-[#EA580C]' : 'border-l-[#CA8A04]';
                   return (
-                  <div key={alert.id} className={`p-3 border-y border-r border-[#EEF0F9] border-l-4 ${borderColor} rounded-r-lg bg-white shadow-sm hover:bg-slate-50 transition-colors`}>
+                  <div key={alert.id} className={`p-3 border-y border-r border-[#EEF0F9] border-l-4 ${borderColor} rounded-r-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] hover:-translate-y-[1px] hover:shadow-[0_4px_12px_rgba(0,0,0,0.04)] transition-all duration-200`}>
                     <div className="flex justify-between items-start mb-2">
-                      <span className={`risk-badge ${RISK_LEVELS[alert.level] || RISK_LEVELS.Safe}`}>{alert.district}</span>
+                      <span className={`risk-badge ${RISK_LEVELS[alert.level] || RISK_LEVELS.Safe} !bg-opacity-50`}>{alert.district}</span>
                       <span className="text-[10px] text-[#9AA1B2] font-medium">
                         {new Date(alert.created_at || alert.timestamp).toLocaleTimeString('en-US', { hour12: false })}
                       </span>
                     </div>
                     <div className="flex items-start gap-2">
-                      <Info className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                      <Activity strokeWidth={1.5} className="w-[18px] h-[18px] text-slate-400 mt-0.5 flex-shrink-0" />
                       <p className="text-xs text-text-primary leading-relaxed">{alert.message}</p>
                     </div>
                   </div>
