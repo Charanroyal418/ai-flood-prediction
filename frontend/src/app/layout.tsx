@@ -1,24 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import QueryProvider from "@/components/QueryProvider";
 import { AuthProvider } from "@/context/AuthContext";
 import ColdStartLoader from "@/components/ColdStartLoader";
 
-import { Nunito, Inter } from "next/font/google";
-
-const nunito = Nunito({
-  subsets: ["latin"],
-  variable: "--font-heading",
-  display: "swap",
-  weight: ["400", "600", "700", "800", "900"],
-});
+import { Inter } from "next/font/google";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+});
+
+const interHeading = Inter({
+  subsets: ["latin"],
+  variable: "--font-heading",
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
 export const metadata: Metadata = {
@@ -60,7 +59,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${nunito.variable} ${inter.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${interHeading.variable} ${inter.variable}`}>
       <head>
       </head>
       <body className="antialiased min-h-screen transition-colors duration-300 font-sans">

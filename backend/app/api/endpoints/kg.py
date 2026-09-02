@@ -56,7 +56,7 @@ router = APIRouter()
 
 # ─── Response Cache ───────────────────────────────────────────────────────────
 _kg_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
-_KG_CACHE_TTL = 60  # 60 seconds — suitable for live EOC platform
+_KG_CACHE_TTL = 300  # 300 seconds (5 minutes) — suitable for live EOC platform
 
 
 def _invalidate_cache():

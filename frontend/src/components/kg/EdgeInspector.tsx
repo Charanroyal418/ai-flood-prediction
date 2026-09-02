@@ -1,7 +1,8 @@
 "use client";
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GitBranch, Clock, BarChart3, AlertTriangle, X, ArrowRight, Droplets, Percent } from "lucide-react";
+import { Network, Activity, Clock, ShieldAlert, AlertTriangle, Route, Target, Percent, GitBranch, ArrowRight, ActivitySquare, Brain, Droplets, X } from "lucide-react";
+import { safeFormat } from "@/lib/utils";
 
 interface EdgeData {
   edge_id: string;
@@ -21,6 +22,7 @@ interface EdgeData {
   source_risk: number;
   target_risk: number;
   last_updated: string;
+  type?: string;
 }
 
 interface Props {
@@ -91,8 +93,8 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
                 <div className="flex items-center gap-2">
                   <div className="flex-1 rounded-lg bg-slate-700/50 p-2.5 text-center">
                     <p className="text-[9px] text-slate-400 mb-0.5">SOURCE</p>
-                    <p className="text-xs font-bold text-white leading-tight">{edgeData.source_label}</p>
-                    <p className="text-[10px] font-mono text-orange-400 mt-1">{(Number(edgeData?.source_risk) || 0).toFixed(1)} risk</p>
+                    <p className="text-xs font-bold text-white uppercase">{edgeData?.source_label || edgeData?.source}</p>
+                    <p className="text-[10px] font-mono text-orange-400 mt-1">{safeFormat(edgeData?.source_risk, 1, "0.0")} risk</p>
                   </div>
                   <div className="flex flex-col items-center gap-0.5">
                     <ArrowRight className="w-4 h-4" style={{ color: edgeData.color }} />
@@ -100,8 +102,8 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
                   </div>
                   <div className="flex-1 rounded-lg bg-slate-700/50 p-2.5 text-center">
                     <p className="text-[9px] text-slate-400 mb-0.5">TARGET</p>
-                    <p className="text-xs font-bold text-white leading-tight">{edgeData.target_label}</p>
-                    <p className="text-[10px] font-mono text-rose-400 mt-1">{(Number(edgeData?.target_risk) || 0).toFixed(1)} risk</p>
+                    <p className="text-xs font-bold text-white uppercase">{edgeData?.target_label || edgeData?.target}</p>
+                    <p className="text-[10px] font-mono text-rose-400 mt-1">{safeFormat(edgeData?.target_risk, 1, "0.0")} risk</p>
                   </div>
                 </div>
               </div>
@@ -122,12 +124,12 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
               {/* Metrics Grid */}
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: "GAT Attention", val: `${(Number(edgeData?.attention ?? 0) * 100).toFixed(1)}%`, icon: BarChart3, color: "text-indigo-400" },
-                  { label: "Influence Score", val: (Number(edgeData?.influence) || 0).toFixed(2), icon: AlertTriangle, color: "text-rose-400" },
-                  { label: "Propagation Prob", val: `${(Number(edgeData?.propagation_probability ?? 0) * 100).toFixed(1)}%`, icon: Percent, color: "text-amber-400" },
-                  { label: "Confidence", val: `${(Number(edgeData?.confidence ?? 0) * 100).toFixed(1)}%`, icon: BarChart3, color: "text-teal-400" },
-                  { label: "Edge Type", val: edgeData?.type || "FLOWS_TO", icon: Activity, color: "text-violet-400" },
-                  { label: "Edge Weight", val: (Number(edgeData?.weight) || 0).toFixed(3), icon: GitBranch, color: "text-purple-400" },
+                  { label: "GAT Attention", val: `${safeFormat(edgeData?.attention * 100, 1, "0.0")}%`, icon: ActivitySquare, color: "text-indigo-400" },
+                  { label: "Influence Score", val: safeFormat(edgeData?.influence, 2, "0.00"), icon: AlertTriangle, color: "text-rose-400" },
+                  { label: "Propagation Prob", val: `${safeFormat(edgeData?.propagation_probability * 100, 1, "0.0")}%`, icon: Percent, color: "text-amber-400" },
+                  { label: "Confidence", val: `${safeFormat(edgeData?.confidence * 100, 1, "0.0")}%`, icon: Brain, color: "text-teal-400" },
+                  { label: "Travel Time", val: `${edgeData?.travel_time_min}m`, icon: Clock, color: "text-sky-400" },
+                  { label: "Edge Weight", val: safeFormat(edgeData?.weight, 3, "0.000"), icon: GitBranch, color: "text-purple-400" },
                 ].map(({ label, val, icon: Icon, color }) => (
                   <div key={label} className="rounded-lg bg-slate-800/40 border border-slate-700/30 p-3">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -142,9 +144,9 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
               {/* Attention + Influence bars */}
               <div className="space-y-3">
                 <div>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-[10px] text-slate-400">GAT Attention Weight</span>
-                    <span className="text-[10px] font-mono font-bold text-white">{(Number(edgeData?.attention ?? 0) * 100).toFixed(1)}%</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-slate-400">GNN Attention Weight</span>
+                    <span className="text-[10px] font-mono font-bold text-white">{safeFormat(edgeData?.attention * 100, 1, "0.0")}%</span>
                   </div>
                   <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
                     <motion.div
@@ -155,9 +157,9 @@ export default function EdgeInspector({ edgeId, edgeData, loading, onClose }: Pr
                   </div>
                 </div>
                 <div>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-[10px] text-slate-400">Propagation Probability</span>
-                    <span className="text-[10px] font-mono font-bold text-white">{(Number(edgeData?.propagation_probability ?? 0) * 100).toFixed(1)}%</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-slate-400">Propagation Risk</span>
+                    <span className="text-[10px] font-mono font-bold text-white">{safeFormat(edgeData?.propagation_probability * 100, 1, "0.0")}%</span>
                   </div>
                   <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
                     <motion.div

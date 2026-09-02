@@ -63,25 +63,45 @@
   }
 
   /* Typography Base */
-  h1, h2, h3, h4, h5, h6 {
+  h1, .text-title {
     font-family: var(--font-heading);
     font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  h2, h3, h4, h5, h6, .section-heading {
+    font-family: var(--font-heading);
+    font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.2;
+  }
+
+  label, .text-label {
+    font-weight: 500;
+  }
+
+  body {
+    font-weight: 400;
+  }
+
+  .number-data {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
   }
 }
 
 @layer components {
-  /* ── Clean Metric Cards ─────────────────────────────────────────────────── */
+  /* ── Clean Metric Cards (Glass White, 16px radius, subtle shadows) ──────── */
   .metric-card {
-    @apply bg-paper-100 p-4 transition-all duration-300 rounded-[20px];
-    border: 1px solid rgba(99,102,241,0.1);
-    box-shadow: 0 2px 8px rgba(99,102,241,0.04), 0 8px 24px rgba(99,102,241,0.03);
+    @apply bg-white/80 backdrop-blur-md p-4 transition-all duration-300 rounded-[16px];
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
   }
   
   .metric-card:hover {
     @apply -translate-y-[3px] scale-[1.01];
-    box-shadow: 0 8px 20px rgba(99,102,241,0.08), 0 16px 40px rgba(99,102,241,0.06);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
   }
 
   /* ── Command Center Buttons ────────────────────────────────────────────── */
@@ -145,15 +165,15 @@
 
   /* ── EOC Professional Polish ──────────────────────────────────────────── */
   .glass-card {
-    @apply bg-white/70 border border-white/60 shadow-[0_8px_32px_rgba(99,102,241,0.08)] rounded-[20px] transition-all duration-300;
+    @apply bg-white/80 backdrop-blur-md border border-white/60 shadow-sm rounded-[16px] transition-all duration-300;
   }
   
   .glass-card:hover {
-    @apply shadow-xl border-slate-300/80 -translate-y-0.5;
+    @apply shadow-md border-slate-300/80 -translate-y-0.5;
   }
 
   .glass-card-flat {
-    @apply bg-white border border-slate-200/60 shadow-sm rounded-xl transition-all duration-200;
+    @apply bg-white border border-slate-200/60 shadow-sm rounded-[16px] transition-all duration-200;
   }
 }
 

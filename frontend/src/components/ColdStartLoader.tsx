@@ -12,6 +12,7 @@ export default function ColdStartLoader() {
     if (sessionStorage.getItem("backend_awake")) return;
 
     let timeoutId: NodeJS.Timeout;
+    let maxWaitId: NodeJS.Timeout;
 
     const checkHealth = async () => {
       // If the backend doesn't respond within 1.5s, assume it's waking up
@@ -20,14 +21,20 @@ export default function ColdStartLoader() {
         setShow(true);
       }, 1500);
 
+      maxWaitId = setTimeout(() => {
+        setIsWaking(false);
+        setTimeout(() => setShow(false), 500);
+      }, 8000);
+
       try {
-        await api.get("/health");
+        await api.get("/health", { timeout: 8000 });
         // Success!
         sessionStorage.setItem("backend_awake", "true");
       } catch (err) {
         console.error("Health check failed", err);
       } finally {
         clearTimeout(timeoutId);
+        clearTimeout(maxWaitId);
         setIsWaking(false);
         // Fade out
         setTimeout(() => setShow(false), 500);

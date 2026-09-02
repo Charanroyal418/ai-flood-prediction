@@ -11,12 +11,24 @@ from app.core.security import decode_token
 
 
 def get_db() -> Generator:
-    """Yield a SQLAlchemy database session and close it after use."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    """Yield a SQLAlchemy database session with retry on OperationalError."""
+    import time
+    from sqlalchemy.exc import OperationalError
+    
+    retries = 3
+    for attempt in range(retries):
+        try:
+            db = SessionLocal()
+            yield db
+            break
+        except OperationalError:
+            if attempt < retries - 1:
+                time.sleep(0.5)
+            else:
+                raise
+        finally:
+            if 'db' in locals() and hasattr(db, 'close'):
+                db.close()
 
 
 # ── Optional JWT Auth ─────────────────────────────────────────────────────────

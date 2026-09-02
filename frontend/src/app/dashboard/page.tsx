@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import { safeFormat } from "@/lib/utils";
 
 const FloodMap = dynamicImport(() => import("@/components/map/FloodMap"), { ssr: false, loading: () => <MapSkeleton /> });
 
@@ -169,7 +170,7 @@ export default function CommandCenter() {
       </div>
 
       {/* ── Hero Status Readout ───────────────────────────────────────── */}
-      <div className="bg-gradient-to-br from-white to-indigo-50/50 border border-[#EEF0F9] border-l-[6px] border-l-signal-600 rounded-[14px] p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-[0_8px_24px_rgba(79,70,229,0.04)]">
+      <div className="bg-gradient-to-br from-white to-indigo-50/50 border border-[#EEF0F9] border-l-[6px] border-l-signal-600 rounded-[16px] p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-[0_8px_24px_rgba(79,70,229,0.04)]">
         <div>
           <p className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold mb-2">Current System State</p>
           <div className="flex items-baseline gap-4">
@@ -181,7 +182,7 @@ export default function CommandCenter() {
         <div className="flex gap-8">
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold mb-1">Statewide Avg Risk</p>
-            <p className="text-3xl text-text-primary font-bold tabular-nums">{(Number(metrics?.avg_risk_score) || 0).toFixed(1) || "0.0"}<span className="text-sm text-text-secondary ml-1">/100</span></p>
+            <p className="text-3xl text-text-primary font-bold tabular-nums">{safeFormat(metrics?.avg_risk_score, 1, "0.0")}<span className="text-sm text-text-secondary ml-1">/100</span></p>
           </div>
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-widest text-[#9AA1B2] font-bold mb-1">Active Alerts</p>
@@ -194,7 +195,7 @@ export default function CommandCenter() {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         {isLoading && !hasWsData ? (
           isSlowLoading ? (
-            <div className="col-span-full h-24 flex items-center justify-center bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+            <div className="col-span-full h-24 flex items-center justify-center bg-indigo-50/50 border border-indigo-100 rounded-[16px]">
               <div className="text-center flex flex-col items-center">
                 <p className="text-sm font-semibold text-indigo-600 flex items-center gap-2">
                   <Activity className="w-4 h-4 animate-pulse" /> Waking up backend... this may take up to 60 seconds on the free tier.
@@ -202,10 +203,10 @@ export default function CommandCenter() {
               </div>
             </div>
           ) : (
-            Array.from({length: 7}).map((_, i) => <div key={i} className="h-24 skeleton" />)
+            Array.from({length: 7}).map((_, i) => <div key={i} className="h-24 skeleton rounded-[16px]" />)
           )
         ) : isError && !hasWsData ? (
-          <div className="col-span-full h-24 flex items-center justify-center bg-red-50/50 border border-red-100 rounded-2xl">
+          <div className="col-span-full h-24 flex items-center justify-center bg-red-50/50 border border-red-100 rounded-[16px]">
             <div className="text-center flex flex-col items-center">
               <p className="text-sm font-semibold text-red-600 mb-2 flex items-center gap-1">
                 <AlertTriangle className="w-4 h-4" /> Connection Failed
@@ -231,8 +232,8 @@ export default function CommandCenter() {
       {/* ── Main Layout: Map + Side Panel ─────────────────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 h-[600px]">
         {/* Map */}
-        <div className="xl:col-span-2 bg-paper-100 border border-[#EEF0F9] rounded-[20px] overflow-hidden flex flex-col relative shadow-[inset_0_0_0_1px_rgba(238,240,249,1)]">
-          <div className="absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-md border border-white/60 px-5 py-4 rounded-2xl shadow-[0_4px_12px_rgba(0,0,0,0.06)]">
+        <div className="xl:col-span-2 glass-card overflow-hidden flex flex-col relative">
+          <div className="absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-md border border-white/60 px-5 py-4 rounded-[16px] shadow-[0_4px_12px_rgba(0,0,0,0.06)]">
             <p className="text-[10px] uppercase tracking-[0.05em] font-bold text-[#9AA1B2] mb-3">Risk Legend</p>
             <div className="flex gap-4">
               {["Critical", "High", "Moderate", "Low"].map(level => (
@@ -259,7 +260,7 @@ export default function CommandCenter() {
         <div className="flex flex-col gap-4 overflow-hidden">
           
           {/* High Risk Targets */}
-          <div className="premium-card bg-paper-100 border border-[#EEF0F9] rounded-[20px] p-4 flex flex-col flex-1 shadow-[0_4px_12px_rgba(79,70,229,0.03)] transition-all duration-300 hover:shadow-[0_8px_24px_rgba(79,70,229,0.06)] hover:-translate-y-[2px]">
+          <div className="glass-card p-4 flex flex-col flex-1">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[10px] uppercase tracking-[0.05em] text-[#9AA1B2] font-bold">Top Risk Nodes</h3>
             </div>
@@ -285,7 +286,7 @@ export default function CommandCenter() {
                     <tr key={d.id || d.name || idx}>
                       <td className="font-medium text-text-primary">{d.name}</td>
                       <td className="text-right text-text-primary font-bold tabular-nums">
-                        {typeof d.risk_score === 'number' ? (Number(d?.risk_score) || 0).toFixed(1) : d.risk_score}
+                        {typeof d.risk_score === 'number' ? safeFormat(d.risk_score, 1, "0.0") : d.risk_score}
                       </td>
                       <td className="text-right">
                         <span className={`risk-badge ${RISK_LEVELS[d.risk_level] || RISK_LEVELS.Safe}`}>{d.risk_level}</span>
@@ -298,7 +299,7 @@ export default function CommandCenter() {
           </div>
 
           {/* Active Alerts Feed */}
-          <div className="premium-card bg-paper-100 border border-[#EEF0F9] rounded-[20px] p-4 flex flex-col h-[280px] shadow-[0_4px_12px_rgba(79,70,229,0.03)] transition-all duration-300 hover:shadow-[0_8px_24px_rgba(79,70,229,0.06)] hover:-translate-y-[2px]">
+          <div className="glass-card p-4 flex flex-col h-[280px]">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[10px] uppercase tracking-[0.05em] text-[#9AA1B2] font-bold">Active Alerts</h3>
               <a href="/dashboard/alerts" className="text-[10px] font-bold text-signal-500 hover:text-signal-900 hover:underline transition-colors duration-200">View All</a>

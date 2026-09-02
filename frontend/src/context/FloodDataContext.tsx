@@ -166,41 +166,6 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [pipelineData, setPipelineData] = useState<any | null>(null);
   const [kgData, setKgData] = useState<any | null>(null);
 
-  // Initial Sync from REST API
-  useEffect(() => {
-    let isMounted = true;
-    api.get("/dashboard/live").then((res) => {
-      if (!isMounted || !res.data) return;
-      const data = res.data;
-      if (data.metrics?.storm_simulation_active !== undefined) {
-        setStormSimulationActive(Boolean(data.metrics.storm_simulation_active));
-      }
-      if (data.storm_simulation) {
-        setSimulationMeta({
-          scenario: data.storm_simulation.scenario || DEFAULT_SIM_META.scenario,
-          category: data.storm_simulation.category || DEFAULT_SIM_META.category,
-          startedAt: data.storm_simulation.started_at || DEFAULT_SIM_META.startedAt,
-          durationMinutes: data.storm_simulation.duration_minutes || 30,
-          simulationId: data.storm_simulation.simulation_id || DEFAULT_SIM_META.simulationId,
-          predictionSource: data.storm_simulation.prediction_source || DEFAULT_SIM_META.predictionSource,
-        });
-      }
-      if (data.districts && Array.isArray(data.districts)) {
-        setDistricts(data.districts);
-      }
-      if (data.alerts && Array.isArray(data.alerts)) {
-        setAlerts(data.alerts);
-      }
-      if (data.timestamp) {
-        setLastUpdated(data.timestamp);
-      }
-    }).catch(err => {
-      console.warn("Initial FloodDataContext fetch warning:", err);
-    });
-
-    return () => { isMounted = false; };
-  }, []);
-
   const refetchPipeline = useCallback(async () => {
     try {
       const res = await api.get("/predict/inference-cycle");
@@ -226,10 +191,74 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Initial Sync from REST API
   useEffect(() => {
-    refetchPipeline();
-    refetchKg();
-  }, [refetchPipeline, refetchKg]);
+    let isMounted = true;
+
+    const fetchInitialData = async () => {
+      try {
+        const [dashboardRes, pipelineRes, kgRes] = await Promise.allSettled([
+          api.get("/dashboard/live"),
+          api.get("/predict/inference-cycle"),
+          api.get("/kg/graph")
+        ]);
+
+        if (!isMounted) return;
+
+        // 1. Process Dashboard Live Data
+        if (dashboardRes.status === "fulfilled" && dashboardRes.value?.data) {
+          const data = dashboardRes.value.data;
+          if (data.metrics?.storm_simulation_active !== undefined) {
+            setStormSimulationActive(Boolean(data.metrics.storm_simulation_active));
+          }
+          if (data.storm_simulation) {
+            setSimulationMeta({
+              scenario: data.storm_simulation.scenario || DEFAULT_SIM_META.scenario,
+              category: data.storm_simulation.category || DEFAULT_SIM_META.category,
+              startedAt: data.storm_simulation.started_at || DEFAULT_SIM_META.startedAt,
+              durationMinutes: data.storm_simulation.duration_minutes || 30,
+              simulationId: data.storm_simulation.simulation_id || DEFAULT_SIM_META.simulationId,
+              predictionSource: data.storm_simulation.prediction_source || DEFAULT_SIM_META.predictionSource,
+            });
+          }
+          if (data.districts && Array.isArray(data.districts)) {
+            setDistricts(data.districts);
+          }
+          if (data.alerts && Array.isArray(data.alerts)) {
+            setAlerts(data.alerts);
+          }
+          if (data.timestamp) {
+            setLastUpdated(data.timestamp);
+          }
+        }
+
+        // 2. Process Pipeline Data
+        if (pipelineRes.status === "fulfilled" && pipelineRes.value?.data) {
+          const data = pipelineRes.value.data;
+          setPipelineData(data);
+          if (data.status === "waiting_for_telemetry" || data.status === "processing") {
+            setTimeout(refetchPipeline, 3000);
+          }
+        } else if (pipelineRes.status === "rejected") {
+          setPipelineData({ status: "error", message: pipelineRes.reason.message || "Pipeline engine offline or timed out." });
+        }
+
+        // 3. Process KG Data
+        if (kgRes.status === "fulfilled" && kgRes.value?.data) {
+          setKgData(kgRes.value.data);
+        } else if (kgRes.status === "rejected") {
+          setKgData({ status: "error", message: kgRes.reason.message, nodes: [], edges: [], communities: [], stats: {} });
+        }
+
+      } catch (err) {
+        console.warn("Initial FloodDataContext fetch warning:", err);
+      }
+    };
+
+    fetchInitialData();
+
+    return () => { isMounted = false; };
+  }, [refetchPipeline]);
 
   // ─── Dashboard Channel ─────────────────────────────────────────────
   const handleDashboardMessage = useCallback(

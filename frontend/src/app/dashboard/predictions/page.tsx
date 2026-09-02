@@ -10,6 +10,7 @@ import {
   Eye, ChevronRight, ChevronDown, ChevronUp, Search, BarChart2, AlertTriangle, Network,
   Activity, Sliders, ShieldAlert, RefreshCw, Layers
 } from "lucide-react";
+import { safeFormat } from "@/lib/utils";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ function CircularGauge({ value, label, color }: { value: number; label: string; 
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-2xl font-heading font-extrabold text-text-primary tabular-nums tracking-wide">{pct.toFixed(0)}%</span>
+          <span className="text-2xl font-heading font-extrabold text-text-primary tabular-nums tracking-wide">{safeFormat(pct, 0)}%</span>
         </div>
       </div>
       <span className="text-xs uppercase tracking-widest font-bold text-text-secondary">{label}</span>
@@ -236,7 +237,10 @@ export default function PredictionEnginePage() {
   const hasWsData = wsDistricts && wsDistricts.length > 0;
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
-  if (!data || data.status === "waiting_for_telemetry" || data.status === "error" || !data.districts || data.districts.length === 0) {
+  const showFallback = telemetryWaitTime >= 5;
+  const isWaiting = (!data || data.status === "waiting_for_telemetry" || !data.districts || data.districts.length === 0);
+
+  if (isWaiting && !showFallback && data?.status !== "error") {
     if (hasWsData) {
       return (
         <div className="flex min-h-[50vh] items-center justify-center">
@@ -248,13 +252,6 @@ export default function PredictionEnginePage() {
             <p className="text-xs text-text-secondary max-w-sm">
               Live telemetry is active. Waiting for the GDNN cycle to complete. {telemetryWaitTime > 0 ? `(${telemetryWaitTime}s)` : ""}
             </p>
-            {telemetryWaitTime > 15 && (
-               <div className="mt-4 flex gap-3">
-                 <button onClick={() => refetchPipeline()} className="btn-primary bg-signal-500 hover:bg-signal-600">
-                    <RefreshCw className="w-4 h-4" /> Force Retry
-                 </button>
-               </div>
-            )}
           </div>
         </div>
       );
@@ -263,15 +260,34 @@ export default function PredictionEnginePage() {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
-          <AlertTriangle className={`w-8 h-8 ${isError ? 'text-risk-severe' : 'text-signal-500'}`} />
+          <AlertTriangle className="w-8 h-8 text-signal-500" />
           <h2 className="text-sm font-bold text-text-primary">
-            {isError ? "Engine Offline" : "Waiting for Telemetry"}
+            Waiting for Telemetry
           </h2>
           <p className="text-xs text-text-secondary max-w-sm">
             {data?.message || "Pipeline is currently waiting for initial data ingestion."}
           </p>
           <button onClick={() => refetchPipeline()} className="btn-primary">
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} /> Refresh Pipeline
+            <RefreshCw className="w-4 h-4 animate-spin" /> Refresh Pipeline
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (data?.status === "error") {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <AlertTriangle className="w-8 h-8 text-risk-severe" />
+          <h2 className="text-sm font-bold text-text-primary">
+            Engine Offline
+          </h2>
+          <p className="text-xs text-text-secondary max-w-sm">
+            {data?.message || "Failed to load prediction pipeline."}
+          </p>
+          <button onClick={() => refetchPipeline()} className="btn-primary bg-risk-severe hover:bg-red-800">
+            <RefreshCw className="w-4 h-4" /> Force Retry
           </button>
         </div>
       </div>
@@ -368,7 +384,7 @@ export default function PredictionEnginePage() {
         <StatCard 
           icon={Zap} 
           title="Total Latency" 
-          value={`${data?.total_latency_ms || Number(totalLatencySum || 0).toFixed(1)} ms`} 
+          value={`${data?.total_latency_ms || safeFormat(totalLatencySum, 1)} ms`}
           subtitle="End-to-end processing" 
           extraIcon={<span className="w-2 h-2 rounded-full bg-signal-500 animate-pulse" />} 
         />
@@ -567,7 +583,7 @@ export default function PredictionEnginePage() {
                         {d.risk_level.toUpperCase()}
                       </div>
                       <span className="text-3xl font-black tabular-nums tracking-tight mt-1" style={{ color: riskAccent }}>
-                        {Number(d.risk_score ?? 0).toFixed(1)}%
+                        {safeFormat(d.risk_score, 1, "0.0")}%
                       </span>
                     </div>
                   </div>
@@ -642,7 +658,7 @@ export default function PredictionEnginePage() {
                             />
                           </div>
                           <span className="text-sm font-bold tabular-nums w-12 text-right" style={{ color: barColor }}>
-                            {pctLabel.toFixed(1)}%
+                            {safeFormat(pctLabel, 1, "0.0")}%
                           </span>
                         </div>
                       );

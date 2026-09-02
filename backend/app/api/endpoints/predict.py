@@ -14,34 +14,34 @@ router = APIRouter()
 
 class PredictionRequest(BaseModel):
     # Old fields for backward compatibility
-    district_name: Optional[str] = "Unknown"
-    rainfall_24h: Optional[float] = 0.0
-    rainfall_72h: Optional[float] = 0.0
-    river_level: Optional[float] = 0.0
-    river_discharge: Optional[float] = 0.0
-    elevation: Optional[float] = 0.0
-    slope: Optional[float] = 0.0
-    distance_to_river: Optional[float] = 0.0
-    impervious_area: Optional[float] = 0.0
-    population_density: Optional[float] = 0.0
+    district_name: Optional[str] = Field(default="Unknown", description="Name of the district")
+    rainfall_24h: Optional[float] = Field(default=0.0, description="Rainfall in the last 24 hours")
+    rainfall_72h: Optional[float] = Field(default=0.0, description="Rainfall in the last 72 hours")
+    river_level: Optional[float] = Field(default=0.0, description="Current river level")
+    river_discharge: Optional[float] = Field(default=0.0, description="River discharge rate")
+    elevation: Optional[float] = Field(default=0.0, description="Elevation in meters")
+    slope: Optional[float] = Field(default=0.0, description="Slope in degrees")
+    distance_to_river: Optional[float] = Field(default=0.0, description="Distance to nearest river")
+    impervious_area: Optional[float] = Field(default=0.0, description="Percentage of impervious area")
+    population_density: Optional[float] = Field(default=0.0, description="Population density")
     
     # New fields coming from frontend Dashboard Simulator
-    lat: Optional[float] = 0.0
-    lon: Optional[float] = 0.0
-    rainfall_24h_mm: Optional[float] = 0.0
-    elevation_m: Optional[float] = 0.0
-    distance_to_river_m: Optional[float] = 0.0
-    soil_moisture_index: Optional[float] = 0.0
-    slope_degrees: Optional[float] = 0.0
+    lat: Optional[float] = Field(default=0.0, description="Latitude")
+    lon: Optional[float] = Field(default=0.0, description="Longitude")
+    rainfall_24h_mm: Optional[float] = Field(default=0.0, description="Rainfall in mm")
+    elevation_m: Optional[float] = Field(default=0.0, description="Elevation in meters")
+    distance_to_river_m: Optional[float] = Field(default=0.0, description="Distance to river in meters")
+    soil_moisture_index: Optional[float] = Field(default=0.0, description="Soil moisture index")
+    slope_degrees: Optional[float] = Field(default=0.0, description="Slope in degrees")
 
 class PredictionResponse(BaseModel):
-    district: str
-    risk_score: float
-    risk_level: str
-    confidence: float
-    probability: float
-    top_reasons: List[str]
-    recommended_actions: List[str]
+    district: str = Field(..., description="District name")
+    risk_score: float = Field(..., description="Calculated risk score 0-100")
+    risk_level: str = Field(..., description="Risk category: Safe, Low, Moderate, High, Severe")
+    confidence: float = Field(..., description="AI confidence score 0-1")
+    probability: float = Field(..., description="Flood probability percentage")
+    top_reasons: List[str] = Field(..., description="Key drivers for the prediction")
+    recommended_actions: List[str] = Field(..., description="Suggested actions")
 
 # Global cache for GDNN
 _gnn_model = None

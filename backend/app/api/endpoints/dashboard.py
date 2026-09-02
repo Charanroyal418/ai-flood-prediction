@@ -46,17 +46,10 @@ def trigger_graph(db: Session = Depends(deps.get_db)):
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/live")
-def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
-    """
-    Unified live data endpoint for the dashboard.
-    Returns real-time data from the GDNN inference and weather ETL.
-    Cached in RAM for 10 seconds for sub-millisecond response.
-    """
-    global _dash_live_cache
-    now_t = time.time()
-    # Cache skipped temporarily
-    
+from fastapi import BackgroundTasks
+from app.db.session import SessionLocal
+
+def _build_dashboard_live(db: Session) -> Any:
     now = datetime.now(timezone.utc)
     
     # Get latest inference metrics
@@ -66,8 +59,6 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     # Get all districts
     districts = db.query(District).all()
     
-    # File dump removed for performance
-    # Using a subquery or just fetching latest 500 and grouping by district
     all_preds = db.query(PredictionHistory).order_by(PredictionHistory.created_at.desc()).limit(200).all()
     pred_map = {}
     for p in all_preds:
@@ -93,7 +84,6 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         p = pred_map.get(d.id)
         w = weather_map.get(d.id)
 
-        # Expose explicit None for missing telemetry to trigger UI 'Unavailable' states, avoid fake 0.0
         risk_score = (p.current_risk_score if p.current_risk_score is not None else 0.0) if p else 0.0
         confidence = (p.confidence if p.confidence is not None else 0.0) if p else 0.0
         shap_values = (p.shap_values or []) if p else []
@@ -114,27 +104,27 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         river_danger_m = 0.0
         r_lvl = river_map.get(d.id)
         if r_lvl:
-            river_level_m = r_lvl.current_level
-            river_danger_m = r_lvl.danger_level
+            river_level_m = float(r_lvl.current_level or 0.0)
+            river_danger_m = float(r_lvl.danger_level or 0.0)
             
         districts_with_risk.append({
             "id": d.id,
             "name": d.name,
             "lat": lat,
             "lon": lon,
-            "population": d.population,
-            "risk_score": risk_score,
+            "population": d.population or 0,
+            "risk_score": float(risk_score),
             "risk_level": risk_lvl,
             "risk_color": color,
-            "rainfall_mm": rainfall_mm,
-            "humidity": humidity,
-            "temperature": temperature,
-            "pressure": pressure,
-            "wind_speed": wind_speed,
+            "rainfall_mm": float(rainfall_mm),
+            "humidity": float(humidity),
+            "temperature": float(temperature),
+            "pressure": float(pressure),
+            "wind_speed": float(wind_speed),
             "river_level_m": river_level_m,
             "river_danger_m": river_danger_m,
-            "flood_probability": risk_score / 100.0,
-            "ai_confidence": confidence,
+            "flood_probability": float(risk_score) / 100.0,
+            "ai_confidence": float(confidence),
             "shap_values": shap_values,
         })
         
@@ -142,12 +132,11 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
     
     critical = [d for d in districts_with_risk if d["risk_level"] in ["Critical", "Severe"]]
     high = [d for d in districts_with_risk if d["risk_level"] == "High"]
-    avg_risk = sum(d["risk_score"] for d in districts_with_risk) / len(districts_with_risk) if districts_with_risk else 0
+    avg_risk = sum(d["risk_score"] for d in districts_with_risk) / len(districts_with_risk) if districts_with_risk else 0.0
     valid_rainfalls = [d["rainfall_mm"] for d in districts_with_risk if d.get("rainfall_mm") is not None]
     avg_rainfall = sum(valid_rainfalls) / len(valid_rainfalls) if valid_rainfalls else 0.0
     
     # Active alerts
-    # An alert is considered active if the district is currently in a "Critical", "Severe", or "High" risk state.
     active_district_ids = {d["id"] for d in districts_with_risk if d["risk_level"] in ["Critical", "Severe", "High"]}
     active_alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(200).all()
     
@@ -157,7 +146,7 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         if a.district_id not in active_district_ids:
             continue
         if a.district_id in seen_districts:
-            continue  # Only show the latest alert per active district
+            continue
         seen_districts.add(a.district_id)
         
         d_name = next((d["name"] for d in districts_with_risk if d["id"] == a.district_id), "Unknown")
@@ -168,30 +157,26 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             rainfall_val = float(match.group(1))
         else:
             w = weather_map.get(a.district_id)
-            rainfall_val = w.rainfall_mm if w else 0.0
+            rainfall_val = float(w.rainfall_mm or 0.0) if w else 0.0
         
         alerts_data.append({
             "id": f"alert-{a.id}",
             "district_id": a.district_id,
             "district": d_name,
-            "level": a.level,
+            "level": a.level or "High",
             "severity": "Red" if a.level in ["Critical", "Severe"] else "Orange",
-            "message": a.message,
-            "suggested_response": a.suggested_response,
-            "created_at": a.created_at.isoformat(),
-            "confidence": a.confidence if a.confidence is not None else 0.0,
-            "rainfall_mm": rainfall_val,
+            "message": a.message or "",
+            "suggested_response": a.suggested_response or "",
+            "created_at": a.created_at.isoformat() if a.created_at else now.isoformat(),
+            "confidence": float(a.confidence or 0.0),
+            "rainfall_mm": float(rainfall_val),
         })
 
-    # Removed synthetic alert generation
-        
     # Latest Real-Time Operational Pipeline Events
     kg_events = db.query(KnowledgeGraphEvents).order_by(KnowledgeGraphEvents.created_at.desc()).limit(15).all()
     events_data = []
     
-    # Use actual timing from ModelInference table if available
-    # Distribute inference time across pipeline stages proportionally
-    total_ms = inf.inference_time_ms if inf and inf.inference_time_ms else 120.0
+    total_ms = float(inf.inference_time_ms or 120.0) if inf else 120.0
     stage_timings = [
         ("Weather updated", "Open-Meteo ETL", round(total_ms * 0.10, 1)),
         ("River telemetry received", "River Telemetry Stream", round(total_ms * 0.07, 1)),
@@ -222,8 +207,6 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
             "risk_level": d_obj["risk_level"] if d_obj else "Low"
         })
     
-    # Removed synthetic operational event generation
-    
     # 7-day Precipitation Forecast (State average)
     weekly_forecast = []
     
@@ -235,38 +218,34 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
                 weekly_forecast = json.load(f)
         except Exception:
             pass
-            
-    # Fallback to empty forecast removed
 
-    from app.services.orchestrator import get_storm_simulation_active, get_storm_simulation_meta
+    from app.services.orchestrator import get_storm_simulation_meta
     sim_meta = get_storm_simulation_meta()
 
-    # Compute real average AI confidence from latest predictions
     all_confidences = [d["ai_confidence"] for d in districts_with_risk if d.get("ai_confidence")]
     avg_confidence = round(sum(all_confidences) / len(all_confidences), 3) if all_confidences else 0.0
 
-    # Real inference time from ModelInference table (GNN pass only, not full ETL pipeline)
-    gdnn_ms = round(inf.inference_time_ms if inf and inf.inference_time_ms else 0.0, 1)
-    kg_nodes = inf.node_count if inf else 0
-    kg_edges = inf.edge_count if inf else 0
-    attention_heads = 4 # Known configuration for GAT model
+    gdnn_ms = round(float(inf.inference_time_ms or 0.0), 1) if inf else 0.0
+    kg_nodes = int(inf.node_count or 0) if inf else 0
+    kg_edges = int(inf.edge_count or 0) if inf else 0
+    attention_heads = 4
 
-    res = {
+    return {
         "status": "online",
         "timestamp": last_updated_ts,
         "metrics": {
-            "avg_risk_score": round(avg_risk, 1),
+            "avg_risk_score": float(round(avg_risk, 1)),
             "active_alerts_count": len(alerts_data),
             "critical_districts": len(critical),
             "high_risk_districts": len(high),
-            "avg_rainfall_24h_mm": round(avg_rainfall, 1),
+            "avg_rainfall_24h_mm": float(round(avg_rainfall, 1)),
             "districts_monitored": len(districts),
-            "model_confidence": avg_confidence,
-            "gdnn_inference_ms": gdnn_ms,
+            "model_confidence": float(avg_confidence),
+            "gdnn_inference_ms": float(gdnn_ms),
             "kg_nodes": kg_nodes,
             "kg_edges": kg_edges,
             "attention_heads": attention_heads,
-            "storm_simulation_active": sim_meta["active"],
+            "storm_simulation_active": bool(sim_meta.get("active", False)),
         },
         "storm_simulation": sim_meta,
         "districts": districts_with_risk,
@@ -275,8 +254,40 @@ def get_dashboard_live(db: Session = Depends(deps.get_db)) -> Any:
         "events": events_data,
         "weekly_forecast": weekly_forecast,
     }
-    _dash_live_cache = {"ts": time.time(), "data": res}
-    return res
+
+def _async_update_dashboard_cache():
+    global _dash_live_cache
+    db = SessionLocal()
+    try:
+        data = _build_dashboard_live(db)
+        _dash_live_cache = {"ts": time.time(), "data": data}
+    except Exception as e:
+        import logging
+        logging.error(f"Error updating dashboard cache: {e}")
+    finally:
+        db.close()
+
+@router.get("/live")
+def get_dashboard_live(background_tasks: BackgroundTasks, db: Session = Depends(deps.get_db)) -> Any:
+    """
+    Unified live data endpoint for the dashboard.
+    Returns real-time data from the GDNN inference and weather ETL.
+    Cached in RAM for 10 seconds for sub-millisecond response.
+    """
+    global _dash_live_cache
+    
+    is_stale = _dash_live_cache["data"] is None or (time.time() - _dash_live_cache["ts"] > _DASH_CACHE_TTL)
+    
+    if is_stale:
+        if _dash_live_cache["data"] is None:
+            # Build synchronously for the first hit
+            data = _build_dashboard_live(db)
+            _dash_live_cache = {"ts": time.time(), "data": data}
+        else:
+            # Refresh in background
+            background_tasks.add_task(_async_update_dashboard_cache)
+            
+    return _dash_live_cache["data"]
 
 @router.get("/districts")
 def get_all_districts(db: Session = Depends(deps.get_db)) -> Any:

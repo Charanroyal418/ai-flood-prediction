@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { safeFormat } from "@/lib/utils";
 
 // Fix default icon
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -267,7 +268,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                           <div className="grid grid-cols-2 gap-2 mb-3">
                             {[
                               { label: "Risk Score", value: `${district.risk_score}/100` },
-                              { label: "AI Confidence", value: `${((district?.ai_confidence ?? 0) * 100).toFixed(1)}%` },
+                              { label: "AI Confidence", value: `${safeFormat(district?.ai_confidence, 1, "0.0")}%` },
                               { label: "Rainfall 24h", value: `${district.rainfall_mm}mm` },
                               { label: "Humidity", value: `${district.humidity}%` },
                               { label: "River Level", value: `${district.river_level_m}m` },
@@ -284,7 +285,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                           <div className="mb-2">
                             <div className="flex justify-between text-[10px] text-slate-500 mb-1">
                               <span>Flood Probability</span>
-                              <span className="font-semibold">{((district?.flood_probability ?? 0) * 100).toFixed(1)}%</span>
+                              <span className="font-semibold">{safeFormat(district?.flood_probability, 1, "0.0")}%</span>
                             </div>
                             <div className="w-full bg-slate-100 rounded-full h-1.5">
                               <div

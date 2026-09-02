@@ -1,10 +1,12 @@
 "use client";
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Brain, Droplets, Waves, Mountain, Users, Thermometer, Wind, X, Activity, Zap, TrendingUp, AlertTriangle } from "lucide-react";
+import { Brain, Droplets, Waves, Mountain, Users, Thermometer, Wind, X, Activity, Zap, TrendingUp, Navigation } from "lucide-react";
+import { safeFormat } from "@/lib/utils";
 
 interface ShapValue {
   label: string;
+  feature: string;
   value: number;
   color: string;
   contribution_pct: number;
@@ -134,10 +136,10 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                     {nodeData.risk_level}
                   </span>
                 </div>
-                <div className="flex items-end gap-3 mb-3">
-                  <span className="text-4xl font-bold text-white">{nodeData.risk_score.toFixed(1)}</span>
-                  <span className="text-slate-400 text-sm mb-1">/100</span>
-                  <span className="ml-auto text-xs text-slate-400">{(nodeData.confidence * 100).toFixed(1)}% confidence</span>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-4xl font-bold text-white">{safeFormat(nodeData.risk_score, 1, "0.0")}</span>
+                  <span className="text-lg font-medium text-white/70">/100</span>
+                  <span className="ml-auto text-xs text-slate-400">{safeFormat(nodeData.confidence * 100, 1, "0.0")}% confidence</span>
                 </div>
                 <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
                   <motion.div
@@ -160,10 +162,10 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                   {[
                     { icon: Droplets, label: "Rainfall", val: `${nodeData.telemetry.rainfall_mm_24h} mm/24h`, color: "text-blue-400" },
                     { icon: Waves, label: "River Level", val: `${nodeData.telemetry.river_level_m}m / ${nodeData.telemetry.river_danger_level_m}m`, color: "text-cyan-400" },
-                    { icon: Thermometer, label: "Temperature", val: `${nodeData.telemetry.temperature_c}°C`, color: "text-orange-400" },
-                    { icon: Wind, label: "Humidity", val: `${nodeData.telemetry.humidity_pct}%`, color: "text-teal-400" },
-                    { icon: Mountain, label: "Elevation", val: `${nodeData.telemetry.elevation_m}m`, color: "text-green-400" },
-                    { icon: Users, label: "Population", val: `${(nodeData.telemetry.population / 1e6).toFixed(2)}M`, color: "text-purple-400" },
+                    { icon: Thermometer, label: "Temp", val: `${nodeData.telemetry.temperature_c}°C`, color: "text-amber-400" },
+                    { icon: Wind, label: "Pressure", val: `${nodeData.telemetry.pressure_hpa}hPa`, color: "text-emerald-400" },
+                    { icon: Users, label: "Population", val: `${safeFormat(nodeData.telemetry.population / 1e6, 2, "0.00")}M`, color: "text-purple-400" },
+                    { icon: Navigation, label: "Elevation", val: `${nodeData.telemetry.elevation_m}m`, color: "text-indigo-400" },
                   ].map(({ icon: Icon, label, val, color }) => (
                     <div key={label} className="rounded-lg bg-slate-800/40 border border-slate-700/30 p-3">
                       <div className="flex items-center gap-1.5 mb-1">
@@ -177,8 +179,8 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                 {/* River ratio bar */}
                 <div className="mt-2 rounded-lg bg-slate-800/40 border border-slate-700/30 p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-slate-400">{nodeData.telemetry.river_name} — Danger Level</span>
-                    <span className="text-[10px] font-bold text-white">{nodeData.telemetry.river_ratio_pct.toFixed(1)}%</span>
+                    <span className="text-[10px] text-slate-400 font-mono">River Level vs Danger</span>
+                    <span className="text-[10px] font-bold text-white">{safeFormat(nodeData.telemetry.river_ratio_pct, 1, "0.0")}%</span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
                     <motion.div
@@ -198,12 +200,12 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   <div>
-                    <p className="text-[10px] text-slate-400">Embedding Norm</p>
-                    <p className="text-sm font-bold text-white font-mono">{nodeData.gnn_state.embedding_norm.toFixed(3)}</p>
+                    <p className="text-[10px] text-slate-400 font-mono mb-1">Embedding Norm</p>
+                    <p className="text-sm font-bold text-white font-mono">{safeFormat(nodeData.gnn_state.embedding_norm, 3, "0.000")}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-slate-400">Incoming Influence</p>
-                    <p className="text-sm font-bold text-indigo-300 font-mono">{nodeData.gnn_state.incoming_influence.toFixed(3)}</p>
+                    <p className="text-[10px] text-slate-400 font-mono mb-1">Incoming Influence</p>
+                    <p className="text-sm font-bold text-indigo-300 font-mono">{safeFormat(nodeData.gnn_state.incoming_influence, 3, "0.000")}</p>
                   </div>
                 </div>
                 {/* Embedding vector mini visualization */}
@@ -237,9 +239,9 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                   <div className="space-y-2">
                     {nodeData.shap_values.slice(0, 6).map((sv, i) => (
                       <div key={i}>
-                        <div className="flex justify-between mb-0.5">
-                          <span className="text-[10px] text-slate-300">{sv.label}</span>
-                          <span className="text-[10px] font-mono font-bold text-white">{sv.contribution_pct.toFixed(1)}%</span>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-mono text-slate-400 uppercase">{sv.feature}</span>
+                          <span className="text-[10px] font-mono font-bold text-white">{safeFormat(sv.contribution_pct, 1, "0.0")}%</span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
                           <motion.div
@@ -266,16 +268,13 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                   <div className="space-y-2">
                     {nodeData.incoming_edges.slice(0, 5).map((edge, i) => (
                       <div key={i} className="rounded-lg bg-slate-800/40 border border-slate-700/30 p-2.5">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-white">{edge.from_label}</span>
-                          <span className="text-[10px] font-mono text-rose-400">+{edge.influence.toFixed(1)} risk</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-rose-400">+{safeFormat(edge.influence, 1, "0.0")} risk</span>
+                          <span className="text-[10px] font-mono text-slate-400">via {edge.relationship_type.replace('_', ' ')}</span>
                         </div>
-                        <div className="flex gap-3 text-[10px] text-slate-400">
-                          <span>{RELATION_LABELS[edge.relationship_type] || edge.relationship_type}</span>
-                          <span>·</span>
-                          <span>~{edge.travel_time_min}m travel</span>
-                          <span>·</span>
-                          <span>{(edge.confidence * 100).toFixed(1)}% conf</span>
+                        <div className="mt-1 flex items-center gap-3 text-[9px] text-slate-500 font-mono border-t border-slate-700/50 pt-1">
+                          <span>{edge.travel_time_min}min lag</span>
+                          <span>{safeFormat(edge.confidence * 100, 1, "0.0")}% conf</span>
                         </div>
                       </div>
                     ))}
@@ -290,9 +289,9 @@ export default function NodeInspector({ nodeId, nodeData, loading, onClose }: Pr
                   <div className="space-y-1.5">
                     {Object.entries(nodeData.class_probabilities).map(([cls, prob]) => (
                       <div key={cls}>
-                        <div className="flex justify-between mb-0.5">
-                          <span className="text-[10px] text-slate-300">{cls}</span>
-                          <span className="text-[10px] font-mono text-slate-400">{(prob * 100).toFixed(1)}%</span>
+                        <div className="flex justify-between items-center py-2 border-b border-slate-700/50 last:border-0" key={cls}>
+                          <span className="text-[10px] font-mono font-bold text-white">{cls}</span>
+                          <span className="text-[10px] font-mono text-slate-400">{safeFormat(prob * 100, 1, "0.0")}%</span>
                         </div>
                         <div className="w-full h-1 bg-slate-700 rounded-full overflow-hidden">
                           <motion.div

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, ZoomControl } from "react-leaflet";
+import { safeFormat } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
@@ -167,7 +169,7 @@ export default function KGMap({ nodes, edges, showAllEdges, onNodeClick, activeN
                 <div className="mt-1.5 space-y-0.5">
                   <div className="flex justify-between text-[10px]">
                     <span className="text-slate-500">Risk Score</span>
-                    <span className="font-semibold text-slate-700">{(Number(node?.risk_score) || 0).toFixed(1)}/100</span>
+                    <span className="font-semibold text-slate-700">{safeFormat(node?.risk_score, 1, "0.0")}/100</span>
                   </div>
                   {node.data?.rainfall_24h !== undefined && (
                     <div className="flex justify-between text-[10px]">

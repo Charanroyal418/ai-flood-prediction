@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useFloodData } from "@/context/FloodDataContext";
 import ReactFlow, {
-  Node, Edge, Background, Controls,
+  Node, Edge, Background, Controls, MiniMap,
   useNodesState, useEdgesState,
   NodeTypes, Handle, Position, MarkerType,
 } from "reactflow";
@@ -29,9 +29,16 @@ const COMMUNITY_COLORS = [
   "#6366f1", "#ec4899", "#10b981", "#f59e0b", "#f97316", "#ef4444", "#a855f7", "#06b6d4"
 ];
 
-// ─── Custom District Node Component ──────────────────────────────────────────
-function DistrictNode({ data }: { data: any }) {
+function EntityNode({ data }: { data: any }) {
   const statusColor = STATUS_COLORS[data.status] || STATUS_COLORS.Safe;
+  const isRiver = data.type === "river" || data.id?.startsWith("rv-");
+  const isWeather = data.type === "weather_station" || data.id?.startsWith("ws-");
+  const isReservoir = data.type === "reservoir" || data.id?.startsWith("rs-") || data.id?.startsWith("dam-");
+  
+  let shapeClass = "rounded-full"; // District
+  if (isRiver) shapeClass = "rounded-md";
+  else if (isWeather) shapeClass = "rounded-sm rotate-45";
+  else if (isReservoir) shapeClass = "rounded-none";
 
   return (
     <div className="group flex flex-col items-center select-none relative">
@@ -40,14 +47,14 @@ function DistrictNode({ data }: { data: any }) {
       {/* Compact View */}
       <div className="flex flex-col items-center gap-1">
         <div 
-          className="w-4 h-4 rounded-full shadow-sm border-2 transition-transform duration-300 group-hover:scale-110"
+          className={`w-4 h-4 shadow-sm border-2 transition-transform duration-300 group-hover:scale-110 ${shapeClass}`}
           style={{
             backgroundColor: statusColor,
             borderColor: "white",
             boxShadow: `0 0 10px ${statusColor}40`
           }}
         />
-        <span className="text-[8px] font-bold text-slate-600 bg-white/80 px-1 rounded backdrop-blur-sm pointer-events-none whitespace-nowrap group-hover:opacity-0 transition-opacity">
+        <span className="text-[8px] font-bold text-slate-600 bg-white/80 px-1 rounded backdrop-blur-sm pointer-events-none whitespace-nowrap group-hover:opacity-0 transition-opacity mt-1">
           {data.label}
         </span>
       </div>
@@ -71,10 +78,10 @@ function DistrictNode({ data }: { data: any }) {
           </span>
         </div>
 
-        {/* Live Rain/Risk Telemetry indicator */}
+        {/* Live Telemetry indicator */}
         <div className="mt-1 flex justify-between items-center text-[9px] text-slate-400 font-mono border-t border-slate-100 pt-1">
           <span className="font-bold" style={{ color: statusColor }}>{data.status}</span>
-          <span>{data.data?.rainfall_24h ?? 0}mm rain</span>
+          <span>{data.type || 'District'}</span>
         </div>
       </div>
       <Handle type="source" position={Position.Right} className="w-1 h-1 !bg-slate-400 !border-none !opacity-0" />
@@ -109,7 +116,8 @@ function ClusterBackgroundNode({ data }: { data: any }) {
 }
 
 const nodeTypes: NodeTypes = {
-  districtNode: DistrictNode,
+  entityNode: EntityNode,
+  districtNode: EntityNode, // for backwards compat
   clusterBackground: ClusterBackgroundNode,
 };
 
@@ -158,10 +166,8 @@ export default function DynamicKnowledgeGraph() {
       });
     }
 
-    // 2. Filter ONLY district nodes for main visual graph representation
-    const districtNodes = rawNodes.filter(n => n.type === "district" || n.id.startsWith("d-"));
-
-    const d3Nodes = districtNodes.map((n: any) => {
+    // 2. Map ALL nodes for main visual graph representation
+    const d3Nodes = rawNodes.map((n: any) => {
       const currentRisk = getRiskFromHistory(n, timeIdx);
       let status = "Safe";
       if (currentRisk >= 80) status = "Critical";
@@ -186,12 +192,12 @@ export default function DynamicKnowledgeGraph() {
       };
     });
 
-    const districtIds = new Set(d3Nodes.map(n => n.id));
+    const nodeIds = new Set(d3Nodes.map(n => n.id));
 
-    // Filter edges between district nodes
-    const districtEdges = rawEdges.filter(e => districtIds.has(e.source) && districtIds.has(e.target));
+    // Filter edges
+    const validEdges = rawEdges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
 
-    const formattedEdges = districtEdges.map((e: any) => {
+    const formattedEdges = validEdges.map((e: any) => {
       const sourceNode = rawNodes.find(n => n.id === e.source);
       const sourceRisk = sourceNode ? getRiskFromHistory(sourceNode, timeIdx) : 15;
       const dynamicInfluence = e.attention * sourceRisk;
@@ -282,7 +288,7 @@ export default function DynamicKnowledgeGraph() {
 
       return {
         id: n.id,
-        type: "districtNode",
+        type: "entityNode",
         position: pos,
         data: n.data,
         style: { opacity },
@@ -555,6 +561,17 @@ export default function DynamicKnowledgeGraph() {
             >
               <Background color="#cbd5e1" gap={24} size={1} />
               <Controls className="bg-white border-slate-200 shadow-md rounded-xl" />
+              <MiniMap 
+                nodeStrokeColor={(n) => {
+                  if (n.type === 'clusterBackground') return 'transparent';
+                  return n.data?.communityColor || '#94a3b8';
+                }}
+                nodeColor={(n) => {
+                  if (n.type === 'clusterBackground') return n.data?.color + '25';
+                  return n.data?.communityColor || '#cbd5e1';
+                }}
+                className="bg-white border-slate-200 shadow-md rounded-xl overflow-hidden"
+              />
             </ReactFlow>
           </div>
 

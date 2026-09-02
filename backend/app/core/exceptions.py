@@ -23,15 +23,11 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
-        status_code=200,
+        status_code=500,
         content={
-            "cycle_id": 1,
-            "status": "online",
-            "message": str(exc),
-            "districts": [],
-            "stages": {},
-            "model_status": {"backend_status": "online", "database_status": "connected"},
-            "logs": [{"ts": "00:00:00", "message": f"Global recovery: {str(exc)[:100]}"}]
+            "status": "error",
+            "message": "Internal Server Error",
+            "detail": str(exc)
         },
         headers={"Access-Control-Allow-Origin": "*"}
     )
