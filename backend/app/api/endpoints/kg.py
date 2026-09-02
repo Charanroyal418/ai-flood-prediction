@@ -143,7 +143,7 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     global _kg_cache
     now = time.time()
     if _kg_cache["payload"] is not None and (now - _kg_cache["ts"]) < _KG_CACHE_TTL:
-        return _kg_cache["payload"]
+        return {"success": True, "data": _kg_cache["payload"]}
 
     start_time = datetime.now(timezone.utc)
 
@@ -408,7 +408,7 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     _kg_cache["ts"] = now
     clean_payload = sanitize_numpy(payload)
     _kg_cache["payload"] = clean_payload
-    return clean_payload
+    return {"success": True, "data": clean_payload}
 
 
 # ─── Node Inspector Endpoint ──────────────────────────────────────────────────
@@ -478,41 +478,44 @@ def get_node_detail(node_id: str, db: Session = Depends(deps.get_db)) -> Any:
     ]
 
     return {
-        "node_id": node_id,
-        "label": n.get("label", node_id),
-        "type": n.get("type", "district"),
-        "district_id": n.get("district_id"),
-        "risk_score": pred.get("risk_score", n.get("risk_score", 15.0)),
-        "risk_level": pred.get("risk_level", "Safe"),
-        "risk_color": pred.get("risk_color", "#3b82f6"),
-        "confidence": pred.get("confidence", 0.82),
-        "inference_mode": pred.get("inference_mode", "Physics"),
-        "class_probabilities": pred.get("class_probabilities", {}),
-        "telemetry": {
-            "rainfall_mm_24h": round(float(n.get("rainfall", 0.0)), 1),
-            "temperature_c": round(float(n.get("temperature", 28.0)), 1),
-            "humidity_pct": round(float(n.get("humidity", 70.0)), 1),
-            "pressure_hpa": round(float(n.get("pressure", 1010.0)), 1),
-            "river_name": n.get("river_name", "Unknown"),
-            "river_level_m": round(float(n.get("river_level", 0.0)), 2),
-            "river_danger_level_m": round(float(n.get("river_danger_level", 5.0)), 2),
-            "river_ratio_pct": round(float(n.get("river_ratio", 0.0)) * 100, 1),
-            "elevation_m": round(float(n.get("elevation", 15.0)), 1),
-            "population": int(n.get("population", 0)),
-        },
-        "gnn_state": {
-            "embedding_vector": emb_vec[:16],  # First 16 dims for display
-            "embedding_norm": round(emb_norm, 3),
-            "embedding_dim": len(emb_vec),
-            "incoming_influence": round(float(n.get("incoming_influence", 0.0)), 3),
-        },
-        "shap_values": pred.get("shap_values", []),
-        "incoming_edges": sorted(incoming_edges, key=lambda x: -x["influence"])[:10],
-        "outgoing_edges": outgoing_edges[:10],
-        "historical_flood_events": connected_flood_events,
-        "coordinates": {"lat": float(n.get("lat", 0.0)), "lon": float(n.get("lon", 0.0))},
-        "community_idx": int(n.get("community_idx", 0)),
-        "last_updated": n.get("last_updated", datetime.now(timezone.utc).isoformat()),
+        "success": True,
+        "data": {
+            "node_id": node_id,
+            "label": n.get("label", node_id),
+            "type": n.get("type", "district"),
+            "district_id": n.get("district_id"),
+            "risk_score": pred.get("risk_score", n.get("risk_score", 15.0)),
+            "risk_level": pred.get("risk_level", "Safe"),
+            "risk_color": pred.get("risk_color", "#3b82f6"),
+            "confidence": pred.get("confidence", 0.82),
+            "inference_mode": pred.get("inference_mode", "Physics"),
+            "class_probabilities": pred.get("class_probabilities", {}),
+            "telemetry": {
+                "rainfall_mm_24h": round(float(n.get("rainfall", 0.0)), 1),
+                "temperature_c": round(float(n.get("temperature", 28.0)), 1),
+                "humidity_pct": round(float(n.get("humidity", 70.0)), 1),
+                "pressure_hpa": round(float(n.get("pressure", 1010.0)), 1),
+                "river_name": n.get("river_name", "Unknown"),
+                "river_level_m": round(float(n.get("river_level", 0.0)), 2),
+                "river_danger_level_m": round(float(n.get("river_danger_level", 5.0)), 2),
+                "river_ratio_pct": round(float(n.get("river_ratio", 0.0)) * 100, 1),
+                "elevation_m": round(float(n.get("elevation", 15.0)), 1),
+                "population": int(n.get("population", 0)),
+            },
+            "gnn_state": {
+                "embedding_vector": emb_vec[:16],  # First 16 dims for display
+                "embedding_norm": round(emb_norm, 3),
+                "embedding_dim": len(emb_vec),
+                "incoming_influence": round(float(n.get("incoming_influence", 0.0)), 3),
+            },
+            "shap_values": pred.get("shap_values", []),
+            "incoming_edges": sorted(incoming_edges, key=lambda x: -x["influence"])[:10],
+            "outgoing_edges": outgoing_edges[:10],
+            "historical_flood_events": connected_flood_events,
+            "coordinates": {"lat": float(n.get("lat", 0.0)), "lon": float(n.get("lon", 0.0))},
+            "community_idx": int(n.get("community_idx", 0)),
+            "last_updated": n.get("last_updated", datetime.now(timezone.utc).isoformat()),
+        }
     }
 
 
@@ -561,23 +564,26 @@ def get_edge_detail(edge_id: str, db: Session = Depends(deps.get_db)) -> Any:
     src_risk = float(src_node.get("risk_score", 15.0))
 
     return {
-        "edge_id": edge_id,
-        "source": source_id,
-        "target": target_id,
-        "source_label": src_node.get("label", source_id),
-        "target_label": tgt_node.get("label", target_id),
-        "relationship_type": edge_type,
-        "relationship_label": meta["label"],
-        "color": meta["color"],
-        "weight": round(float(edge_data.get("weight", 0.5)), 3),
-        "attention": round(attn, 3),
-        "influence": round(attn * src_risk, 2),
-        "propagation_probability": round(min(0.99, attn * float(edge_data.get("confidence", 0.7))), 3),
-        "confidence": round(float(edge_data.get("confidence", 0.7)), 2),
-        "travel_time_min": int(edge_data.get("travel_time_min", 120)),
-        "source_risk": round(src_risk, 1),
-        "target_risk": round(float(tgt_node.get("risk_score", 15.0)), 1),
-        "last_updated": edge_data.get("last_updated", datetime.now(timezone.utc).isoformat()),
+        "success": True,
+        "data": {
+            "edge_id": edge_id,
+            "source": source_id,
+            "target": target_id,
+            "source_label": src_node.get("label", source_id),
+            "target_label": tgt_node.get("label", target_id),
+            "relationship_type": edge_type,
+            "relationship_label": meta["label"],
+            "color": meta["color"],
+            "weight": round(float(edge_data.get("weight", 0.5)), 3),
+            "attention": round(attn, 3),
+            "influence": round(attn * src_risk, 2),
+            "propagation_probability": round(min(0.99, attn * float(edge_data.get("confidence", 0.7))), 3),
+            "confidence": round(float(edge_data.get("confidence", 0.7)), 2),
+            "travel_time_min": int(edge_data.get("travel_time_min", 120)),
+            "source_risk": round(src_risk, 1),
+            "target_risk": round(float(tgt_node.get("risk_score", 15.0)), 1),
+            "last_updated": edge_data.get("last_updated", datetime.now(timezone.utc).isoformat()),
+        }
     }
 
 
@@ -604,13 +610,16 @@ def get_flood_propagation(
     wave = kg_builder.get_propagation_wave(source_node, max_hops=max_hops)
 
     return {
-        "source_node": source_node,
-        "source_label": src_node_data.get("label", source_node),
-        "source_risk": round(float(src_node_data.get("risk_score", 15.0)), 1),
-        "propagation_wave": wave,
-        "total_districts_affected": len(wave),
-        "max_travel_time_min": max((w["estimated_time_min"] for w in wave), default=0),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "success": True,
+        "data": {
+            "source_node": source_node,
+            "source_label": src_node_data.get("label", source_node),
+            "source_risk": round(float(src_node_data.get("risk_score", 15.0)), 1),
+            "propagation_wave": wave,
+            "total_districts_affected": len(wave),
+            "max_travel_time_min": max((w["estimated_time_min"] for w in wave), default=0),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
     }
 
 
@@ -631,10 +640,13 @@ def get_communities(db: Session = Depends(deps.get_db)) -> Any:
     communities_detail = _build_community_detail(raw_communities, G)
 
     return {
-        "communities": communities_detail,
-        "total_communities": len(communities_detail),
-        "algorithm": "Louvain (NetworkX)",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "success": True,
+        "data": {
+            "communities": communities_detail,
+            "total_communities": len(communities_detail),
+            "algorithm": "Louvain (NetworkX)",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
     }
 
 
@@ -659,12 +671,15 @@ def get_kg_summary(db: Session = Depends(deps.get_db)) -> Any:
     ws_nodes = len([n for n in kg_builder.graph.nodes if n.startswith("ws-")]) if kg_builder.graph else 0
 
     return {
-        "nodes": nodes_count,
-        "edges": edges_count,
-        "district_nodes": dist_count,
-        "river_nodes": r_nodes,
-        "reservoir_nodes": res_nodes,
-        "weather_station_nodes": ws_nodes,
-        "last_updated": last_updated_ts,
-        "inference_mode": gnn_engine.inference_mode,
+        "success": True,
+        "data": {
+            "nodes": nodes_count,
+            "edges": edges_count,
+            "district_nodes": dist_count,
+            "river_nodes": r_nodes,
+            "reservoir_nodes": res_nodes,
+            "weather_station_nodes": ws_nodes,
+            "last_updated": last_updated_ts,
+            "inference_mode": gnn_engine.inference_mode,
+        }
     }

@@ -24,9 +24,15 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// ── Response Interceptor: retry GET requests up to 2 times on network error ──
+// ── Response Interceptor: unwrap custom backend response and retry on network error ──
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Automatically unwrap {"success": true, "data": ...} responses
+    if (response.data && typeof response.data === 'object' && 'success' in response.data && 'data' in response.data) {
+      response.data = response.data.data;
+    }
+    return response;
+  },
   async (error) => {
     const config = error.config;
     if (!config) return Promise.reject(error);

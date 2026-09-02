@@ -64,31 +64,56 @@ def seed_users(db: Session):
 
 def seed_facilities_and_rivers(db: Session):
     print("Seeding Facilities and Rivers...")
-    # Find Chennai for foreign key
     chennai = db.query(District).filter(District.name == "Chennai").first()
     
     if chennai:
-        # Sample Shelter
         if not db.query(Shelter).filter(Shelter.name == "Velachery Relief Camp").first():
-            shelter = Shelter(
-                district_id=chennai.id,
-                name="Velachery Relief Camp",
-                capacity=500
-            )
+            shelter = Shelter(district_id=chennai.id, name="Velachery Relief Camp", capacity=500)
             db.add(shelter)
-            
-        # Sample River
-        if not db.query(RiverLevel).filter(RiverLevel.river_name == "Adyar River").first():
+    
+    # All 9 major TN rivers
+    rivers = [
+        {"name": "Adyar River", "station": "Saidapet Bridge", "danger": 4.0, "current": 2.5, "district": "Chennai"},
+        {"name": "Cooum River", "station": "Napier Bridge", "danger": 3.0, "current": 1.2, "district": "Chennai"},
+        {"name": "Kosasthalaiyar River", "station": "Ennore", "danger": 4.5, "current": 2.0, "district": "Tiruvallur"},
+        {"name": "Palar River", "station": "Chengalpattu", "danger": 5.0, "current": 1.5, "district": "Chengalpattu"},
+        {"name": "Thenpennai River", "station": "Cuddalore", "danger": 4.2, "current": 2.8, "district": "Cuddalore"},
+        {"name": "Vellar River", "station": "Sethiathope", "danger": 3.8, "current": 1.1, "district": "Cuddalore"},
+        {"name": "Cauvery River", "station": "Kallanai", "danger": 6.0, "current": 4.5, "district": "Thanjavur"},
+        {"name": "Vaigai River", "station": "Madurai", "danger": 5.5, "current": 3.0, "district": "Madurai"},
+        {"name": "Thamirabarani River", "station": "Tirunelveli", "danger": 5.0, "current": 3.2, "district": "Tirunelveli"},
+    ]
+    
+    for r in rivers:
+        d = db.query(District).filter(District.name == r["district"]).first()
+        if d and not db.query(RiverLevel).filter(RiverLevel.river_name == r["name"]).first():
             river = RiverLevel(
-                district_id=chennai.id,
-                river_name="Adyar River",
-                station_name="Saidapet Bridge",
-                current_level=2.5,
-                danger_level=4.0
+                district_id=d.id,
+                river_name=r["name"],
+                station_name=r["station"],
+                current_level=r["current"],
+                danger_level=r["danger"]
             )
             db.add(river)
             
-        db.commit()
+    db.commit()
+
+from app.models.alert import Alert
+def seed_alerts(db: Session):
+    print("Seeding Alerts...")
+    chennai = db.query(District).filter(District.name == "Chennai").first()
+    if chennai and not db.query(Alert).filter(Alert.district_id == chennai.id).first():
+        alert = Alert(
+            district_id=chennai.id,
+            level="High",
+            severity="Severe",
+            message="Heavy rainfall expected in Chennai over the next 24 hours. Possibility of localized flooding.",
+            suggested_response="Stay indoors and move to higher ground.",
+            confidence=0.85,
+            rainfall_mm=120.5
+        )
+        db.add(alert)
+    db.commit()
 
 def main():
     print("Starting Database Seed...")
@@ -101,6 +126,7 @@ def main():
         seed_districts(db)
         seed_users(db)
         seed_facilities_and_rivers(db)
+        seed_alerts(db)
         print("Database Seed Completed Successfully!")
     except Exception as e:
         print(f"Error during seeding: {e}")

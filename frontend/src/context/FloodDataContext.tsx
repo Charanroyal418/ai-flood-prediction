@@ -139,6 +139,7 @@ interface FloodDataState {
   requestSnapshot: () => void;
   refetchPipeline: () => Promise<void>;
   refetchKg: () => Promise<void>;
+  isLoading: boolean;
 }
 
 const FloodDataContext = createContext<FloodDataState | null>(null);
@@ -165,6 +166,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [pipelineData, setPipelineData] = useState<any | null>(null);
   const [kgData, setKgData] = useState<any | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refetchPipeline = useCallback(async () => {
     try {
@@ -194,13 +196,16 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   // Initial Sync from REST API
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const fetchInitialData = async () => {
       try {
+        setIsLoading(true);
         const [dashboardRes, pipelineRes, kgRes] = await Promise.allSettled([
-          api.get("/dashboard/live"),
-          api.get("/predict/inference-cycle"),
-          api.get("/kg/graph")
+          api.get("/dashboard/live", { signal: controller.signal }),
+          api.get("/predict/inference-cycle", { signal: controller.signal }),
+          api.get("/kg/graph", { signal: controller.signal })
         ]);
 
         if (!isMounted) return;
@@ -251,13 +256,23 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         }
 
       } catch (err) {
-        console.warn("Initial FloodDataContext fetch warning:", err);
+        if (!controller.signal.aborted) {
+          console.warn("Initial FloodDataContext fetch warning:", err);
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchInitialData();
 
-    return () => { isMounted = false; };
+    return () => { 
+      isMounted = false; 
+      controller.abort();
+    };
   }, [refetchPipeline]);
 
   // ─── Dashboard Channel ─────────────────────────────────────────────
@@ -422,6 +437,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     refetchKg,
     pipelineData,
     kgData,
+    isLoading,
   };
 
   return (
@@ -459,6 +475,7 @@ const SAFE_DEFAULT: FloodDataState = {
   refetchKg: async () => {},
   pipelineData: null,
   kgData: null,
+  isLoading: false,
 };
 
 export function useFloodData(): FloodDataState {

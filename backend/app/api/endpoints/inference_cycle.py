@@ -851,12 +851,15 @@ def run_inference_cycle(background_tasks: BackgroundTasks) -> Any:
 
     # 2. Serve pre-computed payload from RAM cache
     if _cycle_cache["payload"] is not None:
-        return sanitize_numpy(_cycle_cache["payload"])
+        return {"success": True, "data": sanitize_numpy(_cycle_cache["payload"])}
         
     # 3. Return explicit "waiting for telemetry" status when DB/cache is truly empty
     return {
-        "status": "waiting_for_telemetry",
-        "message": "Data pipeline is initializing. Please wait.",
-        "districts": [],
-        "model_status": {"backend_status": "initializing"}
+        "success": True,
+        "data": {
+            "status": "waiting_for_telemetry",
+            "message": "Data pipeline is initializing. Please wait.",
+            "districts": [],
+            "model_status": {"backend_status": "initializing"}
+        }
     }

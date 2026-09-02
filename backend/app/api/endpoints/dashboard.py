@@ -27,9 +27,9 @@ def test_edges(db: Session = Depends(deps.get_db)):
     try:
         from app.models.graph import GraphEdge
         edges = db.query(GraphEdge).limit(5).all()
-        return [{"source": e.source_id, "target": e.target_id, "type": e.edge_type} for e in edges]
+        return {"success": True, "data": [{"source": e.source_id, "target": e.target_id, "type": e.edge_type} for e in edges]}
     except Exception as e:
-        return {"error": str(e)}
+        return {"success": False, "error": str(e)}
 
 @router.get("/trigger-graph")
 def trigger_graph(db: Session = Depends(deps.get_db)):
@@ -42,9 +42,9 @@ def trigger_graph(db: Session = Depends(deps.get_db)):
         
         from app.models.graph import GraphEdge
         count = db.query(GraphEdge).count()
-        return {"status": "done", "new_count": count}
+        return {"success": True, "data": {"status": "done", "new_count": count}}
     except Exception as e:
-        return {"error": str(e)}
+        return {"success": False, "error": str(e)}
 
 from fastapi import BackgroundTasks
 from app.db.session import SessionLocal
@@ -231,28 +231,31 @@ def _build_dashboard_live(db: Session) -> Any:
     attention_heads = 4
 
     return {
-        "status": "online",
-        "timestamp": last_updated_ts,
-        "metrics": {
-            "avg_risk_score": float(round(avg_risk, 1)),
-            "active_alerts_count": len(alerts_data),
-            "critical_districts": len(critical),
-            "high_risk_districts": len(high),
-            "avg_rainfall_24h_mm": float(round(avg_rainfall, 1)),
-            "districts_monitored": len(districts),
-            "model_confidence": float(avg_confidence),
-            "gdnn_inference_ms": float(gdnn_ms),
-            "kg_nodes": kg_nodes,
-            "kg_edges": kg_edges,
-            "attention_heads": attention_heads,
-            "storm_simulation_active": bool(sim_meta.get("active", False)),
-        },
-        "storm_simulation": sim_meta,
-        "districts": districts_with_risk,
-        "top_risk_districts": districts_with_risk[:5],
-        "alerts": alerts_data,
-        "events": events_data,
-        "weekly_forecast": weekly_forecast,
+        "success": True,
+        "data": {
+            "status": "online",
+            "timestamp": last_updated_ts,
+            "metrics": {
+                "avg_risk_score": float(round(avg_risk, 1)),
+                "active_alerts_count": len(alerts_data),
+                "critical_districts": len(critical),
+                "high_risk_districts": len(high),
+                "avg_rainfall_24h_mm": float(round(avg_rainfall, 1)),
+                "districts_monitored": len(districts),
+                "model_confidence": float(avg_confidence),
+                "gdnn_inference_ms": float(gdnn_ms),
+                "kg_nodes": kg_nodes,
+                "kg_edges": kg_edges,
+                "attention_heads": attention_heads,
+                "storm_simulation_active": bool(sim_meta.get("active", False)),
+            },
+            "storm_simulation": sim_meta,
+            "districts": districts_with_risk,
+            "top_risk_districts": districts_with_risk[:5],
+            "alerts": alerts_data,
+            "events": events_data,
+            "weekly_forecast": weekly_forecast,
+        }
     }
 
 def _async_update_dashboard_cache():
@@ -291,11 +294,16 @@ def get_dashboard_live(background_tasks: BackgroundTasks, db: Session = Depends(
 
 @router.get("/districts")
 def get_all_districts(db: Session = Depends(deps.get_db)) -> Any:
-    return get_dashboard_live(db)["districts"]
+    data = get_dashboard_live(db, background_tasks=None)
+    # The live endpoint now returns {"success": True, "data": ...}
+    districts = data["data"]["districts"] if isinstance(data, dict) and "data" in data else data["districts"]
+    return {"success": True, "data": districts}
 
 @router.get("/alerts")
 def get_all_alerts(db: Session = Depends(deps.get_db)) -> Any:
-    return get_dashboard_live(db)["alerts"]
+    data = get_dashboard_live(db, background_tasks=None)
+    alerts = data["data"]["alerts"] if isinstance(data, dict) and "data" in data else data["alerts"]
+    return {"success": True, "data": alerts}
 
 class StormScenarioRequest(BaseModel):
     """Dynamic storm scenario parameters."""
@@ -368,17 +376,20 @@ def simulate_storm_event(
     sim_meta = get_storm_simulation_meta()
 
     return {
-        "status": "success",
-        "storm_simulation_active": new_state,
-        "storm_simulation": sim_meta,
-        "message": f"Storm simulation '{body.scenario}' is now {'active' if new_state else 'inactive'}.",
-        "summary": summary,
-        "parameters_applied": {
-            "rainfall_mm": body.rainfall_mm,
-            "wind_speed_kmh": body.wind_speed_kmh,
-            "storm_surge_m": body.storm_surge_m,
-            "target_districts": body.target_districts,
-        } if new_state else None
+        "success": True,
+        "data": {
+            "status": "success",
+            "storm_simulation_active": new_state,
+            "storm_simulation": sim_meta,
+            "message": f"Storm simulation '{body.scenario}' is now {'active' if new_state else 'inactive'}.",
+            "summary": summary,
+            "parameters_applied": {
+                "rainfall_mm": body.rainfall_mm,
+                "wind_speed_kmh": body.wind_speed_kmh,
+                "storm_surge_m": body.storm_surge_m,
+                "target_districts": body.target_districts,
+            } if new_state else None
+        }
     }
 
 @router.get("/audit-logs")
@@ -388,7 +399,7 @@ def get_simulation_audit_logs(db: Session = Depends(deps.get_db)) -> Any:
         KnowledgeGraphEvents.event_type.in_(["SIMULATION_STARTED", "SIMULATION_EXPIRED"])
     ).order_by(KnowledgeGraphEvents.created_at.desc()).limit(50).all()
     
-    return [
+    return {"success": True, "data": [
         {
             "id": evt.id,
             "event_type": evt.event_type,
@@ -398,12 +409,12 @@ def get_simulation_audit_logs(db: Session = Depends(deps.get_db)) -> Any:
             "scenario": "Cyclone Michaung",
         }
         for evt in events
-    ]
+    ]}
 
 @router.get("/history")
 def get_historical_flood_events() -> Any:
     """Returns major historical flood events in Tamil Nadu (1985-2023)."""
-    return [
+    return {"success": True, "data": [
         {
             "year": "2023",
             "event": "Cyclone Michaung Floods",
@@ -458,7 +469,7 @@ def get_historical_flood_events() -> Any:
             "deaths": 120,
             "damage_cr": 3500
         },
-    ]
+    ]}
 
 @router.get("/river")
 def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
@@ -501,4 +512,4 @@ def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
             "timestamp": r.recorded_at.isoformat()
         })
         
-    return rivers_data
+    return {"success": True, "data": rivers_data}

@@ -13,6 +13,8 @@ export default function ColdStartLoader() {
 
     let timeoutId: NodeJS.Timeout;
     let maxWaitId: NodeJS.Timeout;
+    const controller = new AbortController();
+    const abortTimeoutId = setTimeout(() => controller.abort(), 10000);
 
     const checkHealth = async () => {
       // If the backend doesn't respond within 1.5s, assume it's waking up
@@ -27,14 +29,17 @@ export default function ColdStartLoader() {
       }, 8000);
 
       try {
-        await api.get("/health", { timeout: 8000 });
+        await api.get("/health", { timeout: 8000, signal: controller.signal });
         // Success!
         sessionStorage.setItem("backend_awake", "true");
       } catch (err) {
-        console.error("Health check failed", err);
+        if (!controller.signal.aborted) {
+          console.error("Health check failed", err);
+        }
       } finally {
         clearTimeout(timeoutId);
         clearTimeout(maxWaitId);
+        clearTimeout(abortTimeoutId);
         setIsWaking(false);
         // Fade out
         setTimeout(() => setShow(false), 500);
@@ -42,6 +47,11 @@ export default function ColdStartLoader() {
     };
 
     checkHealth();
+
+    return () => {
+      controller.abort();
+      clearTimeout(abortTimeoutId);
+    };
   }, []);
 
   if (!show) return null;

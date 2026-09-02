@@ -80,9 +80,12 @@ def predict_flood_risk(
         risk_level = "Severe"
         
     return {
-        "is_flooded": bool(is_flooded),
-        "probability": float(round(prob * 100, 2)),
-        "risk_level": risk_level
+        "success": True,
+        "data": {
+            "is_flooded": bool(is_flooded),
+            "probability": float(round(prob * 100, 2)),
+            "risk_level": risk_level
+        }
     }
 
 @router.get("/trends")
@@ -119,7 +122,7 @@ def get_rainfall_trends(db: Session = Depends(deps.get_db)) -> Any:
         days_ordered = days[today_idx:] + days[:today_idx]
         for day in days_ordered:
             trends.append({"day": day, "rainfall": 0.0})
-        return trends
+        return {"success": True, "data": trends}
         
     for res in results:
         day_str = res.date.strftime("%a")
@@ -128,5 +131,5 @@ def get_rainfall_trends(db: Session = Depends(deps.get_db)) -> Any:
             "rainfall": round(res.avg_rainfall, 1) if res.avg_rainfall else 0.0
         })
         
-    return trends
+    return {"success": True, "data": trends}
 
