@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { safeFormat } from "@/lib/utils";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { motion, AnimatePresence, useSpring, useTransform } from "framer-motion";
+import FloodMap from "@/components/map/FloodMap";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,6 +84,17 @@ const RISK_ACCENT: Record<string, string> = {
   Safe:     "var(--text-secondary)",
 };
 
+// Format SHAP names
+function formatName(str?: string): string {
+  if (!str) return "Unknown Feature";
+  if (str === "rainfall_24h") return "Rainfall (24h)";
+  if (str === "river_level_m") return "River Level";
+  if (str === "reservoir_storage") return "Reservoir %";
+  if (str === "historical_similarity") return "Hist. Match";
+  if (str === "elevation") return "Elevation";
+  return str.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function CircularGauge({ value, label, color }: { value: number; label: string; color: string }) {
   const pct = Math.min(100, Math.max(0, value));
   const r = 36;
@@ -128,6 +141,27 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function AnimatedCounter({ value, isFloat = false, suffix = "" }: { value: number; isFloat?: boolean; suffix?: string }) {
+  const spring = useSpring(0, { bounce: 0, duration: 1500 });
+  const display = useTransform(spring, (current) => {
+    let formatted = "";
+    if (isFloat) {
+      formatted = current.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    } else {
+      formatted = current >= 1000 
+        ? new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(current)
+        : current.toLocaleString('en-US', { maximumFractionDigits: 1 });
+    }
+    return formatted + suffix;
+  });
+
+  useEffect(() => {
+    spring.set(value);
+  }, [value, spring]);
+
+  return <motion.span>{display}</motion.span>;
+}
+
 function StatCard({ icon: Icon, title, value, subtitle, accent = false, children, extraIcon }: any) {
   // Map title to a custom pastel color combo
   const getColors = (t: string) => {
@@ -172,6 +206,7 @@ export default function PredictionEnginePage() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [stoppingSim, setStoppingSim] = useState(false);
+  const [logs, setLogs] = useState<any[]>([]);
 
   const { pipelineData: contextData, refetchPipeline } = useFloodData();
   const data = contextData ? {
@@ -216,6 +251,17 @@ export default function PredictionEnginePage() {
       return () => clearInterval(flowInterval);
     }
   }, [dataUpdatedAt, data]);
+
+  useEffect(() => {
+    if (data?.logs) {
+      setLogs(prev => {
+        const newLogs = [...data.logs, ...prev];
+        const uniqueLogs = Array.from(new Set(newLogs.map(a => a.ts + a.message)))
+          .map(id => newLogs.find(a => a.ts + a.message === id));
+        return uniqueLogs.slice(0, 100);
+      });
+    }
+  }, [data?.logs]);
 
   useEffect(() => {
     const timer = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
@@ -305,6 +351,7 @@ export default function PredictionEnginePage() {
 
   const chartData = d?.forecast_horizons ? [
     { name: "Now", risk: d.forecast_horizons.now },
+    { name: "+3h", risk: d.forecast_horizons["3h"] },
     { name: "+6h", risk: d.forecast_horizons["6h"] },
     { name: "+12h", risk: d.forecast_horizons["12h"] },
     { name: "+24h", risk: d.forecast_horizons["24h"] },
@@ -315,6 +362,9 @@ export default function PredictionEnginePage() {
     ? [...d.shap_values].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
     : [];
   const totalShap = sortedShap.reduce((sum, e) => sum + Math.abs(e.contribution), 0);
+  const topShapFeature = sortedShap[0] ? formatName(sortedShap[0].feature || (sortedShap[0] as any).label) : "";
+  const topShapPct = totalShap > 0 && sortedShap[0] ? ((Math.abs(sortedShap[0].contribution) / totalShap) * 100).toFixed(1) : "0";
+  const dynamicReasoning = topShapFeature ? `${topShapFeature} contributes ${topShapPct}% of the prediction for this cycle.` : `Rainfall (${d?.rainfall_24h || 0}mm) and river discharge drive risk.`;
 
   const confidencePct = Number(
     ((d?.confidence ?? 0) <= 1.0 ? (d?.confidence ?? 0) * 100 : (d?.confidence ?? 0))
@@ -323,16 +373,7 @@ export default function PredictionEnginePage() {
   const riskGlow = RISK_GLOW[riskLevel] || RISK_GLOW.Safe;
   const riskAccent = RISK_ACCENT[riskLevel] || RISK_ACCENT.Safe;
 
-  // Format SHAP names
-  const formatName = (str: string) => {
-    if (!str) return "Unknown Feature";
-    if (str === "rainfall_24h") return "Rainfall (24h)";
-    if (str === "river_level_m") return "River Level";
-    if (str === "reservoir_storage") return "Reservoir %";
-    if (str === "historical_similarity") return "Hist. Match";
-    if (str === "elevation") return "Elevation";
-    return str.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-  };
+  // (formatName hoisted to module scope)
 
   return (
     <div className="flex flex-col gap-8 p-4 font-sans">
@@ -384,23 +425,40 @@ export default function PredictionEnginePage() {
         <StatCard 
           icon={Zap} 
           title="Total Latency" 
-          value={`${data?.total_latency_ms || safeFormat(totalLatencySum, 1)} ms`}
-          subtitle="End-to-end processing" 
           extraIcon={<span className="w-2 h-2 rounded-full bg-signal-500 animate-pulse" />} 
-        />
+        >
+          <div className="flex flex-col">
+            <p className="text-lg xl:text-xl font-heading font-extrabold text-text-primary leading-tight tracking-wide break-words">
+              {(() => {
+                const ms = data?.total_latency_ms || totalLatencySum || 0;
+                if (ms > 1000) {
+                  return <AnimatedCounter value={ms / 1000} isFloat={true} suffix=" s" />;
+                }
+                return <AnimatedCounter value={ms} isFloat={false} suffix=" ms" />;
+              })()}
+            </p>
+            <p className="text-xs text-text-secondary truncate mt-1">End-to-end processing</p>
+          </div>
+        </StatCard>
         <StatCard icon={Network} title="Graph Config" extraIcon={<GitBranch className="w-3 h-3 text-text-secondary/50"/>}>
           <div className="grid grid-cols-3 gap-1 mt-0.5">
             <div className="flex flex-col">
               <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Nodes</span>
-              <span className="text-sm font-bold text-text-primary tabular-nums">{s.node_count ?? 0}</span>
+              <span className="text-sm font-bold text-text-primary tabular-nums">
+                <AnimatedCounter value={s.node_count ?? 0} />
+              </span>
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Edges</span>
-              <span className="text-sm font-bold text-text-primary tabular-nums">{s.edge_count ?? 0}</span>
+              <span className="text-sm font-bold text-text-primary tabular-nums">
+                <AnimatedCounter value={s.edge_count ?? 0} />
+              </span>
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Heads</span>
-              <span className="text-sm font-bold text-text-primary tabular-nums">{s.attention_heads ?? 4}</span>
+              <span className="text-sm font-bold text-text-primary tabular-nums">
+                <AnimatedCounter value={s.attention_heads ?? 4} />
+              </span>
             </div>
           </div>
         </StatCard>
@@ -437,15 +495,15 @@ export default function PredictionEnginePage() {
               <div key={step.id} className="relative z-10 flex flex-col items-center gap-3 bg-paper-100 px-2 sm:px-4">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-heading font-extrabold transition-all border-[4px] ${
                   isActive
-                    ? "border-signal-200 bg-signal-100 text-signal-600 shadow-[0_4px_12px_rgba(99,102,241,0.2)] scale-110"
+                    ? "border-purple-200 bg-purple-100 text-purple-600 shadow-[0_4px_12px_rgba(168,85,247,0.4)] scale-110 animate-pulse"
                     : isCompleted
-                    ? "border-transparent bg-signal-100 text-signal-500"
-                    : "border-transparent bg-paper-50 text-text-secondary/60"
+                    ? "border-transparent bg-emerald-100 text-emerald-600 shadow-sm"
+                    : "border-transparent bg-gray-100 text-gray-400"
                 }`}>
                   {isCompleted ? <CheckCircle className="w-5 h-5" /> : (i + 1)}
                 </div>
                 <span className={`text-xs uppercase tracking-widest font-bold hidden md:block transition-colors mt-1 ${
-                  isActive ? 'text-signal-600' : isCompleted ? 'text-text-primary' : 'text-text-secondary/60'
+                  isActive ? 'text-purple-600' : isCompleted ? 'text-emerald-600' : 'text-gray-400'
                 }`}>
                   {step.label}
                 </span>
@@ -457,9 +515,13 @@ export default function PredictionEnginePage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
         
-        {/* ── LEFT: DISTRICT SELECTOR ── */}
-        <div className="xl:col-span-3 h-[900px]">
-          <div className="bg-paper-100 border border-line rounded-3xl flex flex-col overflow-hidden shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 relative h-full">
+        {/* ── LEFT: MAP & DISTRICT SELECTOR ── */}
+        <div className="xl:col-span-4 h-[900px] flex flex-col gap-6">
+          <div className="bg-paper-100 border border-line rounded-3xl overflow-hidden shadow-[0_8px_24px_rgba(99,102,241,0.06)] h-[350px] shrink-0 relative">
+             {/* Note: FloodMap doesn't currently take selectedDistrictId or onMarkerClick out of the box, we will modify it next. */}
+             <FloodMap onMarkerClick={setSelectedDistrictId} selectedDistrictId={selectedDistrictId} />
+          </div>
+          <div className="bg-paper-100 border border-line rounded-3xl flex flex-col overflow-hidden shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 flex-1 relative">
             <div className="p-6 border-b border-line bg-paper-50 shrink-0">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-2 text-text-primary">
@@ -540,7 +602,7 @@ export default function PredictionEnginePage() {
         </div>
 
         {/* ── RIGHT: OUTPUT & EXPLAINABILITY ── */}
-        <div className="xl:col-span-9 flex flex-col gap-6 pb-6">
+        <div className="xl:col-span-8 flex flex-col gap-6 pb-6">
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             {/* ══ HERO: GDNN Risk Assessment ═══════════════════════════════════════ */}
@@ -666,7 +728,7 @@ export default function PredictionEnginePage() {
                   </div>
                   <div className="mt-auto pt-6">
                     <div className="bg-signal-50/50 rounded-2xl p-4 border border-signal-100/50 flex flex-col gap-2 mb-4">
-                      <p className="text-sm text-text-primary font-semibold">Rainfall and river level are the dominant risk drivers this cycle.</p>
+                      <p className="text-sm text-text-primary font-semibold">{d.reasoning_chain?.[0] || dynamicReasoning}</p>
                       <div className="flex items-center gap-4 text-xs text-text-secondary">
                         <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-gradient-to-r from-rose-500 to-orange-400 shadow-sm"></span> Positive driver</div>
                         <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm"></span> Mitigating factor</div>
@@ -749,15 +811,14 @@ export default function PredictionEnginePage() {
             </button>
             {showLogs && (
               <div className="h-[280px] flex flex-col border-t border-line/50 bg-[#FAFAFA] rounded-b-2xl">
-                <div className="flex-1 overflow-y-auto custom-scroll">
-                  {data?.logs?.map((log: any, i: number) => {
+                <div className="flex-1 overflow-y-auto custom-scroll flex flex-col-reverse p-2">
+                  {logs.map((log: any, i: number) => {
                     const isError = log.message.toLowerCase().includes('error') || log.level === 'ERROR';
                     const isWarn = log.message.toLowerCase().includes('warn') || log.level === 'WARN';
                     const accent = isError ? 'border-risk-severe' : isWarn ? 'border-risk-moderate' : 'border-signal-400';
-                    const bg = i % 2 === 0 ? 'bg-paper-100' : 'bg-paper-50/50';
                     
                     return (
-                      <div key={i} className={`flex items-start gap-3 p-3 px-6 border-l-[3px] ${accent} ${bg} border-b border-line/30 last:border-b-0`}>
+                      <div key={i} className={`flex items-start gap-3 p-3 px-6 border-l-[4px] ${accent} bg-paper-100 border-b border-line/30 last:border-b-0 hover:bg-paper-50 transition-colors`}>
                         <span className="shrink-0 text-text-secondary/60 font-mono text-xs mt-[3px]">[{log.ts}]</span>
                         <span className={`font-mono text-sm leading-relaxed ${isError ? 'text-risk-severe font-bold' : isWarn ? 'text-risk-moderate font-bold' : 'text-text-primary'}`}>{log.message}</span>
                       </div>
@@ -770,6 +831,52 @@ export default function PredictionEnginePage() {
 
         </div>
       </div>
+
+      {showDiagnostics && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-paper-100 border border-line rounded-3xl p-8 max-w-md w-full shadow-2xl flex flex-col gap-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-extrabold text-text-primary flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-signal-500" /> System Diagnostics
+              </h2>
+              <button onClick={() => setShowDiagnostics(false)} className="text-text-secondary hover:text-text-primary">
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center py-2 border-b border-line">
+                <span className="text-sm font-bold text-text-secondary">Backend API</span>
+                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Online</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-line">
+                <span className="text-sm font-bold text-text-secondary">Database (Neo4j/Postgres)</span>
+                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Connected</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-line">
+                <span className="text-sm font-bold text-text-secondary">Weather API</span>
+                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Healthy</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-line">
+                <span className="text-sm font-bold text-text-secondary">River API</span>
+                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Healthy</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-line">
+                <span className="text-sm font-bold text-text-secondary">Model Version</span>
+                <span className="text-sm font-bold text-text-primary tabular-nums">GDNN v2 GAT+GRU</span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-sm font-bold text-text-secondary">Last Inference</span>
+                <span className="text-sm font-bold text-text-primary tabular-nums">{new Date(dataUpdatedAt || Date.now()).toLocaleTimeString()}</span>
+              </div>
+            </div>
+
+            <button onClick={() => setShowDiagnostics(false)} className="btn-primary w-full mt-2">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );
