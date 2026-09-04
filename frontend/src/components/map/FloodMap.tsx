@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl, LayersControl, LayerGroup, GeoJSON } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl, LayersControl, LayerGroup, GeoJSON, useMap } from "react-leaflet";
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
@@ -45,6 +46,8 @@ interface District {
 
 interface FloodMapProps {
   districts?: District[];
+  onMarkerClick?: (districtId: number) => void;
+  selectedDistrictId?: number | null;
 }
 
 const getRiskColor = (score: number, level?: string) => {
@@ -101,11 +104,31 @@ const TN_COORDINATES: Record<string, [number, number]> = {
   "Kanyakumari": [8.0883, 77.5385],
 };
 
-export default function FloodMap({ districts = [] }: FloodMapProps) {
+function FlyToDistrict({ selected }: { selected: District | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (selected && selected.lat && selected.lon) {
+      map.flyTo([selected.lat, selected.lon], 9, {
+        animate: true,
+        duration: 1.5
+      });
+    }
+  }, [selected, map]);
+  return null;
+}
+
+export default function FloodMap({ districts = [], onMarkerClick, selectedDistrictId }: FloodMapProps) {
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<District | null>(null);
   const [geoJsonData, setGeoJsonData] = useState<any>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    if (selectedDistrictId && validDistricts.length > 0) {
+      const dist = validDistricts.find(d => d.id === selectedDistrictId);
+      if (dist) setSelected(dist);
+    }
+  }, [selectedDistrictId, districts]);
 
   useEffect(() => { 
     setMounted(true); 
@@ -155,6 +178,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
         style={{ background: "#f8f9fe", height: "100%", width: "100%" }}
       >
         <ZoomControl position="bottomright" />
+        <FlyToDistrict selected={selected} />
         <LayersControl position="topright">
           <LayersControl.BaseLayer checked name="Light Map">
             <TileLayer
@@ -185,18 +209,47 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
           )}
 
           <LayersControl.Overlay checked name="District Risk Sensors">
-            <LayerGroup>
+            <MarkerClusterGroup
+              chunkedLoading
+              maxClusterRadius={40}
+              spiderfyOnMaxZoom={true}
+              polygonOptions={{ fillColor: '#ffffff', color: '#f97316', weight: 1, opacity: 1, fillOpacity: 0.5 }}
+            >
               {validDistricts.map((district) => {
                 const markerColor = getRiskColor(district.risk_score, district.risk_level);
                 const isCriticalOrHigh = district.risk_score >= 60 || district.risk_level === "Critical" || district.risk_level === "High";
                 const isCritical = district.risk_score >= 80 || district.risk_level === "Critical";
+                const isSelected = district.id === selectedDistrictId || district.id === selected?.id;
                 return (
                   <LayerGroup key={district.id}>
-                    {/* Animated pulse ring for critical and high districts */}
-                    {isCriticalOrHigh && (
+                    {/* Selected marker purple glow */}
+                    {isSelected && (
                       <CircleMarker
                         center={[district.lat, district.lon]}
                         radius={getRadius(district.risk_score) + 8}
+                        pathOptions={{
+                          fillColor: "none",
+                          color: "#8b5cf6", // violet-500
+                          weight: 3,
+                          opacity: 0.9,
+                          className: "animate-pulse shadow-lg"
+                        }}
+                      />
+                    )}
+                    {/* Animated pulse ring for critical and high districts */}
+                    {isCriticalOrHigh && (
+                      <CircleMarker
+                        key={district.id}
+                        center={[district.lat, district.lon]}
+                        radius={getRadius(district.risk_score) + 4}
+                        eventHandlers={{
+                          click: () => {
+                            setSelected(district);
+                            if (onMarkerClick) {
+                              onMarkerClick(district.id);
+                            }
+                          },
+                        }}
                         pathOptions={{
                           fillColor: markerColor,
                           fillOpacity: 0.15,
@@ -218,7 +271,14 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                         opacity: 0.9,
                         className: "custom-map-marker cursor-pointer"
                       }}
-                      eventHandlers={{ click: () => setSelected(district) }}
+                      eventHandlers={{ 
+                        click: () => {
+                          setSelected(district);
+                          if (onMarkerClick) {
+                            onMarkerClick(district.id);
+                          }
+                        } 
+                      }}
                     >
                       <Tooltip
                         className="custom-district-tooltip"
@@ -302,10 +362,16 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                             Population: {district.population?.toLocaleString("en-IN")} · {district.coastal ? "Coastal" : "Inland"}
                           </p>
                           <button 
-                            onClick={() => router.push(`/dashboard/district/${district.id}`)}
+                            onClick={() => {
+                                if (onMarkerClick) {
+                                    onMarkerClick(district.id);
+                                } else {
+                                    router.push(`/dashboard/district/${district.id}`);
+                                }
+                            }}
                             className="mt-3 w-full py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-lg hover:bg-violet-600 transition-colors"
                           >
-                            View Full Analytics
+                            {onMarkerClick ? "View Metrics" : "View Full Analytics"}
                           </button>
                         </div>
                       </Popup>
@@ -313,7 +379,7 @@ export default function FloodMap({ districts = [] }: FloodMapProps) {
                   </LayerGroup>
                 );
               })}
-            </LayerGroup>
+            </MarkerClusterGroup>
           </LayersControl.Overlay>
           
           <LayersControl.Overlay name="Relief Shelters">
