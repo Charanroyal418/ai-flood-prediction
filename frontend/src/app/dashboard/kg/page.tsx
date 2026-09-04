@@ -11,9 +11,11 @@ import ReactFlow, {
   NodeTypes, Handle, Position, MarkerType,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import { toPng } from 'html-to-image';
+import CountUp from 'react-countup';
 import {
   Network, MapPin, RefreshCw, Activity,
-  Play, Pause, TrendingUp, X, Map, BarChart2, Eye, EyeOff, Code, AlertTriangle
+  Play, Pause, TrendingUp, X, Map, BarChart2, Eye, EyeOff, Code, AlertTriangle, Download, Filter
 } from "lucide-react";
 import * as d3 from "d3-force";
 
@@ -23,6 +25,14 @@ const STATUS_COLORS: Record<string, string> = {
   Moderate: "#f59e0b",
   Low: "#22c55e",
   Safe: "#3b82f6",
+};
+
+const NODE_TYPE_COLORS: Record<string, string> = {
+  district: "#3b82f6", // Blue
+  river: "#06b6d4", // Cyan
+  reservoir: "#22c55e", // Green
+  weather_station: "#f97316", // Orange
+  basin: "#a855f7", // Purple
 };
 
 const COMMUNITY_COLORS = [
@@ -35,10 +45,17 @@ function EntityNode({ data }: { data: any }) {
   const isWeather = data.type === "weather_station" || data.id?.startsWith("ws-");
   const isReservoir = data.type === "reservoir" || data.id?.startsWith("rs-") || data.id?.startsWith("dam-");
   
+  const { attentionMode } = data;
+  
   let shapeClass = "rounded-full"; // District
+  const nodeTypeStr = isRiver ? "river" : isWeather ? "weather_station" : isReservoir ? "reservoir" : "district";
+  
   if (isRiver) shapeClass = "rounded-md";
   else if (isWeather) shapeClass = "rounded-sm rotate-45";
   else if (isReservoir) shapeClass = "rounded-none";
+
+  const isStructuralOrAttention = attentionMode === 'structural' || attentionMode === 'attention';
+  const displayColor = isStructuralOrAttention ? (NODE_TYPE_COLORS[nodeTypeStr] || NODE_TYPE_COLORS.district) : statusColor;
 
   return (
     <div className="group flex flex-col items-center select-none relative">
@@ -49,9 +66,9 @@ function EntityNode({ data }: { data: any }) {
         <div 
           className={`w-4 h-4 shadow-sm border-2 transition-transform duration-300 group-hover:scale-110 ${shapeClass}`}
           style={{
-            backgroundColor: statusColor,
+            backgroundColor: displayColor,
             borderColor: "white",
-            boxShadow: `0 0 10px ${statusColor}40`
+            boxShadow: `0 0 10px ${displayColor}40`
           }}
         />
         <span className="text-[8px] font-bold text-slate-600 bg-white/80 px-1 rounded backdrop-blur-sm pointer-events-none whitespace-nowrap group-hover:opacity-0 transition-opacity mt-1">
@@ -63,7 +80,7 @@ function EntityNode({ data }: { data: any }) {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 z-50 group-hover:scale-100 scale-95 shadow-xl rounded-xl bg-white p-2 min-w-[140px]"
         style={{
           borderLeftWidth: 4,
-          borderLeftColor: statusColor,
+          borderLeftColor: displayColor,
         }}
       >
         <div className="flex items-center justify-between gap-2">
@@ -72,7 +89,7 @@ function EntityNode({ data }: { data: any }) {
           </p>
           <span
             className="text-[9px] font-extrabold px-1.5 py-0.5 rounded font-mono text-white flex-shrink-0 transition-colors duration-300"
-            style={{ backgroundColor: statusColor }}
+            style={{ backgroundColor: displayColor }}
           >
             {(Number(data?.risk_score) || 0).toFixed(1)}
           </span>
@@ -80,7 +97,7 @@ function EntityNode({ data }: { data: any }) {
 
         {/* Live Telemetry indicator */}
         <div className="mt-1 flex justify-between items-center text-[9px] text-slate-400 font-mono border-t border-slate-100 pt-1">
-          <span className="font-bold" style={{ color: statusColor }}>{data.status}</span>
+          <span className="font-bold" style={{ color: displayColor }}>{data.status}</span>
           <span>{data.type || 'District'}</span>
         </div>
       </div>
@@ -130,9 +147,11 @@ export default function DynamicKnowledgeGraph() {
   const [showAllEdges, setShowAllEdges] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [topConnections, setTopConnections] = useState<any[]>([]);
+  const [attentionMode, setAttentionMode] = useState<"structural" | "attention" | "risk">("risk");
   
   const playInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const layoutPositions = useRef<Record<string, { x: number, y: number }>>({});
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
   // Must be called at top level — before any early returns
   const { mode, stormSimulationActive, modelMeta } = useFloodData();
@@ -157,7 +176,7 @@ export default function DynamicKnowledgeGraph() {
     return node.history[idx];
   };
 
-  const updateGraphLayout = useCallback((rawNodes: any[], rawEdges: any[], timeIdx: number, selectedId: string | undefined, showAll: boolean) => {
+  const updateGraphLayout = useCallback((rawNodes: any[], rawEdges: any[], timeIdx: number, selectedId: string | undefined, showAll: boolean, currentAttentionMode: string) => {
     // 1. Community map
     const communityMap: Record<string, number> = {};
     if (data?.communities) {
@@ -188,6 +207,7 @@ export default function DynamicKnowledgeGraph() {
           status,
           communityColor,
           communityIdx: commIdx,
+          attentionMode: currentAttentionMode,
         },
       };
     });
@@ -215,6 +235,18 @@ export default function DynamicKnowledgeGraph() {
          opacity = (e.source === selectedId || e.target === selectedId) ? 0.9 : 0.05;
       }
 
+      let strokeColor = statusColor;
+      let strokeWidth = Math.max(1.2, Math.min(5.0, dynamicInfluence / 4));
+      
+      if (currentAttentionMode === 'attention') {
+         if (e.attention > 0.6) { strokeColor = "#a855f7"; strokeWidth = 4; } // Thick purple
+         else if (e.attention > 0.2) { strokeColor = "#14b8a6"; strokeWidth = 2.5; } // Medium teal
+         else { strokeColor = "#94a3b8"; strokeWidth = 1.2; } // Thin gray
+      } else if (currentAttentionMode === 'structural') {
+         strokeColor = "#cbd5e1";
+         strokeWidth = 1.5;
+      }
+
       return {
         id: e.id,
         source: e.source,
@@ -224,11 +256,11 @@ export default function DynamicKnowledgeGraph() {
         labelStyle: { fill: "#475569", fontWeight: 700, fontSize: 8 },
         labelBgStyle: { fill: "#ffffff", fillOpacity: 0.95, rx: 4, ry: 4 },
         style: {
-          stroke: statusColor,
-          strokeWidth: Math.max(1.2, Math.min(5.0, dynamicInfluence / 4)),
+          stroke: strokeColor,
+          strokeWidth: strokeWidth,
           opacity: opacity,
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color: statusColor },
+        markerEnd: { type: MarkerType.ArrowClosed, color: strokeColor },
         dynamicInfluence,
         attention: e.attention,
         sourceRisk,
@@ -238,7 +270,7 @@ export default function DynamicKnowledgeGraph() {
     // Compute top dynamic connections for the current time horizon
     const rankedConnections = [...formattedEdges]
       .sort((a, b) => b.dynamicInfluence - a.dynamicInfluence)
-      .slice(0, 4);
+      .slice(0, 10); // Top 10
     setTopConnections(rankedConnections);
 
     // 3. D3 Force Simulation with Strict Node Collision & Inter-Cluster Spacing
@@ -351,7 +383,7 @@ export default function DynamicKnowledgeGraph() {
 
   useEffect(() => {
     if (data?.nodes && data?.edges && data?.communities && !isError) {
-      updateGraphLayout(data.nodes, data.edges, timeIndex, selectedNode?.id, showAllEdges);
+      updateGraphLayout(data.nodes, data.edges, timeIndex, selectedNode?.id, showAllEdges, attentionMode);
       if (selectedNode) {
         const updatedNode = data.nodes.find((n: any) => n.id === selectedNode.id);
         if (updatedNode) {
@@ -369,7 +401,25 @@ export default function DynamicKnowledgeGraph() {
         }
       }
     }
-  }, [data, timeIndex, updateGraphLayout, selectedNode?.id, showAllEdges]);
+  }, [data, timeIndex, updateGraphLayout, selectedNode?.id, showAllEdges, attentionMode]);
+
+  const handleExportPNG = useCallback(() => {
+    if (reactFlowWrapper.current === null) return;
+    toPng(reactFlowWrapper.current, { 
+      filter: (node) => {
+        if (node?.classList?.contains('react-flow__controls')) return false;
+        if (node?.classList?.contains('react-flow__minimap')) return false;
+        if (node?.classList?.contains('react-flow__panel')) return false;
+        return true;
+      }
+    })
+      .then((dataUrl) => {
+        const link = document.createElement('a');
+        link.download = 'knowledge-graph.png';
+        link.href = dataUrl;
+        link.click();
+      });
+  }, []);
 
   const onNodeClick = useCallback((_: any, node: Node) => {
     if (node.type === "districtNode") {
@@ -483,8 +533,38 @@ export default function DynamicKnowledgeGraph() {
           <p className="text-xs text-slate-500 mt-0.5">How flood risk spreads between districts in Tamil Nadu.</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setAttentionMode("structural")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${attentionMode === "structural" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              Structural
+            </button>
+            <button
+              onClick={() => setAttentionMode("attention")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${attentionMode === "attention" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              Attention
+            </button>
+            <button
+              onClick={() => setAttentionMode("risk")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${attentionMode === "risk" ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              Risk <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+            </button>
+          </div>
           <button
-            onClick={() => refetch()}
+            onClick={handleExportPNG}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-semibold hover:bg-slate-100 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+          <button
+            onClick={() => {
+               // Simulate refresh animation with slight delay
+               setNodes([]);
+               setTimeout(() => refetch(), 100);
+            }}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-semibold hover:bg-slate-100 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Force Sync
@@ -514,7 +594,9 @@ export default function DynamicKnowledgeGraph() {
                 <div key={label} className="bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm hover:shadow transition-shadow">
                   <div className="flex justify-between items-center mb-1">
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{label}</p>
-                    <p className="text-sm font-bold text-slate-800 font-mono">{value}</p>
+                    <p className="text-sm font-bold text-slate-800 font-mono">
+                      {typeof value === 'number' ? <CountUp end={value} separator="," duration={2} /> : value}
+                    </p>
                   </div>
                   <p className="text-[10px] text-slate-400 leading-tight">{explain}</p>
                 </div>
@@ -524,16 +606,35 @@ export default function DynamicKnowledgeGraph() {
         </div>
 
         {/* Center Panel: ReactFlow Force-Directed Node-Link Graph */}
-        <div className="col-span-12 lg:col-span-6 glass-card overflow-hidden relative flex flex-col border border-slate-200 shadow-lg rounded-2xl bg-white">
+        <div className="col-span-12 lg:col-span-6 glass-card overflow-hidden relative flex flex-col border border-slate-200 shadow-lg rounded-2xl bg-white h-[560px]">
           
-          <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur px-3 py-2 rounded-lg border border-slate-200 shadow-sm pointer-events-none">
-             <p className="text-xs font-bold text-slate-800 flex items-center gap-2">
-               Node-Link Knowledge Graph
-               {isStormActive && <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />}
+          {/* Floating Legend */}
+          <div className="absolute top-4 left-4 z-10 bg-white/95 backdrop-blur px-3 py-2.5 rounded-xl border border-slate-200 shadow-md pointer-events-none">
+             <p className="text-xs font-bold text-slate-800 flex items-center gap-2 mb-2 border-b border-slate-100 pb-1">
+               <Network className="w-3.5 h-3.5 text-violet-500" /> Graph Legend
              </p>
-             <p className="text-[10px] text-slate-500">
-               {isStormActive ? "Simulated Downstream Risk Propagation Active" : "Nodes clustered by Basin Community"}
-             </p>
+             <div className="space-y-1.5">
+               <div className="flex items-center gap-2">
+                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: NODE_TYPE_COLORS.district }}></span>
+                 <span className="text-[10px] text-slate-600 font-medium">District</span>
+               </div>
+               <div className="flex items-center gap-2">
+                 <span className="w-2.5 h-2.5 rounded-md" style={{ backgroundColor: NODE_TYPE_COLORS.river }}></span>
+                 <span className="text-[10px] text-slate-600 font-medium">River</span>
+               </div>
+               <div className="flex items-center gap-2">
+                 <span className="w-2.5 h-2.5 rounded-none" style={{ backgroundColor: NODE_TYPE_COLORS.reservoir }}></span>
+                 <span className="text-[10px] text-slate-600 font-medium">Reservoir</span>
+               </div>
+               <div className="flex items-center gap-2">
+                 <span className="w-2.5 h-2.5 rounded-sm rotate-45" style={{ backgroundColor: NODE_TYPE_COLORS.weather_station }}></span>
+                 <span className="text-[10px] text-slate-600 font-medium">Weather Station</span>
+               </div>
+               <div className="flex items-center gap-2 mt-2 pt-1 border-t border-slate-100">
+                 <span className="w-3 h-3 rounded-full border-2 border-dashed border-purple-400 bg-purple-50"></span>
+                 <span className="text-[10px] text-slate-600 font-medium">Basin Community</span>
+               </div>
+             </div>
           </div>
 
           <div className="absolute top-4 right-4 z-10 flex gap-2">
@@ -546,7 +647,7 @@ export default function DynamicKnowledgeGraph() {
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 bg-slate-50 relative">
+          <div className="flex-1 min-h-0 bg-slate-50 relative" ref={reactFlowWrapper}>
             <ReactFlow
               nodes={nodes}
               edges={edges.filter((e: any) => (e.style?.opacity ?? 1) > 0)}
@@ -613,159 +714,202 @@ export default function DynamicKnowledgeGraph() {
           </div>
         </div>
 
-        {/* Right Panel: Communities & Explainability */}
-        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-h-0 overflow-y-auto">
-          
-          <div className="glass-card p-5 flex-1 flex flex-col min-h-0 shadow-md">
-            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-3 shrink-0">
-              <Map className="w-4 h-4 text-blue-500" /> Basin Communities
-            </h2>
-            <p className="text-[10px] text-slate-500 mt-2 mb-3">These districts share river systems — flooding in one raises risk in the others.</p>
-            <div className="overflow-y-auto space-y-3 flex-1 pr-1">
-              {(data.communities || []).map((comm: string[], i: number) => {
-                const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
-                const districts = (comm || []).filter(id => id.startsWith("d-")).map(id => {
-                  const node = (data.nodes || []).find((n: any) => n.id === id);
-                  return node ? node.label : "";
-                }).filter(Boolean);
+        {/* Right Panel: Communities & Explainability OR Inspector */}
+        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-h-0 overflow-hidden h-[560px]">
+          <AnimatePresence mode="wait">
+            {!selectedNode ? (
+              <motion.div 
+                key="default-right-panel"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="flex flex-col gap-4 h-full"
+              >
+                <div className="glass-card p-5 flex-1 flex flex-col min-h-0 shadow-md">
+                  <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 border-b border-slate-200 pb-3 shrink-0">
+                    <Map className="w-4 h-4 text-blue-500" /> Basin Communities
+                  </h2>
+                  <p className="text-[10px] text-slate-500 mt-2 mb-3">These districts share river systems — flooding in one raises risk in the others.</p>
+                  <div className="overflow-y-auto space-y-3 flex-1 pr-1 custom-scrollbar">
+                    {(data.communities || []).map((comm: string[], i: number) => {
+                      const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
+                      const districts = (comm || []).filter(id => id.startsWith("d-")).map(id => {
+                        const node = (data.nodes || []).find((n: any) => n.id === id);
+                        return node ? node.label : "";
+                      }).filter(Boolean);
 
-                if (districts.length === 0) return null;
+                      if (districts.length === 0) return null;
 
-                return (
-                  <div key={i} className="bg-white border border-slate-200 p-3 rounded-xl hover:shadow-md transition-shadow relative overflow-hidden">
-                    <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: color }} />
-                    <div className="flex justify-between items-center mb-2 pl-2">
-                      <span className="text-xs font-bold text-slate-700">Cluster {i + 1}</span>
-                      <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-mono">
-                        {districts.length} Districts
+                      return (
+                        <div key={i} className="bg-white border border-slate-200 p-3 rounded-xl hover:shadow-md transition-shadow relative overflow-hidden cursor-pointer group"
+                             onClick={() => {
+                               // Highlight community nodes logically (can extend node filtering here if needed)
+                             }}
+                        >
+                          <div className="absolute left-0 top-0 bottom-0 w-1.5 transition-all group-hover:w-2" style={{ backgroundColor: color }} />
+                          <div className="flex justify-between items-center mb-2 pl-2">
+                            <span className="text-xs font-bold text-slate-700">Cluster {i + 1}</span>
+                            <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-mono">
+                              {districts.length} Districts
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-medium leading-relaxed pl-2">
+                            {districts.join(", ")}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="glass-card flex-1 flex flex-col min-h-0 shadow-md overflow-hidden">
+                  <div className="p-4 flex items-center justify-between border-b border-slate-200 shrink-0 bg-white">
+                    <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 font-heading">
+                      <TrendingUp className="w-4 h-4 text-amber-500" /> Strongest Connections
+                    </h2>
+                    <span className="text-[9px] font-mono font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded">
+                      {TIME_WINDOWS[timeIndex].label}
+                    </span>
+                  </div>
+                  <div className="flex-1 overflow-auto bg-slate-50 custom-scrollbar">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 bg-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider z-10 shadow-sm">
+                        <tr>
+                          <th className="p-3 font-medium">Source</th>
+                          <th className="p-3 font-medium">Target</th>
+                          <th className="p-3 font-medium text-right">Attn</th>
+                          <th className="p-3 font-medium text-right">Infl</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-[11px] font-medium text-slate-700">
+                        {(topConnections.length > 0 ? topConnections : (data?.explainability?.critical_edges || []).filter((e: any) => e.source.startsWith('d-') && e.target.startsWith('d-')).slice(0, 10)).map((edge: any, i: number) => {
+                          const sourceNode = data.nodes.find((n: any) => n.id === edge.source);
+                          const targetNode = data.nodes.find((n: any) => n.id === edge.target);
+                          if (!sourceNode || !targetNode) return null;
+
+                          return (
+                            <tr key={i} className="border-b border-slate-200 hover:bg-white transition-colors">
+                              <td className="p-3 font-semibold truncate max-w-[80px]">{sourceNode.label}</td>
+                              <td className="p-3 truncate max-w-[80px]">{targetNode.label}</td>
+                              <td className="p-3 text-right font-mono text-slate-500">{(edge.attention || 0).toFixed(2)}</td>
+                              <td className="p-3 text-right font-mono text-amber-600 font-bold">{(Number(edge.dynamicInfluence) || 0).toFixed(1)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="inspector-panel"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="glass-card flex flex-col h-full shadow-lg border-2 border-violet-100 overflow-hidden relative bg-white"
+              >
+                <div className="p-5 border-b border-slate-200 bg-slate-50 flex-shrink-0 relative">
+                  <button
+                    onClick={() => setSelectedNode(null)}
+                    className="absolute top-4 right-4 p-1.5 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <div className="pr-6">
+                    <span className="text-[9px] font-bold text-violet-500 uppercase tracking-wider mb-1 block">Node Inspector</span>
+                    <h3 className="text-lg font-heading font-bold text-slate-800 flex items-center gap-2 mb-2">
+                      {selectedNode.label}
+                    </h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-md text-white font-mono shadow-sm"
+                        style={{ backgroundColor: STATUS_COLORS[selectedNode.status] || "#94a3b8" }}
+                      >
+                        {selectedNode.status}
+                      </span>
+                      <span className="text-[10px] text-slate-600 font-mono font-semibold bg-white border border-slate-200 px-2 py-0.5 rounded-md shadow-sm">
+                        Risk: {(Number(selectedNode?.risk_score) || 0).toFixed(1)}/100
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed pl-2">
-                      {districts.join(", ")}
-                    </p>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                </div>
 
-          <div className="glass-card p-5 flex-1 flex flex-col min-h-0 shadow-md">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 shrink-0">
-              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 font-heading">
-                <TrendingUp className="w-4 h-4 text-amber-500" /> Strongest Risk Connections
-              </h2>
-              <span className="text-[9px] font-mono font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded">
-                {TIME_WINDOWS[timeIndex].label}
-              </span>
-            </div>
-            <div className="mt-4 overflow-y-auto space-y-3 flex-1 pr-1">
-              {(topConnections.length > 0 ? topConnections : (data?.explainability?.critical_edges || []).filter((e: any) => e.source.startsWith('d-') && e.target.startsWith('d-')).slice(0, 4)).map((edge: any, i: number) => {
-                const sourceNode = data.nodes.find((n: any) => n.id === edge.source);
-                const targetNode = data.nodes.find((n: any) => n.id === edge.target);
-                if (!sourceNode || !targetNode) return null;
-
-                return (
-                  <div key={i} className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-col gap-1 hover:bg-slate-100 transition-colors">
-                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                        <span>{sourceNode.label} → {targetNode.label}</span>
-                      </div>
-                      <span className="text-[9px] font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex-shrink-0">
-                        {(Number(edge.dynamicInfluence) || 0).toFixed(1)} infl
-                      </span>
+                <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
+                  
+                  {/* General Stats */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Basin Community</p>
+                      <p className="text-xs font-semibold text-slate-700 mt-1">
+                        Cluster {(data.communities?.findIndex((c: string[]) => c.includes(selectedNode.id)) ?? -1) + 1}
+                      </p>
                     </div>
-                    <p className="text-[10px] text-slate-600 leading-normal mt-0.5">
-                      <strong className="text-slate-800">{sourceNode.label}</strong>&apos;s flood risk strongly affects <strong className="text-slate-800">{targetNode.label}</strong> via shared river drainage.
-                    </p>
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Current Prob</p>
+                      <p className="text-xs font-semibold text-slate-700 mt-1 font-mono">
+                        {((Number(selectedNode?.risk_score) || 0) * 0.85).toFixed(1)}%
+                      </p>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+
+                  {/* Connected Entities */}
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                      <Network className="w-3.5 h-3.5" /> Connected Infrastructure
+                    </p>
+                    <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-2 text-xs text-slate-700">
+                      {(data.edges || [])
+                        .filter((e: any) => e.source === selectedNode.id || e.target === selectedNode.id)
+                        .slice(0, 5) // Limit to 5 for UI space
+                        .map((edge: any, idx: number) => {
+                          const isSource = edge.source === selectedNode.id;
+                          const otherNodeId = isSource ? edge.target : edge.source;
+                          const otherNode = data.nodes.find((n: any) => n.id === otherNodeId);
+                          if (!otherNode) return null;
+                          
+                          const isRiver = edge.dynamicInfluence > 20 || edge.attention > 0.4;
+                          return (
+                            <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-100 last:border-0">
+                              <span className="font-semibold truncate pr-2" title={otherNode.label}>{otherNode.label}</span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono flex-shrink-0 ${isRiver ? "bg-cyan-100 text-cyan-700" : "bg-slate-200 text-slate-600"}`}>
+                                {isRiver ? "River" : "Adjacency"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {((data.edges || []).filter((e: any) => e.source === selectedNode.id || e.target === selectedNode.id).length > 5) && (
+                           <div className="text-center pt-1 text-[10px] text-slate-400 font-medium">+ more connections</div>
+                        )}
+                    </div>
+                  </div>
+
+                  {/* SHAP Factors */}
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                      <BarChart2 className="w-3.5 h-3.5" /> Dominant SHAP Features
+                    </p>
+                    <div className="space-y-1.5">
+                      {getExplainabilityBreakdown(selectedNode).slice(0, 4).map((factor: any, idx: number) => (
+                        <div key={idx} className="flex justify-between items-center bg-white border border-slate-200 px-3 py-2 rounded-lg text-[11px] shadow-sm">
+                          <span className="font-semibold text-slate-700 truncate">{factor.label}</span>
+                          <span className={`font-bold font-mono text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 ${
+                            factor.isPositive === false ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                          }`}>{factor.change || factor.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
 
 
-      {/* Selected Node Details Drawer */}
-      <AnimatePresence>
-        {selectedNode && (
-          <motion.div
-            initial={{ y: 250, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 250, opacity: 0 }}
-            className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 p-6 shadow-2xl z-[100] max-w-6xl mx-auto rounded-t-3xl flex flex-col gap-4 max-h-[42vh]"
-          >
-            <div className="flex justify-between items-start border-b border-slate-200 pb-3">
-              <div>
-                <h3 className="text-xl font-heading font-bold text-slate-800 flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-violet-600" /> {selectedNode.label}
-                </h3>
-                <div className="mt-2 flex items-center gap-3">
-                  <span
-                    className="text-[11px] font-bold px-2.5 py-1 rounded-full text-white font-mono"
-                    style={{ backgroundColor: STATUS_COLORS[selectedNode.status] || "#94a3b8" }}
-                  >
-                    Risk Level: {selectedNode.status}
-                  </span>
-                  <span className="text-[11px] text-slate-500 font-mono font-semibold">
-                    Risk Score: {(Number(selectedNode?.risk_score) || 0).toFixed(1)}/100
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedNode(null)}
-                className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 flex-1 overflow-y-auto pr-2 mt-2">
-              {/* Connected Districts */}
-              <div className="space-y-3">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">Connected Districts</p>
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2 overflow-y-auto max-h-40 text-xs text-slate-700 font-medium">
-                  {(data.edges || [])
-                    .filter((e: any) => e.source === selectedNode.id || e.target === selectedNode.id)
-                    .map((edge: any, idx: number) => {
-                      const isSource = edge.source === selectedNode.id;
-                      const otherNodeId = isSource ? edge.target : edge.source;
-                      const otherNode = data.nodes.find((n: any) => n.id === otherNodeId);
-                      if (!otherNode) return null;
-                      
-                      const isRiver = edge.dynamicInfluence > 20 || edge.attention > 0.4;
-                      return (
-                        <div key={idx} className="flex justify-between items-center py-1.5 border-b border-slate-200 last:border-0">
-                          <span className="text-slate-800 font-bold">{otherNode.label}</span>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${isRiver ? "bg-violet-100 text-violet-700 font-bold" : "bg-slate-200 text-slate-600"}`}>
-                            {isRiver ? "High River Flow" : "Border Adjacency"}
-                          </span>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-
-              {/* Top Risk Factors Column */}
-              <div className="space-y-3">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide font-mono">Top SHAP Risk Factors</p>
-                <div className="space-y-2 overflow-y-auto max-h-40 pr-1">
-                  {getExplainabilityBreakdown(selectedNode).map((factor: any, idx: number) => (
-                    <div key={idx} className="flex justify-between items-center bg-white border border-slate-200 px-3 py-2 rounded-lg text-xs shadow-sm">
-                      <span className="font-semibold text-slate-700">{factor.label}</span>
-                      <span className={`font-bold font-mono text-[11px] px-2 py-0.5 rounded ${
-                        factor.isPositive === false ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                      }`}>{factor.change || factor.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

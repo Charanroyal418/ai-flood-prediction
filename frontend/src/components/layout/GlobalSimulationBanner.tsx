@@ -9,7 +9,18 @@ import { useQueryClient } from "@tanstack/react-query";
 export default function GlobalSimulationBanner() {
   const { mode, stormSimulationActive, simulationMeta, stopSimulation } = useFloodData();
   const [stopping, setStopping] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const queryClient = useQueryClient();
+
+  React.useEffect(() => {
+    if (!stormSimulationActive && mode !== "SIMULATION") return;
+    const t = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => clearInterval(t);
+  }, [stormSimulationActive, mode]);
+  
+  const remainingMinutes = simulationMeta?.durationMinutes ? Math.max(0, simulationMeta.durationMinutes - 1 - Math.floor(elapsed / 60)) : 30;
+  const remainingSeconds = 59 - (elapsed % 60);
+
 
   if (!stormSimulationActive && mode !== "SIMULATION") {
     return null;
@@ -69,8 +80,8 @@ export default function GlobalSimulationBanner() {
             </div>
             <div className="hidden md:inline text-amber-300/40">|</div>
             <div>
-              <span className="text-amber-200/80 font-sans">Duration:</span>{" "}
-              <strong className="text-white font-bold">{simulationMeta?.durationMinutes || 30} mins</strong>
+                            <span className="text-amber-200/80 font-sans">Remaining:</span>{" "}
+              <strong className="text-white font-bold font-sans">{remainingMinutes}m {remainingSeconds}s</strong>
             </div>
             <div className="hidden lg:inline text-amber-300/40">|</div>
             <div>

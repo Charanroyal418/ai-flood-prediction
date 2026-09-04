@@ -150,7 +150,7 @@ export default function DistrictAnalyticsPage() {
     queryKey: ["districts"],
     queryFn: async () => {
       const res = await api.get("/dashboard/districts");
-      return res.data as any[];
+      return res.data as any;
     },
     refetchInterval: 10000,
   });

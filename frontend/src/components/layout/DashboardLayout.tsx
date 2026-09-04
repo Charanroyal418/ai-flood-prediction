@@ -151,6 +151,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { mode, stormSimulationActive, lastUpdated } = useFloodData();
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
 
   useEffect(() => {
     setMounted(true);
@@ -269,17 +275,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
 
           <div className="flex-1 flex items-center gap-4 min-w-0 font-mono text-xs text-text-secondary">
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${isStormActive ? 'bg-orange-50 text-orange-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                        <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${isStormActive ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
               <Circle className={`w-2 h-2 fill-current animate-pulse-soft ${isStormActive ? "text-orange-500" : "text-emerald-500"}`} />
-              <span className="font-bold">{isStormActive ? "SYSTEM: SIMULATED" : "SYSTEM: NOMINAL"}</span>
+              <span className="font-bold font-sans">{isStormActive ? "SYSTEM: SIMULATED" : "SYSTEM: NOMINAL"}</span>
             </div>
             <div className="h-4 w-px bg-line hidden sm:block" />
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold shadow-sm">
-              <span>LAST SYNC:</span>
-              <span>
+                            <span>LAST SYNC:</span>
+              <span className="font-mono">
                 {!mounted ? "..." : lastUpdated
-                  ? new Date(lastUpdated).toLocaleTimeString("en-IN", { hour12: false })
-                  : new Date().toLocaleTimeString("en-IN", { hour12: false })}
+                  ? (() => {
+                      const seconds = Math.floor((now.getTime() - new Date(lastUpdated).getTime()) / 1000);
+                      return seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds/60)}m ${seconds%60}s ago`;
+                    })()
+                  : "Just now"}
               </span>
             </div>
           </div>

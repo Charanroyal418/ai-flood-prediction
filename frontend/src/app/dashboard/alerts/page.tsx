@@ -174,7 +174,7 @@ export default function AlertCenterPage() {
             <p className="text-sm text-text-secondary">No active alerts matching criteria. GDNN monitoring continues.</p>
           </div>
         ) : (
-          filtered.map((alert) => <AlertCard key={alert.id} alert={alert} />)
+          filtered.map((alert) => <AlertCard key={alert.district_id + '-' + alert.created_at} alert={alert} />)
         )}
       </div>
     </div>

@@ -896,7 +896,7 @@ export default function PredictionEnginePage() {
                   <div className="flex justify-between"><span className="text-slate-500">GAT</span><span className="font-mono">{breakdown?.gat_ms || 320}ms</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">GRU</span><span className="font-mono">{breakdown?.gru_ms || 410}ms</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">SHAP</span><span className="font-mono">{breakdown?.shap_ms || 210}ms</span></div>
-                  <div className="flex justify-between font-bold pt-1 mt-1 border-t border-line/50"><span className="text-slate-700">Total</span><span className="font-mono">{totalLatencySum}ms</span></div>
+                  <div className="flex justify-between font-bold pt-1 mt-1 border-t border-line/50"><span className="text-slate-700">Total</span><span className="font-mono">{String(totalLatencySum)}ms</span></div>
                 </div>
               </div>
               <div className="flex justify-between items-center py-2">

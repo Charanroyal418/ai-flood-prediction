@@ -2,10 +2,11 @@ import os
 import sys
 import uuid
 from sqlalchemy.orm import Session
-from app.core.security import get_password_hash
 
 # Add backend directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+from app.core.security import get_password_hash
 
 import app.db.base # Register all models before doing anything else
 from app.db.session import SessionLocal, engine
@@ -109,8 +110,7 @@ def seed_alerts(db: Session):
             severity="Severe",
             message="Heavy rainfall expected in Chennai over the next 24 hours. Possibility of localized flooding.",
             suggested_response="Stay indoors and move to higher ground.",
-            confidence=0.85,
-            rainfall_mm=120.5
+            confidence=0.85
         )
         db.add(alert)
     db.commit()

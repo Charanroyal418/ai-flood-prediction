@@ -82,9 +82,11 @@ async def lifespan(app: FastAPI):
         try:
             if db.query(District).count() == 0:
                 logger.info("[FloodSense] Database is empty. Seeding initial data...")
+                from scripts.seed_db import seed_districts, seed_users, seed_facilities_and_rivers, seed_alerts
                 seed_districts(db)
                 seed_users(db)
                 seed_facilities_and_rivers(db)
+                seed_alerts(db)
                 logger.info("[FloodSense] Seeding completed.")
         except Exception as e:
             logger.error(f"[FloodSense] Error during database initialization: {e}")
