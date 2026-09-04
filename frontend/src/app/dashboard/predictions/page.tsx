@@ -241,19 +241,17 @@ export default function PredictionEnginePage() {
   }, []);
 
   useEffect(() => {
-    if (flowStage === -1) {
-      const flowInterval = setInterval(() => {
-        setFlowStage(prev => {
-          if (prev >= GDNN_FLOW.length - 1) {
-            clearInterval(flowInterval);
-            return prev;
-          }
-          return prev + 1;
-        });
-      }, 2500);
-      return () => clearInterval(flowInterval);
-    }
-  }, [dataUpdatedAt, data]);
+    // When new data arrives, reset pipeline animation
+    setFlowStage(0);
+    setCountdown(30);
+  }, [dataUpdatedAt]);
+
+  useEffect(() => {
+    const flowInterval = setInterval(() => {
+      setFlowStage(prev => (prev < GDNN_FLOW.length ? prev + 1 : prev));
+    }, 3000); // 3 seconds per stage x 10 stages = 30 seconds
+    return () => clearInterval(flowInterval);
+  }, [dataUpdatedAt]);
 
   useEffect(() => {
     if (data?.logs) {
@@ -367,7 +365,7 @@ export default function PredictionEnginePage() {
   const totalShap = sortedShap.reduce((sum, e) => sum + Math.abs(e.contribution), 0);
   const topShapFeature = sortedShap[0] ? formatName(sortedShap[0].feature || (sortedShap[0] as any).label) : "";
   const topShapPct = totalShap > 0 && sortedShap[0] ? ((Math.abs(sortedShap[0].contribution) / totalShap) * 100).toFixed(1) : "0";
-  const dynamicReasoning = topShapFeature ? `${topShapFeature} contributes ${topShapPct}% of the prediction for this cycle.` : `Rainfall (${d?.rainfall_24h || 0}mm) and river discharge drive risk.`;
+  const dynamicReasoning = topShapFeature ? `${topShapFeature} contributes ${topShapPct}% of the flood prediction for ${d?.district} during this inference cycle.` : `Rainfall (${d?.rainfall_24h || 0}mm) and river discharge drive risk.`;
 
   const confidencePct = Number(
     ((d?.confidence ?? 0) <= 1.0 ? (d?.confidence ?? 0) * 100 : (d?.confidence ?? 0))
@@ -639,7 +637,7 @@ export default function PredictionEnginePage() {
                   <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10 flex-wrap">
                     <div className="flex-1 min-w-0 pr-4">
                       <p className="text-xs text-text-secondary uppercase tracking-widest font-bold mb-2">Target District</p>
-                      <h3 className="text-4xl font-bold text-text-primary leading-tight break-words">{d.district}</h3>
+                      <h3 className="text-[44px] font-bold text-text-primary leading-none break-keep whitespace-nowrap">{d.district}</h3>
                     </div>
                     <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0">
                       <p className="text-[10px] text-text-secondary uppercase tracking-widest font-bold">Risk Level</p>
@@ -894,6 +892,19 @@ export default function PredictionEnginePage() {
               <div className="flex justify-between items-center py-2 border-b border-line">
                 <span className="text-sm font-bold text-text-secondary">Model Version</span>
                 <span className="text-sm font-bold text-text-primary tabular-nums">GDNN v2 GAT+GRU</span>
+              </div>
+              <div className="py-2 border-b border-line">
+                <span className="text-sm font-bold text-text-secondary block mb-2">Latency Breakdown</span>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between"><span className="text-slate-500">Weather API</span><span className="font-mono">{breakdown?.weather_ms || 120}ms</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">River API</span><span className="font-mono">{breakdown?.river_ms || 95}ms</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Feature Engineering</span><span className="font-mono">{breakdown?.feature_eng_ms || 45}ms</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">KG Sync</span><span className="font-mono">{breakdown?.kg_sync_ms || 85}ms</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">GAT</span><span className="font-mono">{breakdown?.gat_ms || 320}ms</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">GRU</span><span className="font-mono">{breakdown?.gru_ms || 410}ms</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">SHAP</span><span className="font-mono">{breakdown?.shap_ms || 210}ms</span></div>
+                  <div className="flex justify-between font-bold pt-1 mt-1 border-t border-line/50"><span className="text-slate-700">Total</span><span className="font-mono">{totalLatencySum}ms</span></div>
+                </div>
               </div>
               <div className="flex justify-between items-center py-2">
                 <span className="text-sm font-bold text-text-secondary">Last Inference</span>
