@@ -112,7 +112,7 @@ export default function HistoricalPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["history"],
     queryFn: async () => {
-      const res = await api.get("/dashboard/history");
+      const res = await api.get("/api/v1/dashboard/history");
       return res.data as any[];
     },
   });

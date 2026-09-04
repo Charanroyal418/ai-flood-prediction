@@ -9,7 +9,7 @@ export function DistrictRiskBar() {
     queryKey: ['districtRisks'],
     queryFn: async () => {
       try {
-        const res = await api.get('/predict/active-risks');
+        const res = await api.get('/api/v1/predict/active-risks');
         return res.data;
       } catch {
         return [

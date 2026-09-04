@@ -45,3 +45,29 @@ api_router.include_router(users.router, prefix="/users", tags=["users"])
 
 # ── WebSocket ────────────────────────────────────────────────────────────────
 api_router.include_router(ws.router, prefix="/ws", tags=["websocket"])
+
+# ── Weather & Rivers Aliases ────────────────────────────────────────────────
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from app.api import deps
+
+@api_router.get("/weather", tags=["weather"])
+def get_weather(db: Session = Depends(deps.get_db)):
+    """Returns real-time weather data across districts."""
+    live = dashboard.get_dashboard_live(db)
+    return {
+        "success": True,
+        "data": {
+            "districts": live.get("districts", []),
+            "weekly_forecast": live.get("weekly_forecast", []),
+            "avg_rainfall_24h_mm": live.get("metrics", {}).get("avg_rainfall_24h_mm", 0),
+        },
+        "districts": live.get("districts", []),
+        "weekly_forecast": live.get("weekly_forecast", []),
+        "avg_rainfall_24h_mm": live.get("metrics", {}).get("avg_rainfall_24h_mm", 0),
+    }
+
+@api_router.get("/rivers", tags=["rivers"])
+def get_rivers(db: Session = Depends(deps.get_db)):
+    """Returns real-time river levels across gauging stations."""
+    return dashboard.get_river_levels(db)

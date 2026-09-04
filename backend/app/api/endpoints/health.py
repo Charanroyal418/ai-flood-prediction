@@ -9,7 +9,7 @@ def health_check():
     """
     Check if the API is running and healthy.
     """
-    return {"status": "ok", "message": "FloodSense AI API is running seamlessly."}
+    return {"status": "online", "message": "FloodSense AI API is running seamlessly."}
 
 @router.get("/ready", response_model=dict)
 def ready_check(request: Request):

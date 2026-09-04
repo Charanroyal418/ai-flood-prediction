@@ -34,7 +34,7 @@ interface PerformanceData {
 export default function PerformancePage() {
   const { data, isLoading, refetch } = useQuery<PerformanceData>({
     queryKey: ["performance-metrics"],
-    queryFn: async () => (await api.get("/performance/metrics")).data,
+    queryFn: async () => (await api.get("/api/v1/performance/metrics")).data,
     refetchInterval: 10000,
     staleTime: 5000,
   });

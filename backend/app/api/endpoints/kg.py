@@ -132,6 +132,8 @@ def _build_community_detail(communities: List[List[str]], G: nx.DiGraph) -> List
 
 # ─── Main Graph Endpoint ──────────────────────────────────────────────────────
 
+@router.get("")
+@router.get("/")
 @router.get("/graph")
 @router.get("/topology")
 def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:

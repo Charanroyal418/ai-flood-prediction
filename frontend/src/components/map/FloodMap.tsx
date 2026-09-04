@@ -154,7 +154,7 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
 
   useEffect(() => { 
     setMounted(true); 
-    api.get("/spatial/district-bounds")
+    api.get("/api/v1/spatial/district-bounds")
        .then(res => setGeoJsonData(res.data))
        .catch(err => console.error("Failed to load map bounds:", err));
   }, []);

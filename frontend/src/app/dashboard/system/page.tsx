@@ -43,7 +43,7 @@ export default function SystemHealthPage() {
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["systemHealth"],
     queryFn: async () => {
-      const res = await api.get("/system/health");
+      const res = await api.get("/api/v1/system/health");
       return res.data;
     },
     refetchInterval: 15000,

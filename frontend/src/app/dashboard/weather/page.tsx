@@ -44,7 +44,7 @@ export default function WeatherCenter() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", "live"],
-    queryFn: async () => (await api.get("/dashboard/live")).data,
+    queryFn: async () => (await api.get("/api/v1/dashboard/live")).data,
     refetchInterval: 15000,
   });
 

@@ -8,7 +8,7 @@ export default function SystemHealthWidget() {
   const { data, isLoading } = useQuery({
     queryKey: ["systemStatus"],
     queryFn: async () => {
-      const res = await api.get("/system/status");
+      const res = await api.get("/api/v1/system/status");
       return res.data;
     },
     refetchInterval: 30000, // Refresh every 30s

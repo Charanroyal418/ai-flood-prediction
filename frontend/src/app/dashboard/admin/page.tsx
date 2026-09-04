@@ -110,39 +110,39 @@ export default function AdminPanel() {
   // Fetch pipeline status
   const { data: status, isLoading: statusLoading } = useQuery<PipelineStatus>({
     queryKey: ["adminPipelineStatus"],
-    queryFn: async () => (await api.get("/admin/pipeline/status")).data,
+    queryFn: async () => (await api.get("/api/v1/admin/pipeline/status")).data,
     refetchInterval: 5000,
   });
 
   // Fetch model metrics
   const { data: metrics } = useQuery<ModelMetrics>({
     queryKey: ["adminModelMetrics"],
-    queryFn: async () => (await api.get("/admin/ml/metrics")).data,
+    queryFn: async () => (await api.get("/api/v1/admin/ml/metrics")).data,
     retry: false,
   });
 
   // Fetch logs
   const { data: logsData } = useQuery({
     queryKey: ["adminLogs"],
-    queryFn: async () => (await api.get("/admin/logs?limit=30")).data,
+    queryFn: async () => (await api.get("/api/v1/admin/logs?limit=30")).data,
     enabled: logsOpen,
   });
 
   // GNN training status poll
   const { data: gnnStatus } = useQuery({
     queryKey: ["gnnTrainStatus"],
-    queryFn: async () => (await api.get("/admin/ml/retrain-gnn/status")).data,
+    queryFn: async () => (await api.get("/api/v1/admin/ml/retrain-gnn/status")).data,
     refetchInterval: 3000,
   });
 
   // Mutations
   const triggerETL = useMutation({
-    mutationFn: () => api.post("/admin/etl/run"),
+    mutationFn: () => api.post("/api/v1/admin/etl/run"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["adminPipelineStatus"] }),
   });
 
   const triggerGNN = useMutation({
-    mutationFn: () => api.post(`/admin/ml/retrain-gnn?n_snapshots=${gnnSnapshots}`),
+    mutationFn: () => api.post(`/api/v1/admin/ml/retrain-gnn?n_snapshots=${gnnSnapshots}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["gnnTrainStatus"] });
       qc.invalidateQueries({ queryKey: ["adminModelMetrics"] });
@@ -150,7 +150,7 @@ export default function AdminPanel() {
   });
 
   const resetCaches = useMutation({
-    mutationFn: () => api.post("/admin/pipeline/reset"),
+    mutationFn: () => api.post("/api/v1/admin/pipeline/reset"),
     onSuccess: () => qc.invalidateQueries(),
   });
 

@@ -164,7 +164,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { data: liveData } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
-      const res = await api.get("/dashboard/live");
+      const res = await api.get("/api/v1/dashboard/live");
       return res.data;
     },
     refetchInterval: 10000,

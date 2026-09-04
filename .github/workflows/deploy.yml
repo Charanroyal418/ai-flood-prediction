@@ -60,7 +60,7 @@ jobs:
           if [ -n "$VERCEL_TOKEN" ]; then
             npx vercel deploy --prod --token "$VERCEL_TOKEN" --yes
           else
-            echo "Vercel deployment step skipped (or handled via native Vercel Git integration)."
+            echo "Vercel deployment skipped because VERCEL_TOKEN is not set (handled via Vercel GitHub integration)."
           fi
 
   # ── Backend → Render ──────────────────────────────────────────────────────

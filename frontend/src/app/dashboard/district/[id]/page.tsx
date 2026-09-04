@@ -18,7 +18,7 @@ export default function DistrictDrilldown() {
   const { data, isLoading } = useQuery({
     queryKey: ["district", id],
     queryFn: async () => {
-      const res = await api.get(`/district/${id}`);
+      const res = await api.get(`/api/v1/district/${id}`);
       return res.data;
     },
   });

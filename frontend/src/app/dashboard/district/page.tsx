@@ -230,7 +230,7 @@ export default function DistrictAnalyticsPage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["districts"],
     queryFn: async () => {
-      const res = await api.get("/dashboard/districts");
+      const res = await api.get("/api/v1/dashboard/districts");
       return res.data;
     },
     refetchInterval: 10000,

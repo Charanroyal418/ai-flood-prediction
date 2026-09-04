@@ -71,8 +71,28 @@ async def _get_dashboard_snapshot(db: Session) -> dict:
         }
 
         lon, lat = 0.0, 0.0
-        if d.geom_json and "coordinates" in d.geom_json:
-            lon, lat = d.geom_json["coordinates"]
+        if d.geom_json:
+            geom = d.geom_json
+            if isinstance(geom, str):
+                try:
+                    import json
+                    geom = json.loads(geom)
+                except Exception:
+                    geom = {}
+            if isinstance(geom, dict):
+                coords = geom.get("coordinates")
+                gtype = geom.get("type", "")
+                try:
+                    if gtype == "Point" and isinstance(coords, (list, tuple)) and len(coords) >= 2:
+                        lon, lat = float(coords[0]), float(coords[1])
+                    elif gtype in ("Polygon", "MultiPolygon") and coords:
+                        pts = coords[0] if gtype == "Polygon" else coords[0][0]
+                        if pts and len(pts) > 0:
+                            avg_lon = sum(p[0] for p in pts) / len(pts)
+                            avg_lat = sum(p[1] for p in pts) / len(pts)
+                            lon, lat = float(avg_lon), float(avg_lat)
+                except Exception:
+                    pass
 
         district_list.append({
             "district_id": d.id,
@@ -162,6 +182,90 @@ async def _get_kg_snapshot() -> dict:
         "nodes": nodes,
         "edges": edges,
     }
+
+
+@router.websocket("")
+@router.websocket("/")
+async def ws_unified(websocket: WebSocket, db: Session = Depends(deps.get_db)):
+    """
+    Unified WebSocket endpoint for multiplexed channels.
+    Matches NEXT_PUBLIC_WS_URL=wss://.../api/v1/ws (without subpath).
+    Automatically multiplexes dashboard, kg, and alerts channels.
+    """
+    await websocket.accept()
+    logger.info("[WS/unified] Client connected to unified stream")
+    subscribed_channels = ["dashboard", "kg", "alerts", "pipeline"]
+    for ch in subscribed_channels:
+        async with ws_manager._lock:
+            if websocket not in ws_manager._connections[ch]:
+                ws_manager._connections[ch].append(websocket)
+
+    try:
+        # Send initial snapshots on connect
+        try:
+            snap = await _get_dashboard_snapshot(db)
+            snap["channel"] = "dashboard"
+            await ws_manager.send_to_one(websocket, snap)
+        except Exception as e:
+            logger.warning(f"[WS/unified] Error sending initial dashboard snapshot: {e}")
+
+        try:
+            kg_snap = await _get_kg_snapshot()
+            kg_snap["channel"] = "kg"
+            await ws_manager.send_to_one(websocket, kg_snap)
+        except Exception as e:
+            logger.warning(f"[WS/unified] Error sending initial KG snapshot: {e}")
+
+        while True:
+            try:
+                data = await websocket.receive_json()
+                action = data.get("action", "")
+                channel = data.get("channel", "")
+
+                if action == "ping" or data.get("type") == "ping":
+                    await ws_manager.send_to_one(websocket, {
+                        "type": "pong",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    })
+                elif channel == "dashboard" or action == "get_dashboard":
+                    snap = await _get_dashboard_snapshot(db)
+                    snap["channel"] = "dashboard"
+                    await ws_manager.send_to_one(websocket, snap)
+                elif channel == "kg" or action == "get_kg":
+                    snap = await _get_kg_snapshot()
+                    snap["channel"] = "kg"
+                    await ws_manager.send_to_one(websocket, snap)
+                elif action == "trigger_pipeline":
+                    import asyncio
+                    from app.db.session import SessionLocal
+                    from app.services.orchestrator import RealtimeOrchestrator
+
+                    async def _run():
+                        pipeline_db = SessionLocal()
+                        try:
+                            orch = RealtimeOrchestrator(pipeline_db)
+                            result = orch.run_pipeline(
+                                simulate_storm=data.get("storm", False)
+                            )
+                            await ws_manager.send_to_one(websocket, {
+                                "type": "PIPELINE_TRIGGERED",
+                                "channel": "dashboard",
+                                "result": result,
+                            })
+                        finally:
+                            pipeline_db.close()
+
+                    asyncio.ensure_future(_run())
+            except Exception as recv_err:
+                logger.debug(f"[WS/unified] Receive error: {recv_err}")
+                break
+    except WebSocketDisconnect:
+        logger.info("[WS/unified] Client disconnected")
+    except Exception as e:
+        logger.error(f"[WS/unified] Unexpected error: {e}")
+    finally:
+        for ch in subscribed_channels:
+            await ws_manager.disconnect(websocket, ch)
 
 
 @router.websocket("/dashboard")

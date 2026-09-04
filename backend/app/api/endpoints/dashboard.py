@@ -611,6 +611,7 @@ def get_historical_flood_events() -> Any:
     ]}
 
 @router.get("/river")
+@router.get("/rivers")
 def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
     """Returns real-time river levels for TN's major rivers.
     

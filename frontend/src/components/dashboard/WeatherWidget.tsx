@@ -8,7 +8,7 @@ export default function WeatherWidget() {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
-      const res = await api.get("/dashboard/live");
+      const res = await api.get("/api/v1/dashboard/live");
       return res.data;
     },
     refetchInterval: 60000, // Refresh every 1 min

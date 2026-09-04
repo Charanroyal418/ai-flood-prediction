@@ -99,7 +99,7 @@ export default function StormSimulationPage() {
 
   const { data: liveData, refetch: refetchLive } = useQuery({
     queryKey: ["dashboardLive"],
-    queryFn: async () => { const r = await api.get("/dashboard/live"); return r.data; },
+    queryFn: async () => { const r = await api.get("/api/v1/dashboard/live"); return r.data; },
     refetchInterval: isActive ? 8000 : 30000,
   });
 
@@ -111,7 +111,7 @@ export default function StormSimulationPage() {
 
   const stormMutation = useMutation({
     mutationFn: async (body: Partial<StormParams> & { active: boolean }) => {
-      const r = await api.post("/dashboard/simulate-storm", body);
+      const r = await api.post("/api/v1/dashboard/simulate-storm", body);
       return r.data;
     },
     onSuccess: () => {

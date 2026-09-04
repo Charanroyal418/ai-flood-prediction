@@ -139,18 +139,18 @@ export default function CommandCenter() {
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (!hasWsData) {
+    if (!hasWsData && isLoading) {
       timer = setTimeout(() => setIsSlowLoading(true), 5000);
     } else {
       setIsSlowLoading(false);
     }
     return () => clearTimeout(timer);
-  }, [hasWsData]);
+  }, [hasWsData, isLoading]);
 
   const { data, isLoading, refetch, isError } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
-      const res = await api.get("/dashboard/live");
+      const res = await api.get("/api/v1/dashboard/live");
       return res.data;
     },
     refetchInterval: stormSimulationActive ? 3000 : 15000,

@@ -401,7 +401,7 @@ function RiverDetailPanel({ river, onClose }: { river: River; onClose: () => voi
 export default function RiverIntelligencePage() {
   const { data: rawData, isLoading, refetch } = useQuery({
     queryKey: ["rivers"],
-    queryFn: async () => (await api.get("/dashboard/river")).data as River[],
+    queryFn: async () => (await api.get("/api/v1/dashboard/river")).data as River[],
     refetchInterval: 12000,
   });
 

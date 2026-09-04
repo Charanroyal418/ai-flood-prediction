@@ -194,7 +194,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
   const refetchPipeline = useCallback(async () => {
     try {
-      const res = await api.get("/predict/inference-cycle");
+      const res = await api.get("/api/v1/predict/inference-cycle");
       if (res.data) {
         setPipelineData(res.data);
         if (res.data.status === "waiting_for_telemetry" || res.data.status === "processing") {
@@ -209,7 +209,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
   const refetchKg = useCallback(async () => {
     try {
-      const res = await api.get("/kg/topology");
+      const res = await api.get("/api/v1/kg/topology");
       if (res.data) setKgData(res.data);
     } catch (err: any) {
       console.warn("KG fetch failed:", err);
@@ -227,9 +227,9 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
       try {
         setIsLoading(true);
         const [dashboardRes, pipelineRes, kgRes] = await Promise.allSettled([
-          api.get("/dashboard/live", { signal: controller.signal }),
-          api.get("/predict/inference-cycle", { signal: controller.signal }),
-          api.get("/kg/topology", { signal: controller.signal })
+          api.get("/api/v1/dashboard/live", { signal: controller.signal }),
+          api.get("/api/v1/predict/inference-cycle", { signal: controller.signal }),
+          api.get("/api/v1/kg/topology", { signal: controller.signal })
         ]);
 
         if (!isMounted) return;
@@ -388,7 +388,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
       const targetState = active !== undefined ? active : !stormSimulationActive;
       setStormSimulationActive(targetState);
       try {
-        const res = await api.post(`/dashboard/simulate-storm?active=${targetState}`);
+        const res = await api.post(`/api/v1/dashboard/simulate-storm?active=${targetState}`);
         if (res.data?.storm_simulation_active !== undefined) {
           setStormSimulationActive(res.data.storm_simulation_active);
         }
