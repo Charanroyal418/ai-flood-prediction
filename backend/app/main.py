@@ -53,12 +53,27 @@ async def lifespan(app: FastAPI):
         
         db = SessionLocal()
         try:
-            from sqlalchemy import text
+            from sqlalchemy import text, inspect
             # Auto-migration for existing Render database that misses elevation_m or community_idx
-            db.execute(text("ALTER TABLE districts ADD COLUMN IF NOT EXISTS elevation_m FLOAT;"))
-            db.execute(text("ALTER TABLE districts ADD COLUMN IF NOT EXISTS community_idx INTEGER DEFAULT 0;"))
-            db.execute(text("ALTER TABLE weather ADD COLUMN IF NOT EXISTS wind_speed FLOAT;"))
-            db.execute(text("ALTER TABLE weather ADD COLUMN IF NOT EXISTS rainfall_mm FLOAT;"))
+            bind = db.get_bind()
+            if bind.dialect.name == "sqlite":
+                inspector = inspect(bind)
+                table_names = inspector.get_table_names()
+                dist_cols = [c["name"] for c in inspector.get_columns("districts")] if "districts" in table_names else []
+                weather_cols = [c["name"] for c in inspector.get_columns("weather")] if "weather" in table_names else []
+                if "elevation_m" not in dist_cols:
+                    db.execute(text("ALTER TABLE districts ADD COLUMN elevation_m FLOAT;"))
+                if "community_idx" not in dist_cols:
+                    db.execute(text("ALTER TABLE districts ADD COLUMN community_idx INTEGER DEFAULT 0;"))
+                if "wind_speed" not in weather_cols:
+                    db.execute(text("ALTER TABLE weather ADD COLUMN wind_speed FLOAT;"))
+                if "rainfall_mm" not in weather_cols:
+                    db.execute(text("ALTER TABLE weather ADD COLUMN rainfall_mm FLOAT;"))
+            else:
+                db.execute(text("ALTER TABLE districts ADD COLUMN IF NOT EXISTS elevation_m FLOAT;"))
+                db.execute(text("ALTER TABLE districts ADD COLUMN IF NOT EXISTS community_idx INTEGER DEFAULT 0;"))
+                db.execute(text("ALTER TABLE weather ADD COLUMN IF NOT EXISTS wind_speed FLOAT;"))
+                db.execute(text("ALTER TABLE weather ADD COLUMN IF NOT EXISTS rainfall_mm FLOAT;"))
             db.commit()
         except Exception as e:
             db.rollback()

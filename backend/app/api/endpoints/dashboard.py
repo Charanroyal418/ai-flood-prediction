@@ -345,32 +345,35 @@ def _build_dashboard_live(db: Session) -> Any:
     kg_edges = int(inf.edge_count or 0) if inf else 0
     attention_heads = 4
 
+    payload = {
+        "status": "online",
+        "timestamp": last_updated_ts,
+        "metrics": {
+            "avg_risk_score": float(round(avg_risk, 1)),
+            "active_alerts_count": len(alerts_data),
+            "critical_districts": len(critical),
+            "high_risk_districts": len(high),
+            "avg_rainfall_24h_mm": float(round(avg_rainfall, 1)),
+            "districts_monitored": len(districts),
+            "model_confidence": float(avg_confidence),
+            "gdnn_inference_ms": float(gdnn_ms),
+            "kg_nodes": kg_nodes,
+            "kg_edges": kg_edges,
+            "attention_heads": attention_heads,
+            "storm_simulation_active": bool(sim_meta.get("active", False)),
+        },
+        "storm_simulation": sim_meta,
+        "districts": districts_with_risk,
+        "top_risk_districts": districts_with_risk[:5],
+        "alerts": alerts_data,
+        "events": events_data,
+        "weekly_forecast": weekly_forecast,
+    }
+
     return {
         "success": True,
-        "data": {
-            "status": "online",
-            "timestamp": last_updated_ts,
-            "metrics": {
-                "avg_risk_score": float(round(avg_risk, 1)),
-                "active_alerts_count": len(alerts_data),
-                "critical_districts": len(critical),
-                "high_risk_districts": len(high),
-                "avg_rainfall_24h_mm": float(round(avg_rainfall, 1)),
-                "districts_monitored": len(districts),
-                "model_confidence": float(avg_confidence),
-                "gdnn_inference_ms": float(gdnn_ms),
-                "kg_nodes": kg_nodes,
-                "kg_edges": kg_edges,
-                "attention_heads": attention_heads,
-                "storm_simulation_active": bool(sim_meta.get("active", False)),
-            },
-            "storm_simulation": sim_meta,
-            "districts": districts_with_risk,
-            "top_risk_districts": districts_with_risk[:5],
-            "alerts": alerts_data,
-            "events": events_data,
-            "weekly_forecast": weekly_forecast,
-        }
+        "data": payload,
+        **payload
     }
 
 def _async_update_dashboard_cache():
@@ -386,13 +389,17 @@ def _async_update_dashboard_cache():
         db.close()
 
 @router.get("/live")
-def get_dashboard_live(background_tasks: BackgroundTasks, db: Session = Depends(deps.get_db)) -> Any:
+def get_dashboard_live(db: Session = Depends(deps.get_db), background_tasks: BackgroundTasks = BackgroundTasks()) -> Any:
     """
     Unified live data endpoint for the dashboard.
     Returns real-time data from the GDNN inference and weather ETL.
     Cached in RAM for 10 seconds for sub-millisecond response.
     """
     global _dash_live_cache
+
+    # Handle direct function calls where background_tasks might be swapped
+    if isinstance(db, BackgroundTasks) and isinstance(background_tasks, Session):
+        db, background_tasks = background_tasks, db
     
     is_stale = _dash_live_cache["data"] is None or (time.time() - _dash_live_cache["ts"] > _DASH_CACHE_TTL)
     
@@ -403,7 +410,7 @@ def get_dashboard_live(background_tasks: BackgroundTasks, db: Session = Depends(
             _dash_live_cache = {"ts": time.time(), "data": data}
         else:
             # Refresh in background
-            if background_tasks is not None:
+            if background_tasks is not None and hasattr(background_tasks, "add_task"):
                 background_tasks.add_task(_async_update_dashboard_cache)
             else:
                 data = _build_dashboard_live(db)

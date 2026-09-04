@@ -845,29 +845,44 @@ def _async_pipeline_execution():
 
 @router.get("/inference-cycle")
 @router.get("/latest")
-def run_inference_cycle(background_tasks: BackgroundTasks) -> Any:
+def run_inference_cycle(background_tasks: BackgroundTasks = BackgroundTasks()) -> Any:
     """
     Returns the most recently computed GDNN prediction instantly (< 10ms).
     Background worker runs pipeline on schedule. Never blocks HTTP thread.
     """
     global _cycle_cache
     
-    # 1. Trigger async pipeline execution in background task if cache is empty OR stale
+    # 1. Trigger async pipeline execution in background task if cache is stale
     is_stale = _cycle_cache["payload"] is None or (time.time() - _cycle_cache["ts"] > _CYCLE_CACHE_TTL)
-    if is_stale and background_tasks:
+    if is_stale and _cycle_cache["payload"] is not None and background_tasks and hasattr(background_tasks, "add_task"):
         background_tasks.add_task(_async_pipeline_execution)
 
     # 2. Serve pre-computed payload from RAM cache
     if _cycle_cache["payload"] is not None:
-        return {"success": True, "data": sanitize_numpy(_cycle_cache["payload"])}
+        p = sanitize_numpy(_cycle_cache["payload"])
+        return {"success": True, "data": p, **p}
         
-    # 3. Return explicit "waiting for telemetry" status when DB/cache is truly empty
+    # 3. If cache is empty, run synchronously once to ensure initial data is ready immediately
+    db = SessionLocal()
+    try:
+        payload = _execute_inference_pipeline(db)
+        clean_payload = sanitize_numpy(payload)
+        _cycle_cache = {"ts": time.time(), "payload": clean_payload}
+        return {"success": True, "data": clean_payload, **clean_payload}
+    except Exception as err:
+        logger.error(f"[SyncPipeline] Pipeline execution error: {err}")
+    finally:
+        db.close()
+
+    # 4. Fallback if pipeline fails
+    fallback_payload = {
+        "status": "waiting_for_telemetry",
+        "message": "Data pipeline is initializing. Please wait.",
+        "districts": [],
+        "model_status": {"backend_status": "initializing"}
+    }
     return {
         "success": True,
-        "data": {
-            "status": "waiting_for_telemetry",
-            "message": "Data pipeline is initializing. Please wait.",
-            "districts": [],
-            "model_status": {"backend_status": "initializing"}
-        }
+        "data": fallback_payload,
+        **fallback_payload
     }

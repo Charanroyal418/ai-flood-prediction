@@ -144,7 +144,8 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     global _kg_cache
     now = time.time()
     if _kg_cache["payload"] is not None and (now - _kg_cache["ts"]) < _KG_CACHE_TTL:
-        return {"success": True, "data": _kg_cache["payload"]}
+        p = _kg_cache["payload"]
+        return {"success": True, "data": p, **p}
 
     start_time = datetime.now(timezone.utc)
 
@@ -409,7 +410,7 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
     _kg_cache["ts"] = now
     clean_payload = sanitize_numpy(payload)
     _kg_cache["payload"] = clean_payload
-    return {"success": True, "data": clean_payload}
+    return {"success": True, "data": clean_payload, **clean_payload}
 
 
 # ─── Node Inspector Endpoint ──────────────────────────────────────────────────
