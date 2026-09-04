@@ -34,16 +34,16 @@ interface WeatherMapProps {
 }
 
 const getRainfallColor = (rainfall: number) => {
-  if (rainfall >= 100) return "#ef4444"; // Red = Extreme
-  if (rainfall >= 50) return "#f97316";  // Orange = Heavy
-  if (rainfall >= 20) return "#facc15";  // Yellow = Moderate
-  return "#22c55e";                      // Green = Low
+  if (rainfall >= 60) return "#ef4444"; // Red = 60+ mm
+  if (rainfall >= 30) return "#f97316";  // Orange = 30-60 mm
+  if (rainfall >= 10) return "#facc15";  // Yellow = 10-30 mm
+  return "#22c55e";                      // Green = 0-10 mm
 };
 
 const getRainfallLabel = (rainfall: number) => {
-  if (rainfall >= 100) return "Extreme";
-  if (rainfall >= 50) return "Heavy";
-  if (rainfall >= 20) return "Moderate";
+  if (rainfall >= 60) return "Extreme";
+  if (rainfall >= 30) return "Heavy";
+  if (rainfall >= 10) return "Moderate";
   return "Low";
 };
 
@@ -107,6 +107,11 @@ function FlyToDistrict({ selected }: { selected: District | null }) {
   return null;
 }
 
+// Generate a unique key at the module level. This stays constant during normal
+// prop updates (preventing map re-renders) but gets regenerated during Next.js 
+// Fast Refresh, fixing the "Map container is already initialized" runtime error.
+const MAP_KEY = Math.random().toString(36).substring(7);
+
 export default function WeatherMap({ districts = [], onMarkerClick, selectedDistrictId }: WeatherMapProps) {
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<District | null>(null);
@@ -151,6 +156,9 @@ export default function WeatherMap({ districts = [], onMarkerClick, selectedDist
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm z-0">
       <style dangerouslySetInnerHTML={{__html: `
+        .leaflet-interactive {
+            transition: fill 0.5s ease-in-out, stroke 0.5s ease-in-out, r 0.5s ease-in-out;
+        }
         .leaflet-control-zoom a {
             width: 32px !important;
             height: 32px !important;
@@ -168,6 +176,7 @@ export default function WeatherMap({ districts = [], onMarkerClick, selectedDist
         }
       `}} />
       <MapContainer
+        key={MAP_KEY}
         center={center}
         zoom={7}
         scrollWheelZoom={true}
@@ -210,7 +219,7 @@ export default function WeatherMap({ districts = [], onMarkerClick, selectedDist
                 
                 <CircleMarker
                   center={[district.lat, district.lon]}
-                  radius={getRadius(district.rainfall_mm || 0)}
+                    radius={getRadius(district.rainfall_mm || 0)}
                   pathOptions={{
                     fillColor: markerColor,
                     fillOpacity: 0.9,
@@ -239,13 +248,17 @@ export default function WeatherMap({ districts = [], onMarkerClick, selectedDist
                       <div className="flex items-center justify-between gap-3 mb-2">
                         <span className="text-sm font-bold text-slate-800">{district.name}</span>
                         <span
-                          className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white transition-colors duration-500"
                           style={{ background: markerColor }}
                         >
                           {getRainfallLabel(district.rainfall_mm || 0)}
                         </span>
                       </div>
                       <div className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500 font-medium">Station</span>
+                          <span className="font-bold text-slate-700">{district.name} AWS</span>
+                        </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-slate-500 font-medium">Rainfall</span>
                           <span className="font-bold text-slate-700">{district.rainfall_mm != null ? `${district.rainfall_mm}mm` : '—'}</span>

@@ -157,10 +157,25 @@ export default function WeatherCenter() {
             </div>
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{metric.label}</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-slate-800 font-mono mt-0.5">{metric.value}</span>
+              <div className="flex items-baseline gap-2 overflow-hidden">
+                <motion.span 
+                  key={metric.value} 
+                  initial={{ opacity: 0, y: -10 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  transition={{ duration: 0.4, type: "spring" }}
+                  className="text-2xl font-bold text-slate-800 font-mono mt-0.5 inline-block"
+                >
+                  {metric.value}
+                </motion.span>
               </div>
-              {metric.subtitle && <p className="text-[10px] text-slate-500 font-semibold">{metric.subtitle}</p>}
+              <motion.div 
+                key={metric.subtitle}
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                transition={{ duration: 0.4 }}
+              >
+                {metric.subtitle && <p className="text-[10px] text-slate-500 font-semibold">{metric.subtitle}</p>}
+              </motion.div>
             </div>
           </motion.div>
         ))}
@@ -175,25 +190,37 @@ export default function WeatherCenter() {
             <h2 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2">
               <CloudRain className="w-4 h-4 text-violet-500" /> 7-Day Precipitation
             </h2>
-            <div className="flex-1 min-h-[160px] -ml-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={forecastData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorRain" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                  <RechartsTooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                    itemStyle={{ color: '#8b5cf6', fontWeight: 'bold' }}
-                  />
-                  <Area type="monotone" dataKey="rainfall" name="Rainfall (mm)" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorRain)" />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="flex-1 min-h-[160px] -ml-4 flex items-center justify-center">
+              {allZero ? (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.9 }} 
+                  animate={{ opacity: 1, scale: 1 }} 
+                  transition={{ duration: 0.4 }}
+                  className="flex flex-col items-center justify-center text-slate-400 gap-2 h-full w-full ml-4"
+                >
+                  <CloudRain className="w-8 h-8 opacity-50" />
+                  <p className="text-xs font-medium">No precipitation forecast for the next 7 days</p>
+                </motion.div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={forecastData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRain" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <RechartsTooltip 
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                      itemStyle={{ color: '#8b5cf6', fontWeight: 'bold' }}
+                    />
+                    <Area type="monotone" dataKey="rainfall" name="Rainfall (mm)" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorRain)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 
@@ -208,8 +235,13 @@ export default function WeatherCenter() {
                     <span className="font-semibold text-slate-600 group-hover:text-violet-600 transition-colors">{i+1}. {d.name}</span>
                     <span className="font-bold text-slate-800">{d.rainfall_mm} mm</span>
                   </div>
-                  <div className="w-full bg-slate-100 rounded-full h-1.5">
-                    <div className="bg-gradient-to-r from-blue-400 to-indigo-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, ((d.rainfall_mm || 0) / (highestRainDistrict?.rainfall_mm || 1)) * 100)}%` }} />
+                  <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <motion.div 
+                      className="bg-gradient-to-r from-blue-400 to-indigo-500 h-1.5 rounded-full" 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, ((d.rainfall_mm || 0) / (highestRainDistrict?.rainfall_mm || 1)) * 100)}%` }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                    />
                   </div>
                 </div>
               )) : (
@@ -281,11 +313,11 @@ export default function WeatherCenter() {
                         {d.name}
                       </td>
                       <td className="py-3 px-5 text-xs text-slate-500 font-medium">{topo.basin}</td>
-                      <td className="py-3 px-5 font-mono text-indigo-600 font-bold">{safeVal(d.rainfall_mm, " mm")}</td>
-                      <td className="py-3 px-5 text-slate-600 font-semibold">{safeVal(d.temperature, "°C")}</td>
-                      <td className="py-3 px-5 text-slate-600 font-semibold">{safeVal(d.wind_speed, " km/h")}</td>
+                      <td className="py-3 px-5 font-mono text-indigo-600 font-bold transition-all duration-300">{safeVal(d.rainfall_mm, " mm")}</td>
+                      <td className="py-3 px-5 text-slate-600 font-semibold transition-all duration-300">{safeVal(d.temperature, "°C")}</td>
+                      <td className="py-3 px-5 text-slate-600 font-semibold transition-all duration-300">{safeVal(d.wind_speed, " km/h")}</td>
                       <td className="py-3 px-5">
-                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white" style={{ background: d.risk_color }}>
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white transition-colors duration-500" style={{ background: d.risk_color }}>
                           {d.risk_level}
                         </span>
                       </td>
@@ -313,7 +345,7 @@ export default function WeatherCenter() {
                 <p className="text-xs text-slate-500 font-medium mt-1">{selectedTopo.basin}</p>
               </div>
               <div className="flex flex-col items-end gap-1.5">
-                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white shadow-sm" style={{ background: selectedDistrict.risk_color }}>
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white shadow-sm transition-colors duration-500" style={{ background: selectedDistrict.risk_color }}>
                   {selectedDistrict.risk_level} Risk
                 </span>
                 <span className="text-[9px] text-slate-400 font-semibold flex items-center gap-1">
@@ -323,21 +355,21 @@ export default function WeatherCenter() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors duration-300">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1"><CloudRain className="w-3.5 h-3.5 text-blue-500" /> Rainfall</div>
-                <div className="text-lg font-bold font-mono text-slate-800">{safeVal(selectedDistrict.rainfall_mm)} <span className="text-xs text-slate-500">{selectedDistrict.rainfall_mm != null ? 'mm' : ''}</span></div>
+                <motion.div key={selectedDistrict.rainfall_mm} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-lg font-bold font-mono text-slate-800">{safeVal(selectedDistrict.rainfall_mm)} <span className="text-xs text-slate-500">{selectedDistrict.rainfall_mm != null ? 'mm' : ''}</span></motion.div>
               </div>
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors duration-300">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1"><Thermometer className="w-3.5 h-3.5 text-orange-500" /> Temp</div>
-                <div className="text-lg font-bold font-mono text-slate-800">{safeVal(selectedDistrict.temperature, "°C")}</div>
+                <motion.div key={selectedDistrict.temperature} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-lg font-bold font-mono text-slate-800">{safeVal(selectedDistrict.temperature, "°C")}</motion.div>
               </div>
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors duration-300">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1"><Wind className="w-3.5 h-3.5 text-teal-500" /> Wind</div>
-                <div className="text-lg font-bold font-mono text-slate-800">{safeVal(selectedDistrict.wind_speed)} <span className="text-xs text-slate-500">{selectedDistrict.wind_speed != null ? 'km/h' : ''}</span></div>
+                <motion.div key={selectedDistrict.wind_speed} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-lg font-bold font-mono text-slate-800">{safeVal(selectedDistrict.wind_speed)} <span className="text-xs text-slate-500">{selectedDistrict.wind_speed != null ? 'km/h' : ''}</span></motion.div>
               </div>
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 transition-colors duration-300">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1"><Droplets className="w-3.5 h-3.5 text-indigo-500" /> Humidity</div>
-                <div className="text-lg font-bold font-mono text-slate-800">{safeVal(selectedDistrict.humidity, "%")}</div>
+                <motion.div key={selectedDistrict.humidity} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-lg font-bold font-mono text-slate-800">{safeVal(selectedDistrict.humidity, "%")}</motion.div>
               </div>
             </div>
 
