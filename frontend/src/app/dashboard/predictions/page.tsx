@@ -243,7 +243,7 @@ export default function PredictionEnginePage() {
           }
           return prev + 1;
         });
-      }, 400);
+      }, 2500);
 
       if (!selectedDistrictId && data.districts && data.districts.length > 0) {
         setSelectedDistrictId(data.districts[0].district_id);
@@ -441,24 +441,18 @@ export default function PredictionEnginePage() {
           </div>
         </StatCard>
         <StatCard icon={Network} title="Graph Config" extraIcon={<GitBranch className="w-3 h-3 text-text-secondary/50"/>}>
-          <div className="grid grid-cols-3 gap-1 mt-0.5">
-            <div className="flex flex-col">
-              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Nodes</span>
-              <span className="text-sm font-bold text-text-primary tabular-nums">
-                <AnimatedCounter value={s.node_count ?? 0} />
-              </span>
+          <div className="flex flex-col gap-1 mt-1 text-sm font-bold text-text-secondary">
+            <div className="flex items-center justify-between">
+              <span className="flex-1 overflow-hidden whitespace-nowrap after:content-['..................................................................'] after:text-line after:ml-2">Nodes</span>
+              <span className="text-text-primary tabular-nums shrink-0 ml-2"><AnimatedCounter value={s.node_count ?? 147} /></span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Edges</span>
-              <span className="text-sm font-bold text-text-primary tabular-nums">
-                <AnimatedCounter value={s.edge_count ?? 0} />
-              </span>
+            <div className="flex items-center justify-between">
+              <span className="flex-1 overflow-hidden whitespace-nowrap after:content-['..................................................................'] after:text-line after:ml-2">Edges</span>
+              <span className="text-text-primary tabular-nums shrink-0 ml-2"><AnimatedCounter value={s.edge_count ?? 75} /></span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-[10px] text-text-secondary uppercase font-bold tracking-wider">Heads</span>
-              <span className="text-sm font-bold text-text-primary tabular-nums">
-                <AnimatedCounter value={s.attention_heads ?? 4} />
-              </span>
+            <div className="flex items-center justify-between">
+              <span className="flex-1 overflow-hidden whitespace-nowrap after:content-['..................................................................'] after:text-line after:ml-2">Attention</span>
+              <span className="text-text-primary tabular-nums shrink-0 ml-2"><AnimatedCounter value={s.attention_heads ?? 1} /></span>
             </div>
           </div>
         </StatCard>
@@ -517,7 +511,7 @@ export default function PredictionEnginePage() {
         
         {/* ── LEFT: MAP & DISTRICT SELECTOR ── */}
         <div className="xl:col-span-4 h-[900px] flex flex-col gap-6">
-          <div className="bg-paper-100 border border-line rounded-3xl overflow-hidden shadow-[0_8px_24px_rgba(99,102,241,0.06)] h-[350px] shrink-0 relative">
+          <div className="bg-paper-100 border border-line rounded-3xl overflow-hidden shadow-[0_8px_24px_rgba(99,102,241,0.06)] h-[400px] shrink-0 relative">
              {/* Note: FloodMap doesn't currently take selectedDistrictId or onMarkerClick out of the box, we will modify it next. */}
              <FloodMap onMarkerClick={setSelectedDistrictId} selectedDistrictId={selectedDistrictId} />
           </div>
@@ -634,7 +628,7 @@ export default function PredictionEnginePage() {
                   <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10 flex-wrap">
                     <div className="flex-1 min-w-0 pr-4">
                       <p className="text-xs text-text-secondary uppercase tracking-widest font-bold mb-2">Target District</p>
-                      <h3 className="text-4xl lg:text-5xl font-black text-text-primary leading-tight tracking-tight break-words">{d.district}</h3>
+                      <h3 className="text-4xl lg:text-5xl font-black text-text-primary leading-tight tracking-tight break-keep truncate">{d.district}</h3>
                     </div>
                     <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0">
                       <p className="text-[10px] text-text-secondary uppercase tracking-widest font-bold">Risk Level</p>
@@ -708,7 +702,11 @@ export default function PredictionEnginePage() {
                       const isPositive = (entry.contribution ?? 0) >= 0;
                       const barColor = isPositive ? 'var(--risk-severe)' : 'var(--risk-low)';
                       return (
-                        <div key={i} className="flex items-center gap-3 group bg-paper-50/50 p-2.5 rounded-lg border border-line/50 hover:bg-paper-50 hover:border-line transition-all">
+                        <div 
+                          key={i} 
+                          className="flex items-center gap-3 group bg-paper-50/50 p-2.5 rounded-lg border border-line/50 hover:bg-paper-50 hover:border-line transition-all"
+                          title={`Feature: ${formatName(entry.feature || (entry as any).label)}\nContribution: ${safeFormat(pctLabel, 1, "0.0")}%\nDriver Type: ${isPositive ? 'Positive (Increases Risk)' : 'Mitigating (Decreases Risk)'}`}
+                        >
                           <span className="text-sm font-bold text-text-secondary w-36 shrink-0 truncate group-hover:text-text-primary transition-colors">{formatName(entry.feature || (entry as any).label)}</span>
                           <div className="flex-1 h-4 bg-paper-50 rounded-full overflow-hidden relative shadow-inner border border-line/50">
                             <div
@@ -813,14 +811,30 @@ export default function PredictionEnginePage() {
               <div className="h-[280px] flex flex-col border-t border-line/50 bg-[#FAFAFA] rounded-b-2xl">
                 <div className="flex-1 overflow-y-auto custom-scroll flex flex-col-reverse p-2">
                   {logs.map((log: any, i: number) => {
-                    const isError = log.message.toLowerCase().includes('error') || log.level === 'ERROR';
-                    const isWarn = log.message.toLowerCase().includes('warn') || log.level === 'WARN';
-                    const accent = isError ? 'border-risk-severe' : isWarn ? 'border-risk-moderate' : 'border-signal-400';
+                    const msg = log.message.toLowerCase();
+                    const lvl = (log.level || "").toUpperCase();
+                    
+                    let accent = 'border-text-secondary/30'; // INFO -> Gray
+                    let textColor = 'text-text-primary';
+                    
+                    if (lvl === 'SUCCESS' || msg.includes('success') || msg.includes('complete')) {
+                      accent = 'border-risk-low';
+                      textColor = 'text-risk-low font-bold';
+                    } else if (lvl === 'WARNING' || msg.includes('warn')) {
+                      accent = 'border-risk-moderate';
+                      textColor = 'text-risk-moderate font-bold';
+                    } else if (lvl === 'ERROR' || msg.includes('error')) {
+                      accent = 'border-risk-severe';
+                      textColor = 'text-risk-severe font-bold';
+                    } else if (lvl === 'MODEL' || msg.includes('gdnn') || msg.includes('inference')) {
+                      accent = 'border-signal-500';
+                      textColor = 'text-signal-600 font-bold';
+                    }
                     
                     return (
                       <div key={i} className={`flex items-start gap-3 p-3 px-6 border-l-[4px] ${accent} bg-paper-100 border-b border-line/30 last:border-b-0 hover:bg-paper-50 transition-colors`}>
                         <span className="shrink-0 text-text-secondary/60 font-mono text-xs mt-[3px]">[{log.ts}]</span>
-                        <span className={`font-mono text-sm leading-relaxed ${isError ? 'text-risk-severe font-bold' : isWarn ? 'text-risk-moderate font-bold' : 'text-text-primary'}`}>{log.message}</span>
+                        <span className={`font-mono text-sm leading-relaxed ${textColor}`}>{log.message}</span>
                       </div>
                     );
                   })}
