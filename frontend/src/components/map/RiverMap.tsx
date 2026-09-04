@@ -6,6 +6,7 @@ import {
   TileLayer,
   CircleMarker,
   Tooltip,
+  Popup,
   ZoomControl,
   useMap,
 } from "react-leaflet";
@@ -34,6 +35,7 @@ export interface RiverData {
   status: "Normal" | "Warning" | "Critical";
   lat?: number;
   lon?: number;
+  last_update?: string;
 }
 
 interface RiverMapProps {
@@ -102,6 +104,19 @@ const STATUS_COLOR: Record<string, string> = {
   Normal: "#22c55e",
 };
 
+const overflowColor = (pct: number) => {
+  if (pct > 100) return "#ef4444";
+  if (pct >= 85)  return "#f97316";
+  if (pct >= 70)  return "#f59e0b";
+  return "#22c55e";
+};
+
+const statusBadgeStyle = (status: string) => {
+  if (status === "Critical") return { background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" };
+  if (status === "Warning")  return { background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" };
+  return { background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" };
+};
+
 function FlyTo({ coords }: { coords: [number, number] | null }) {
   const map = useMap();
   useEffect(() => {
@@ -136,8 +151,12 @@ export default function RiverMap({ rivers, selectedRiver, onMarkerClick }: River
           border: 1px solid rgba(226,232,240,0.8) !important; transition: all 0.2s;
         }
         .leaflet-control-zoom a:hover { color: #6366f1 !important; }
-        .river-tooltip { background: white !important; border: none !important; box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important; border-radius: 12px !important; padding: 0 !important; }
+        .river-tooltip { background: white !important; border: none !important; box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important; border-radius: 8px !important; padding: 0 !important; }
         .river-tooltip::before { display: none !important; }
+        .river-popup .leaflet-popup-content-wrapper { background: white; border: none; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.14); padding: 0; }
+        .river-popup .leaflet-popup-content { margin: 0; }
+        .river-popup .leaflet-popup-tip-container { display: none; }
+        .river-popup .leaflet-popup-close-button { display: none; }
       ` }} />
       <MapContainer key={RIVER_MAP_KEY} center={center} zoom={7} scrollWheelZoom zoomControl={false} className="w-full h-full z-0" style={{ background: "#f8f9fe" }}>
         <ZoomControl position="bottomright" />
@@ -149,37 +168,99 @@ export default function RiverMap({ rivers, selectedRiver, onMarkerClick }: River
         {riverWithCoords.map((river) => {
           const color = STATUS_COLOR[river.status] ?? "#22c55e";
           const isSelected = river.name === selectedRiver;
-          const radius = river.status === "Critical" ? 14 : river.status === "Warning" ? 11 : 9;
+          const baseRadius = river.status === "Critical" ? 12 : river.status === "Warning" ? 9 : 7;
+          const radius = isSelected ? baseRadius + 5 : baseRadius;
+          const pct = river.overflow_pct ?? 0;
+          const lastUpdate = river.last_update ||
+            new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           return (
             <span key={river.name}>
+              {/* Selection ring */}
               {isSelected && (
                 <CircleMarker
                   center={river.coords}
-                  radius={radius + 7}
-                  pathOptions={{ fillColor: "none", color: "#6366f1", weight: 2.5, opacity: 0.8 }}
+                  radius={radius + 8}
+                  pathOptions={{ fillColor: "none", color: "#7c3aed", weight: 2.5, opacity: 0.85, dashArray: "4 3" }}
                 />
               )}
+
               <CircleMarker
                 center={river.coords}
                 radius={radius}
-                pathOptions={{ fillColor: color, fillOpacity: 0.85, color: "#fff", weight: 2 }}
+                pathOptions={{
+                  fillColor: color,
+                  fillOpacity: isSelected ? 1 : 0.85,
+                  color: "#fff",
+                  weight: isSelected ? 2.5 : 1.5,
+                }}
                 eventHandlers={{ click: () => onMarkerClick(river.name) }}
               >
-                <Tooltip className="river-tooltip" direction="top" offset={[0, -6]} sticky={!isSelected} permanent={isSelected}>
-                  <div className="min-w-[160px] p-3 font-sans">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="text-sm font-bold text-slate-800">{river.name}</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: color }}>
-                        {river.status}
-                      </span>
+                {/* Hover tooltip for unselected */}
+                {!isSelected && (
+                  <Tooltip className="river-tooltip" direction="top" offset={[0, -6]} sticky>
+                    <div className="px-3 py-2 font-sans">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                        <span className="text-xs font-bold text-slate-800">{river.name}</span>
+                        <span className="text-[10px] font-semibold" style={{ color }}>{river.status}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-1">{river.district} · {pct}% overflow</div>
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs"><span className="text-slate-500">District</span><span className="font-semibold text-slate-700">{river.district}</span></div>
-                      <div className="flex justify-between text-xs"><span className="text-slate-500">Level</span><span className="font-bold text-slate-700">{river.current_m}m / {river.danger_m}m</span></div>
-                      <div className="flex justify-between text-xs"><span className="text-slate-500">Overflow</span><span className="font-bold" style={{ color }}>{river.overflow_pct}%</span></div>
+                  </Tooltip>
+                )}
+
+                {/* Premium popup for selected */}
+                {isSelected && (
+                  <Popup className="river-popup" closeButton={false} autoPan={false}>
+                    <div className="w-[220px] font-sans">
+                      {/* Popup header */}
+                      <div className="px-4 pt-4 pb-3 border-b border-slate-100">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-bold text-slate-800 leading-tight">{river.name}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">{river.district}</p>
+                          </div>
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5"
+                            style={statusBadgeStyle(river.status)}
+                          >
+                            {river.status}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Popup body */}
+                      <div className="px-4 py-3 space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-400 font-medium">Basin</span>
+                          <span className="font-semibold text-slate-700 text-right max-w-[120px] truncate">{river.basin}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-400 font-medium">Current Level</span>
+                          <span className="font-bold text-blue-700">{river.current_m} m</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-400 font-medium">Danger Threshold</span>
+                          <span className="font-bold text-red-600">{river.danger_m} m</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-400 font-medium">Overflow</span>
+                          <span className="font-bold" style={{ color: overflowColor(pct) }}>{pct}%</span>
+                        </div>
+                        {/* Overflow mini-bar */}
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-1.5 rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(100, pct)}%`, background: overflowColor(pct) }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] pt-1 border-t border-slate-100">
+                          <span className="text-slate-400">Last telemetry</span>
+                          <span className="text-slate-500 font-medium">{lastUpdate}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </Tooltip>
+                  </Popup>
+                )}
               </CircleMarker>
             </span>
           );

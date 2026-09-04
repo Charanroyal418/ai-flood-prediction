@@ -34,10 +34,10 @@ interface River {
 const safeNum = (v: any) => (typeof v === "number" ? v : 0);
 
 const overflowColor = (pct: number) => {
-  if (pct > 100) return "#ef4444";   // red
-  if (pct >= 90)  return "#f97316";  // orange
-  if (pct >= 70)  return "#f59e0b";  // yellow
-  return "#22c55e";                  // green
+  if (pct > 100) return "#ef4444";   // red — above threshold
+  if (pct >= 85)  return "#f97316";  // orange — 85–100%
+  if (pct >= 70)  return "#f59e0b";  // yellow — 70–85%
+  return "#22c55e";                  // green — 0–70%
 };
 
 const statusBadge = (status: string) => {
@@ -273,7 +273,16 @@ export default function RiverIntelligencePage() {
   const [statusFilter, setStatusFilter] = useState<"All" | "Normal" | "Warning" | "Critical">("All");
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
-  const rivers: River[] = data || [];
+  // Deduplicate by name (river ID equivalent) to guarantee unique rows
+  const rivers: River[] = useMemo(() => {
+    const raw: River[] = data || [];
+    const seen = new Set<string>();
+    return raw.filter((r) => {
+      if (seen.has(r.name)) return false;
+      seen.add(r.name);
+      return true;
+    });
+  }, [data]);
   const critical = rivers.filter((r) => r.status === "Critical").length;
   const warning = rivers.filter((r) => r.status === "Warning").length;
   const avgOverflow = rivers.length
@@ -442,11 +451,17 @@ export default function RiverIntelligencePage() {
                       key={r.name}
                       ref={(el) => { rowRefs.current[r.name] = el; }}
                       onClick={() => setSelectedRiver(isSelected ? null : r.name)}
-                      className={`cursor-pointer transition-colors ${isSelected ? "bg-blue-50/60" : "hover:bg-slate-50/60"}`}
+                      className={`cursor-pointer transition-colors duration-200 ${
+                        isSelected
+                          ? "bg-violet-50 ring-1 ring-inset ring-violet-200"
+                          : "hover:bg-slate-50/70"
+                      }`}
                     >
-                      <td className="py-3 px-4 font-bold text-slate-800 flex items-center gap-2 whitespace-nowrap">
-                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
-                        {r.name}
+                      <td className="py-3 px-4 font-bold text-slate-800 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-violet-500 flex-shrink-0" />}
+                          <span className={isSelected ? "text-violet-800" : ""}>{r.name}</span>
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-xs text-slate-500 font-medium whitespace-nowrap">{r.district}</td>
                       <td className="py-3 px-4 text-xs text-slate-400 font-medium whitespace-nowrap max-w-[120px] truncate">{r.basin}</td>
@@ -455,7 +470,13 @@ export default function RiverIntelligencePage() {
                       <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                            <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, pct)}%`, background: overflowColor(pct) }} />
+                            <motion.div
+                              className="h-1.5 rounded-full"
+                              style={{ background: overflowColor(pct) }}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min(100, pct)}%` }}
+                              transition={{ duration: 0.4, ease: "easeOut" }}
+                            />
                           </div>
                           <span className="font-bold text-xs" style={{ color: overflowColor(pct) }}>{pct}%</span>
                         </div>
