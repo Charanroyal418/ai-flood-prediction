@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List
+import os
+import json
 
 from app.api.deps import get_db
 from app.models.district import District
@@ -70,7 +72,11 @@ def get_district_boundaries(db: Session = Depends(get_db)):
         return {
             "type": "FeatureCollection",
             "features": features
-        }
+        } if features else (
+            json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "districts.geojson"), "r", encoding="utf-8"))
+            if os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "districts.geojson"))
+            else {"type": "FeatureCollection", "features": []}
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Spatial query failed: {str(e)}")
 

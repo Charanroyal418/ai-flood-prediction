@@ -8,6 +8,7 @@ from app.api import deps
 from app.models.district import District
 from app.models.history import PredictionHistory, WeatherHistory, ModelInference, KnowledgeGraphEvents
 from app.models.alert import Alert
+from app.models.entities import Dam, HistoricalFloodEvent
 import json
 import re
 import os
@@ -16,6 +17,51 @@ from app.models.river import RiverLevel
 from app.ml.inference import get_risk_level_and_color
 
 import time
+
+# Canonical coordinates, average elevation (m) and slope (%) for all 38 TN districts
+TN_DISTRICTS_TERRAIN = {
+    "Chennai": (13.0827, 80.2707, 6.0, 1.5),
+    "Kancheepuram": (12.8364, 79.7036, 18.0, 4.0),
+    "Chengalpattu": (12.6939, 79.9757, 15.0, 5.0),
+    "Thiruvallur": (13.1436, 79.9142, 12.0, 3.0),
+    "Cuddalore": (11.7480, 79.7714, 8.0, 2.0),
+    "Villupuram": (11.9401, 79.4861, 42.0, 8.0),
+    "Kallakurichi": (11.7383, 78.9639, 110.0, 12.0),
+    "Vellore": (12.9165, 79.1325, 220.0, 15.0),
+    "Ranipet": (12.9274, 79.3333, 160.0, 9.0),
+    "Tirupattur": (12.4934, 78.5661, 380.0, 18.0),
+    "Tiruvannamalai": (12.2253, 79.0747, 170.0, 11.0),
+    "Salem": (11.6643, 78.1460, 278.0, 22.0),
+    "Namakkal": (11.2189, 78.1674, 150.0, 14.0),
+    "Dharmapuri": (12.1211, 78.1582, 480.0, 20.0),
+    "Krishnagiri": (12.5186, 78.2137, 512.0, 25.0),
+    "Coimbatore": (11.0168, 76.9558, 411.0, 28.0),
+    "Tiruppur": (11.1085, 77.3411, 295.0, 16.0),
+    "Erode": (11.3424, 77.7281, 183.0, 12.0),
+    "The Nilgiris": (11.4166, 76.6946, 2200.0, 35.0),
+    "Tiruchirappalli": (10.7905, 78.7047, 85.0, 6.0),
+    "Karur": (10.9601, 78.0766, 122.0, 8.0),
+    "Perambalur": (11.2332, 78.8821, 143.0, 11.0),
+    "Ariyalur": (11.1399, 79.0736, 76.0, 7.0),
+    "Thanjavur": (10.7870, 79.1378, 57.0, 3.0),
+    "Tiruvarur": (10.7744, 79.6366, 10.0, 2.0),
+    "Nagapattinam": (10.7672, 79.8449, 4.0, 1.0),
+    "Mayiladuthurai": (11.1026, 79.6521, 9.0, 2.0),
+    "Pudukkottai": (10.3797, 78.8205, 100.0, 5.0),
+    "Madurai": (9.9252, 78.1198, 101.0, 10.0),
+    "Theni": (10.0104, 77.4768, 290.0, 24.0),
+    "Dindigul": (10.3673, 77.9803, 268.0, 18.0),
+    "Ramanathapuram": (9.3639, 78.8320, 12.0, 1.0),
+    "Sivaganga": (9.8433, 78.4809, 82.0, 4.0),
+    "Virudhunagar": (9.5855, 77.9556, 102.0, 7.0),
+    "Tirunelveli": (8.7139, 77.7567, 47.0, 12.0),
+    "Tenkasi": (8.9585, 77.3111, 143.0, 22.0),
+    "Thoothukudi": (8.7642, 78.1348, 8.0, 2.0),
+    "Kanyakumari": (8.0883, 77.5385, 13.0, 8.0),
+}
+
+def _clean_district_key(name: str) -> str:
+    return re.sub(r'[^a-zA-Z]', '', str(name)).lower()
 
 router = APIRouter()
 
@@ -79,60 +125,129 @@ def _build_dashboard_live(db: Session) -> Any:
         if r.district_id not in river_map:
             river_map[r.district_id] = r
             
+    # Get dams mapped by district_id
+    all_dams = db.query(Dam).all()
+    dam_map = {dam.district_id: dam for dam in all_dams if dam.district_id is not None}
+
+    # Get historical flood events
+    all_historical = db.query(HistoricalFloodEvent).all()
+            
     districts_with_risk = []
     for d in districts:
         p = pred_map.get(d.id)
         w = weather_map.get(d.id)
-
-        risk_score = (p.current_risk_score if p.current_risk_score is not None else 0.0) if p else 0.0
-        confidence = (p.confidence if p.confidence is not None else 0.0) if p else 0.0
-        shap_values = (p.shap_values or []) if p else []
-        rainfall_mm = (w.rainfall_mm or 0.0) if w else 0.0
-        humidity = (w.humidity or 0.0) if w else 0.0
-        temperature = (w.temperature or 0.0) if w else 0.0
-        pressure = (w.pressure or 0.0) if w else 0.0
-        wind_speed = (w.wind_speed or 0.0) if w else 0.0
-        risk_level_str = p.current_risk_level if p else "Safe"
-            
-        risk_lvl, color = get_risk_level_and_color(risk_score)
-            
-        lon, lat = 0.0, 0.0
-        if d.geom_json and "coordinates" in d.geom_json:
-            lon, lat = d.geom_json["coordinates"]
-            
-        river_level_m = 0.0
-        river_danger_m = 0.0
         r_lvl = river_map.get(d.id)
-        if r_lvl:
-            river_level_m = float(r_lvl.current_level or 0.0)
-            river_danger_m = float(r_lvl.danger_level or 0.0)
-            
+        d_clean = _clean_district_key(d.name)
+
+        # 1. Geographic & terrain
+        geo_info = None
+        for k, v in TN_DISTRICTS_TERRAIN.items():
+            if _clean_district_key(k) == d_clean:
+                geo_info = v
+                break
+
+        lat = None
+        lon = None
+        if d.geom_json and isinstance(d.geom_json, dict):
+            if d.geom_json.get("type") == "Point" and "coordinates" in d.geom_json:
+                lon, lat = d.geom_json["coordinates"]
+
+        if (lat is None or lon is None or (lat == 0 and lon == 0)) and geo_info:
+            lat, lon = geo_info[0], geo_info[1]
+
+        elevation_m = d.elevation_m if d.elevation_m is not None else (geo_info[2] if geo_info else None)
+        slope = geo_info[3] if geo_info else None
+
+        # 2. Reservoir storage
+        dam_obj = dam_map.get(d.id)
+        reservoir_storage = float(dam_obj.fill_pct) if dam_obj and dam_obj.fill_pct is not None else None
+
+        # 3. Historical flood events
+        hist_events = [h for h in all_historical if h.affected_districts and any(_clean_district_key(x) == d_clean for x in h.affected_districts)]
+        historical_flood_count = len(hist_events) if hist_events else None
+
+        # 4. River telemetry
+        river_level_m = float(r_lvl.current_level) if r_lvl and r_lvl.current_level is not None else None
+        river_danger_m = float(r_lvl.danger_level) if r_lvl and r_lvl.danger_level is not None else None
+        river_name = r_lvl.river_name if r_lvl else None
+        river_risk = round((river_level_m / river_danger_m) * 100, 1) if (river_level_m is not None and river_danger_m and river_danger_m > 0) else None
+
+        # 5. Weather telemetry
+        rainfall_mm = float(w.rainfall_mm) if w and w.rainfall_mm is not None else None
+        humidity = float(w.humidity) if w and w.humidity is not None else None
+        temperature = float(w.temperature) if w and w.temperature is not None else None
+        pressure = float(w.pressure) if w and w.pressure is not None else None
+        wind_speed = float(w.wind_speed) if w and w.wind_speed is not None else None
+        last_updated = w.recorded_at.isoformat() if w and w.recorded_at else (inf.created_at.isoformat() if inf else now.isoformat())
+
+        # 6. Prediction risk intelligence
+        if p and p.current_risk_score is not None:
+            risk_score = float(p.current_risk_score)
+            risk_lvl, color = get_risk_level_and_color(risk_score)
+            confidence = float(p.confidence) if p.confidence is not None else None
+            flood_prob = round(risk_score / 100.0, 3)
+            shap_values = p.shap_values or []
+        else:
+            risk_score = None
+            risk_lvl = "Unavailable"
+            color = "#94a3b8"
+            confidence = None
+            flood_prob = None
+            shap_values = []
+
         districts_with_risk.append({
             "id": d.id,
+            "district_id": d.id,
             "name": d.name,
-            "lat": lat,
-            "lon": lon,
-            "population": d.population or 0,
-            "risk_score": float(risk_score),
-            "risk_level": risk_lvl,
-            "risk_color": color,
-            "rainfall_mm": float(rainfall_mm),
-            "humidity": float(humidity),
-            "temperature": float(temperature),
-            "pressure": float(pressure),
-            "wind_speed": float(wind_speed),
+            "district_name": d.name,
+            "lat": lat or 0.0,
+            "lon": lon or 0.0,
+            "population": d.population,
+            "elevation": elevation_m,
+            "elevation_m": elevation_m,
+            "slope": slope,
+            "drainageDensity": None,
+            "drainage_density": None,
+            "historicalFloodCount": historical_flood_count,
+            "historical_flood_count": historical_flood_count,
+            "rainfall": rainfall_mm,
+            "rainfall_mm": rainfall_mm,
+            "rainfall24h": rainfall_mm,
+            "temperature": temperature,
+            "humidity": humidity,
+            "pressure": pressure,
+            "wind": wind_speed,
+            "wind_speed": wind_speed,
+            "riverRisk": river_risk,
+            "river_risk": river_risk,
+            "riverLevel": river_level_m,
             "river_level_m": river_level_m,
             "river_danger_m": river_danger_m,
-            "flood_probability": float(risk_score) / 100.0,
-            "ai_confidence": float(confidence),
+            "river_name": river_name,
+            "river_status": f"{river_level_m}m" if river_level_m is not None else None,
+            "reservoirStorage": reservoir_storage,
+            "reservoir_storage": reservoir_storage,
+            "floodRisk": risk_lvl,
+            "risk_level": risk_lvl,
+            "riskScore": risk_score,
+            "risk_score": risk_score,
+            "risk_color": color,
+            "confidence": confidence,
+            "ai_confidence": confidence,
+            "flood_probability": flood_prob,
             "shap_values": shap_values,
+            "lastUpdated": last_updated,
+            "last_updated": last_updated,
+            "geometry": d.geom_json,
+            "geom_json": d.geom_json,
         })
         
-    districts_with_risk.sort(key=lambda x: x["risk_score"], reverse=True)
+    districts_with_risk.sort(key=lambda x: (x["risk_score"] is not None, x["risk_score"] or 0.0), reverse=True)
     
     critical = [d for d in districts_with_risk if d["risk_level"] in ["Critical", "Severe"]]
     high = [d for d in districts_with_risk if d["risk_level"] == "High"]
-    avg_risk = sum(d["risk_score"] for d in districts_with_risk) / len(districts_with_risk) if districts_with_risk else 0.0
+    valid_risk_scores = [d["risk_score"] for d in districts_with_risk if d["risk_score"] is not None]
+    avg_risk = sum(valid_risk_scores) / len(valid_risk_scores) if valid_risk_scores else 0.0
     valid_rainfalls = [d["rainfall_mm"] for d in districts_with_risk if d.get("rainfall_mm") is not None]
     avg_rainfall = sum(valid_rainfalls) / len(valid_rainfalls) if valid_rainfalls else 0.0
     
@@ -288,21 +403,38 @@ def get_dashboard_live(background_tasks: BackgroundTasks, db: Session = Depends(
             _dash_live_cache = {"ts": time.time(), "data": data}
         else:
             # Refresh in background
-            background_tasks.add_task(_async_update_dashboard_cache)
+            if background_tasks is not None:
+                background_tasks.add_task(_async_update_dashboard_cache)
+            else:
+                data = _build_dashboard_live(db)
+                _dash_live_cache = {"ts": time.time(), "data": data}
             
     return _dash_live_cache["data"]
 
 @router.get("/districts")
 def get_all_districts(db: Session = Depends(deps.get_db)) -> Any:
-    data = get_dashboard_live(db, background_tasks=None)
-    # The live endpoint now returns {"success": True, "data": ...}
-    districts = data["data"]["districts"] if isinstance(data, dict) and "data" in data else data["districts"]
+    global _dash_live_cache
+    is_stale = _dash_live_cache["data"] is None or (time.time() - _dash_live_cache["ts"] > _DASH_CACHE_TTL)
+    if is_stale:
+        data = _build_dashboard_live(db)
+        _dash_live_cache = {"ts": time.time(), "data": data}
+    else:
+        data = _dash_live_cache["data"]
+        
+    districts = data["data"]["districts"] if isinstance(data, dict) and "data" in data else data.get("districts", [])
     return {"success": True, "data": districts}
 
 @router.get("/alerts")
 def get_all_alerts(db: Session = Depends(deps.get_db)) -> Any:
-    data = get_dashboard_live(db, background_tasks=None)
-    alerts = data["data"]["alerts"] if isinstance(data, dict) and "data" in data else data["alerts"]
+    global _dash_live_cache
+    is_stale = _dash_live_cache["data"] is None or (time.time() - _dash_live_cache["ts"] > _DASH_CACHE_TTL)
+    if is_stale:
+        data = _build_dashboard_live(db)
+        _dash_live_cache = {"ts": time.time(), "data": data}
+    else:
+        data = _dash_live_cache["data"]
+        
+    alerts = data["data"]["alerts"] if isinstance(data, dict) and "data" in data else data.get("alerts", [])
     return {"success": True, "data": alerts}
 
 class StormScenarioRequest(BaseModel):
@@ -473,43 +605,108 @@ def get_historical_flood_events() -> Any:
 
 @router.get("/river")
 def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
-    """Returns real-time river levels for TN's major rivers."""
-    # Group by station to get latest levels
-    from sqlalchemy import func
+    """Returns real-time river levels for TN's major rivers.
     
+    Returns one record per unique gauging station (not per river name).
+    Multiple stations can share the same river_name (e.g. Cauvery River at
+    Mettur and at Kallanai are two distinct records).
+    """
+    from sqlalchemy import func
+
     subquery = db.query(
         RiverLevel.station_name,
         func.max(RiverLevel.recorded_at).label('max_date')
     ).group_by(RiverLevel.station_name).subquery()
-    
+
     latest_levels = db.query(RiverLevel).join(
         subquery,
-        (RiverLevel.station_name == subquery.c.station_name) & 
+        (RiverLevel.station_name == subquery.c.station_name) &
         (RiverLevel.recorded_at == subquery.c.max_date)
     ).all()
-    
+
     rivers_data = []
     for r in latest_levels:
         danger_m = r.danger_level
         current_m = r.current_level
-        
-        overflow_pct = round((current_m / danger_m) * 100) if danger_m > 0 else 0
-        
-        if overflow_pct >= 95:
+
+        # Only compute overflow when both values are present and danger > 0
+        if danger_m is not None and danger_m > 0 and current_m is not None:
+            overflow_pct = round((current_m / danger_m) * 100)
+        else:
+            overflow_pct = None
+
+        if overflow_pct is not None and overflow_pct >= 95:
             status = "Critical"
-        elif overflow_pct >= 80:
+        elif overflow_pct is not None and overflow_pct >= 80:
             status = "Warning"
         else:
             status = "Normal"
-            
+
+        # Include district name from the relationship
+        district_name = r.district.name if r.district else None
+
         rivers_data.append({
             "name": r.river_name,
             "station": r.station_name,
-            "current_m": round(current_m, 2),
-            "danger_m": danger_m,
+            "district": district_name,
+            "basin": _derive_basin(r.river_name, district_name),
+            "current_m": round(float(current_m), 2) if current_m is not None else None,
+            "danger_m": round(float(danger_m), 2) if danger_m is not None else None,
             "overflow_pct": overflow_pct,
             "status": status,
-            "timestamp": r.recorded_at.isoformat()
+            "last_update": r.recorded_at.isoformat() if r.recorded_at else None,
         })
-        
+
     return {"success": True, "data": rivers_data}
+
+
+def _derive_basin(river_name: str, district_name: str = None) -> str:
+    """Derive basin name from river name / district using Tamil Nadu basin mappings."""
+    name_lower = (river_name or "").lower()
+    dist_lower = (district_name or "").lower()
+
+    # Cauvery basin — largest basin in TN
+    if any(k in name_lower for k in ["cauvery", "kaveri", "bhavani", "noyyal", "amaravathi", "kollidam"]):
+        return "Cauvery Basin"
+    if any(k in dist_lower for k in ["salem", "erode", "namakkal", "karur", "tiruchirappalli", "thanjavur", "tiruvarur", "nagapattinam", "mayiladuthurai", "ariyalur", "perambalur", "dharmapuri"]) and "river" in name_lower:
+        return "Cauvery Basin"
+
+    # Palar basin
+    if any(k in name_lower for k in ["palar"]):
+        return "Palar Basin"
+    if any(k in dist_lower for k in ["vellore", "ranipet", "tirupathur", "krishnagiri", "kanchipuram"]):
+        return "Palar Basin"
+
+    # Ponnaiyar basin
+    if any(k in name_lower for k in ["ponnaiyar", "thenpennai"]):
+        return "Ponnaiyar Basin"
+    if any(k in dist_lower for k in ["villupuram", "tiruvannamalai", "cuddalore", "kallakurichi"]):
+        return "Ponnaiyar Basin"
+
+    # Vaigai basin
+    if any(k in name_lower for k in ["vaigai", "gundar"]):
+        return "Vaigai Basin"
+    if any(k in dist_lower for k in ["madurai", "theni", "dindigul", "sivaganga", "ramanathapuram", "virudhunagar", "pudukkottai"]):
+        return "Vaigai Basin"
+
+    # Vellar basin
+    if any(k in name_lower for k in ["vellar"]):
+        return "Vellar Basin"
+
+    # Thamirabarani basin
+    if any(k in name_lower for k in ["thamirabarani", "tamiraparani"]):
+        return "Thamirabarani Basin"
+    if any(k in dist_lower for k in ["tirunelveli", "tenkasi", "thoothukudi"]):
+        return "Thamirabarani Basin"
+
+    # Coastal / Chennai rivers
+    if any(k in name_lower for k in ["adyar", "cooum", "kosasthalaiyar", "cheyyar"]):
+        return "Coastal Drainage"
+    if any(k in dist_lower for k in ["chennai", "thiruvallur", "chengalpattu", "kanyakumari"]):
+        return "Coastal Drainage"
+
+    # Western Ghats
+    if any(k in dist_lower for k in ["coimbatore", "nilgiris", "tiruppur"]):
+        return "Western Ghats Drainage"
+
+    return "Other Basin"

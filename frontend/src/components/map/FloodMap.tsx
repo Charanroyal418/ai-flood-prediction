@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl, LayersControl, LayerGroup, GeoJSON, useMap } from "react-leaflet";
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import "leaflet/dist/leaflet.css";
@@ -123,12 +123,34 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
   const [geoJsonData, setGeoJsonData] = useState<any>(null);
   const router = useRouter();
 
+  // Pre-process districts to ensure they have valid coordinates (or use fallback)
+  const validDistricts = useMemo(() => {
+    return (districts || [])
+      .map((d) => {
+        let lat = d.lat;
+        let lon = d.lon;
+
+        // If coordinate is invalid, lookup in fallback table
+        if (!lat || !lon || lat === 0 || lon === 0) {
+          const fallback = TN_COORDINATES[d.name];
+          if (fallback) {
+            lat = fallback[0];
+            lon = fallback[1];
+          }
+        }
+
+        return { ...d, lat, lon };
+      })
+      // Filter out any that still don't have valid coordinates to prevent Leaflet crash
+      .filter((d) => typeof d.lat === "number" && typeof d.lon === "number" && !isNaN(d.lat) && !isNaN(d.lon));
+  }, [districts]);
+
   useEffect(() => {
     if (selectedDistrictId && validDistricts.length > 0) {
       const dist = validDistricts.find(d => d.id === selectedDistrictId);
       if (dist) setSelected(dist);
     }
-  }, [selectedDistrictId, districts]);
+  }, [selectedDistrictId, validDistricts]);
 
   useEffect(() => { 
     setMounted(true); 
@@ -146,26 +168,6 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
     if (risk >= 40) return 12;
     return 9;
   };
-
-  // Pre-process districts to ensure they have valid coordinates (or use fallback)
-  const validDistricts = (districts || [])
-    .map((d) => {
-      let lat = d.lat;
-      let lon = d.lon;
-
-      // If coordinate is invalid, lookup in fallback table
-      if (!lat || !lon || lat === 0 || lon === 0) {
-        const fallback = TN_COORDINATES[d.name];
-        if (fallback) {
-          lat = fallback[0];
-          lon = fallback[1];
-        }
-      }
-
-      return { ...d, lat, lon };
-    })
-    // Filter out any that still don't have valid coordinates to prevent Leaflet crash
-    .filter((d) => typeof d.lat === "number" && typeof d.lon === "number" && !isNaN(d.lat) && !isNaN(d.lon));
 
   return (
     <div className="relative w-full h-full">
@@ -227,13 +229,44 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
           {geoJsonData && (
             <LayersControl.Overlay checked name="District Boundaries">
               <GeoJSON 
+                key={`bounds-${selectedDistrictId || 'none'}`}
                 data={geoJsonData} 
-                style={{
-                  color: "#94a3b8", // slate-400
-                  weight: 1,
-                  opacity: 0.6,
-                  fillOpacity: 0.05,
-                  fillColor: "#e2e8f0"
+                style={(feature) => {
+                  const featName = feature?.properties?.name;
+                  const isSel = selected && featName && (
+                    selected.name.toLowerCase().replace(/[^a-z]/g, '') === featName.toLowerCase().replace(/[^a-z]/g, '')
+                  );
+                  if (isSel) {
+                    return {
+                      color: "#8b5cf6",
+                      weight: 3,
+                      opacity: 1,
+                      fillOpacity: 0.25,
+                      fillColor: "#8b5cf6"
+                    };
+                  }
+                  return {
+                    color: "#94a3b8",
+                    weight: 1,
+                    opacity: 0.6,
+                    fillOpacity: 0.05,
+                    fillColor: "#e2e8f0"
+                  };
+                }}
+                onEachFeature={(feature, layer) => {
+                  const featName = feature?.properties?.name;
+                  if (featName) {
+                    layer.on({
+                      click: () => {
+                        const match = validDistricts.find(d => 
+                          d.name.toLowerCase().replace(/[^a-z]/g, '') === featName.toLowerCase().replace(/[^a-z]/g, '')
+                        );
+                        if (match && onMarkerClick) {
+                          onMarkerClick(match.id);
+                        }
+                      }
+                    });
+                  }
                 }}
               />
             </LayersControl.Overlay>

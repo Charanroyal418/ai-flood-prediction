@@ -11,6 +11,13 @@ from app.etl.weather import TN_DISTRICTS
 
 router = APIRouter()
 
+@router.get("")
+@router.get("/")
+def get_all_districts_list(db: Session = Depends(deps.get_db)) -> Any:
+    """Get list of all districts with live telemetry and prediction risk."""
+    from app.api.endpoints.dashboard import get_all_districts
+    return get_all_districts(db=db)
+
 @router.get("/{district_id}")
 def get_district_details(district_id: int, db: Session = Depends(deps.get_db)) -> Any:
     """Get rich analytics and drill-down data for a specific district from live db."""

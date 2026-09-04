@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl, LayersControl, LayerGroup, GeoJSON, useMap } from "react-leaflet";
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import "leaflet/dist/leaflet.css";
@@ -116,12 +116,30 @@ export default function WeatherMap({ districts = [], onMarkerClick, selectedDist
   const [mounted, setMounted] = useState(false);
   const [selected, setSelected] = useState<District | null>(null);
   
+  // Pre-process districts to ensure they have valid coordinates (or use fallback)
+  const validDistricts = useMemo(() => {
+    return (districts || [])
+      .map((d) => {
+        let lat = d.lat;
+        let lon = d.lon;
+        if (!lat || !lon || lat === 0 || lon === 0) {
+          const fallback = TN_COORDINATES[d.name];
+          if (fallback) {
+            lat = fallback[0];
+            lon = fallback[1];
+          }
+        }
+        return { ...d, lat, lon };
+      })
+      .filter((d) => typeof d.lat === "number" && typeof d.lon === "number" && !isNaN(d.lat) && !isNaN(d.lon));
+  }, [districts]);
+  
   useEffect(() => {
     if (selectedDistrictId && validDistricts.length > 0) {
       const dist = validDistricts.find(d => d.id === selectedDistrictId);
       if (dist) setSelected(dist);
     }
-  }, [selectedDistrictId, districts]);
+  }, [selectedDistrictId, validDistricts]);
 
   useEffect(() => { 
     setMounted(true); 
@@ -137,21 +155,6 @@ export default function WeatherMap({ districts = [], onMarkerClick, selectedDist
     if (rainfall >= 20) return 12;
     return 9;
   };
-
-  const validDistricts = (districts || [])
-    .map((d) => {
-      let lat = d.lat;
-      let lon = d.lon;
-      if (!lat || !lon || lat === 0 || lon === 0) {
-        const fallback = TN_COORDINATES[d.name];
-        if (fallback) {
-          lat = fallback[0];
-          lon = fallback[1];
-        }
-      }
-      return { ...d, lat, lon };
-    })
-    .filter((d) => typeof d.lat === "number" && typeof d.lon === "number" && !isNaN(d.lat) && !isNaN(d.lon));
 
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden border border-slate-200 shadow-sm z-0">
