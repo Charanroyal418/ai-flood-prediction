@@ -519,13 +519,11 @@ export default function PredictionEnginePage() {
           })}
         </div>
       </div>
-
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
         
         {/* ── LEFT: MAP & DISTRICT SELECTOR ── */}
         <div className="xl:col-span-4 h-[900px] flex flex-col gap-6">
           <div className="bg-paper-100 border border-line rounded-3xl overflow-hidden shadow-[0_8px_24px_rgba(99,102,241,0.06)] h-[400px] shrink-0 relative">
-             {/* Note: FloodMap doesn't currently take selectedDistrictId or onMarkerClick out of the box, we will modify it next. */}
              <FloodMap onMarkerClick={setSelectedDistrictId} selectedDistrictId={selectedDistrictId} />
           </div>
           <div className="bg-paper-100 border border-line rounded-3xl flex flex-col overflow-hidden shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] hover:-translate-y-1 transition-all duration-300 flex-1 relative">
