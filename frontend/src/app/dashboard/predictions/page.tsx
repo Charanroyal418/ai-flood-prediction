@@ -230,10 +230,7 @@ export default function PredictionEnginePage() {
   useEffect(() => {
     const timer = setInterval(() => {
       setCountdown(c => {
-        if (c <= 1) {
-          setFlowStage(-1);
-          return 30;
-        }
+        if (c <= 1) return 30;
         return c - 1;
       });
     }, 1000);
@@ -241,17 +238,14 @@ export default function PredictionEnginePage() {
   }, []);
 
   useEffect(() => {
-    // When new data arrives, reset pipeline animation
-    setFlowStage(0);
-    setCountdown(30);
-  }, [dataUpdatedAt]);
-
-  useEffect(() => {
     const flowInterval = setInterval(() => {
-      setFlowStage(prev => (prev < GDNN_FLOW.length ? prev + 1 : prev));
-    }, 3000); // 3 seconds per stage x 10 stages = 30 seconds
+      setFlowStage(prev => {
+        if (prev >= GDNN_FLOW.length) return 0;
+        return prev + 1;
+      });
+    }, 3000);
     return () => clearInterval(flowInterval);
-  }, [dataUpdatedAt]);
+  }, []);
 
   useEffect(() => {
     if (data?.logs) {
@@ -633,9 +627,8 @@ export default function PredictionEnginePage() {
                     </span>
                   </div>
 
-                  {/* District name + big risk badge */}
-                  <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10 flex-wrap">
-                    <div className="flex-1 min-w-0 pr-4">
+                  <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-10 flex-wrap">
+                    <div className="pr-4 shrink-0">
                       <p className="text-xs text-text-secondary uppercase tracking-widest font-bold mb-2">Target District</p>
                       <h3 className="text-[44px] font-bold text-text-primary leading-none break-keep whitespace-nowrap">{d.district}</h3>
                     </div>
