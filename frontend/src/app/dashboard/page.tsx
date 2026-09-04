@@ -43,6 +43,49 @@ const RISK_LEVELS: Record<string, string> = {
   Safe: "risk-badge-safe",
 };
 
+const SkeletonRow = () => (
+  <tr className="border-b border-line">
+    <td colSpan={4} className="py-2 px-3">
+      <div className="h-8 skeleton rounded-md w-full opacity-50" />
+    </td>
+  </tr>
+);
+
+const EmptyState = () => (
+  <tr>
+    <td colSpan={4} className="text-center py-6 text-text-secondary text-[15px] font-sans">
+      No risk data available.
+    </td>
+  </tr>
+);
+
+const RiskRow = ({ rank, district: d, trend = 'flat' }: { rank: number; district: any; trend?: string }) => (
+  <motion.tr 
+    layout
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0 }}
+    className="hover:bg-[#F5F5FF] transition-colors duration-200 border-b border-line group"
+  >
+    <td className="py-3 px-3 text-[15px] font-medium text-slate-500 font-sans w-12 text-center">
+      #{rank}
+    </td>
+    <td className="py-3 px-3 text-[15px] font-medium text-text-primary font-sans flex items-center gap-2">
+      <MapPin className="w-4 h-4 text-slate-400" />
+      {d.name}
+    </td>
+    <td className="py-3 px-3 text-right text-text-primary font-bold tabular-nums font-sans text-[15px]">
+      <div className="flex items-center justify-end gap-1">
+        {trend === 'up' ? <ArrowUpRight className="w-4 h-4 text-red-500" /> : trend === 'down' ? <ArrowDownRight className="w-4 h-4 text-emerald-500" /> : <Minus className="w-4 h-4 text-slate-300" />}
+        {typeof d.risk_score === 'number' ? safeFormat(d.risk_score, 1, "0.0") : d.risk_score}
+      </div>
+    </td>
+    <td className="py-3 px-3 text-right font-sans text-[15px]">
+      <span className={`risk-badge ${RISK_LEVELS[d.risk_level] || RISK_LEVELS.Safe}`}>{d.risk_level}</span>
+    </td>
+  </motion.tr>
+);
+
 // --- Utilities ---
 function MetricCard({ title, value, unit, icon: Icon, sparklineData, bgClass, colorClass, sparklineColor }: any) {
   return (
@@ -297,53 +340,25 @@ export default function CommandCenter() {
                 </thead>
                 <tbody className="relative">
                   <AnimatePresence>
-                    {isLoading && !hasWsData ? (
-                      Array.from({ length: 5 }).map((_, i) => (
-                        <tr key={`skeleton-${i}`} className="border-b border-line">
-                          <td colSpan={4} className="py-2 px-3">
-                            <div className="h-8 skeleton rounded-md w-full opacity-50" />
-                          </td>
-                        </tr>
-                      ))
-                    ) : isError && !hasWsData ? (
-                      <tr>
-                        <td colSpan={4} className="text-center py-6 text-red-500 text-[15px] font-semibold font-sans">Failed to load risk data.</td>
-                      </tr>
-                    ) : topDistricts.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="text-center py-6 text-text-secondary text-[15px] font-sans">No risk data available.</td>
-                      </tr>
-                    ) : topDistricts.slice(0, 5).map((d: any, idx: number) => {
-                      const id = d.id || d.name;
-                      const trend = trends[id] || 'flat';
-                      return (
-                        <motion.tr 
-                          key={id}
-                          layout
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0 }}
-                          className="hover:bg-[#F5F5FF] transition-colors duration-200 border-b border-line group"
-                        >
-                          <td className="py-3 px-3 text-[15px] font-medium text-slate-500 font-sans w-12 text-center">
-                            #{idx + 1}
-                          </td>
-                          <td className="py-3 px-3 text-[15px] font-medium text-text-primary font-sans flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-slate-400" />
-                            {d.name}
-                          </td>
-                          <td className="py-3 px-3 text-right text-text-primary font-bold tabular-nums font-sans text-[15px]">
-                            <div className="flex items-center justify-end gap-1">
-                              {trend === 'up' ? <ArrowUpRight className="w-4 h-4 text-red-500" /> : trend === 'down' ? <ArrowDownRight className="w-4 h-4 text-emerald-500" /> : <Minus className="w-4 h-4 text-slate-300" />}
-                              {typeof d.risk_score === 'number' ? safeFormat(d.risk_score, 1, "0.0") : d.risk_score}
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 text-right font-sans text-[15px]">
-                            <span className={`risk-badge ${RISK_LEVELS[d.risk_level] || RISK_LEVELS.Safe}`}>{d.risk_level}</span>
-                          </td>
-                        </motion.tr>
+                    {(() => {
+                      const rows = (topDistricts ?? []).filter((d: any) => d.name && d.name.trim() !== '').slice(0, 5);
+                      return isLoading && !hasWsData ? (
+                        Array.from({ length: 5 }).map((_, i) => (
+                          <SkeletonRow key={`skeleton-${i}`} />
+                        ))
+                      ) : rows.length > 0 ? (
+                        rows.map((district: any, index: number) => (
+                          <RiskRow
+                            key={district.id || district.name}
+                            rank={index + 1}
+                            district={district}
+                            trend={trends[district.id || district.name]}
+                          />
+                        ))
+                      ) : (
+                        <EmptyState />
                       );
-                    })}
+                    })()}
                   </AnimatePresence>
                 </tbody>
               </table>
