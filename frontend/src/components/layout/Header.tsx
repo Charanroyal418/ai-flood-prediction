@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { Bell, Search, User, ShieldCheck } from "lucide-react";
+import { useFloodData } from "@/context/FloodDataContext";
 
 export default function Header() {
+  const { relativeSyncTime } = useFloodData();
   const [mounted, setMounted] = useState(false);
   const [currentDate, setCurrentDate] = useState("");
 
@@ -44,7 +46,7 @@ export default function Header() {
         
         <div className="hidden lg:flex items-center gap-2 px-4 py-2 text-sm text-slate-500 font-medium">
           <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-          Last Prediction: 2 mins ago
+          Last Prediction: {relativeSyncTime}
         </div>
 
         <div className="flex items-center gap-3 border-l border-slate-200 pl-6">

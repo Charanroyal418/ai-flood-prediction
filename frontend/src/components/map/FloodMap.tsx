@@ -169,6 +169,37 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
 
   return (
     <div className="relative w-full h-full">
+      <style dangerouslySetInnerHTML={{__html: `
+        .leaflet-control-zoom a {
+            width: 32px !important;
+            height: 32px !important;
+            line-height: 32px !important;
+            opacity: 0.6;
+            backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.7) !important;
+            transition: all 0.3s ease;
+            color: #475569 !important;
+            border: 1px solid rgba(226, 232, 240, 0.8) !important;
+        }
+        .leaflet-control-zoom a:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.95) !important;
+            color: #8b5cf6 !important;
+        }
+        .leaflet-control-layers {
+            opacity: 0.6;
+            transition: opacity 0.3s;
+            backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.7) !important;
+            border: 1px solid rgba(226, 232, 240, 0.8) !important;
+            border-radius: 12px !important;
+            padding: 4px !important;
+        }
+        .leaflet-control-layers:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.95) !important;
+        }
+      `}} />
       <MapContainer
         center={center}
         zoom={7}

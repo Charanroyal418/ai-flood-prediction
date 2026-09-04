@@ -11,17 +11,33 @@ from app.api import deps
 
 router = APIRouter()
 
-# Global model cache
+# Global model cache and flags
 MODEL_CACHE = None
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "ml", "artifacts", "flood_xgboost_v1.pkl")
+MODEL_LOAD_ATTEMPTED = False
+MODEL_PATHS_TO_CHECK = [
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "ml", "artifacts", "flood_xgboost_v1.pkl"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "flood_xgboost_v1.pkl"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "model", "flood_xgboost_v1.pkl"),
+]
 
 def get_model():
-    global MODEL_CACHE
-    if MODEL_CACHE is None:
-        if not os.path.exists(MODEL_PATH):
+    global MODEL_CACHE, MODEL_LOAD_ATTEMPTED
+    if not MODEL_LOAD_ATTEMPTED:
+        MODEL_LOAD_ATTEMPTED = True
+        found_path = None
+        for path in MODEL_PATHS_TO_CHECK:
+            if os.path.exists(path):
+                found_path = path
+                break
+        
+        if not found_path:
             print("Warning: ML Model artifact not found, falling back to heuristic simulation.")
-            return None
-        MODEL_CACHE = joblib.load(MODEL_PATH)
+        else:
+            try:
+                MODEL_CACHE = joblib.load(found_path)
+            except Exception as e:
+                print(f"Warning: Failed to load ML Model from {found_path} ({e}), falling back to heuristic simulation.")
+                
     return MODEL_CACHE
 
 class PredictionRequest(BaseModel):

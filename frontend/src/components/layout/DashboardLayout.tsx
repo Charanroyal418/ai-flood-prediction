@@ -150,12 +150,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { mode, stormSimulationActive, lastUpdated } = useFloodData();
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const { mode, stormSimulationActive, relativeSyncTime, lastUpdated } = useFloodData();
 
 
   useEffect(() => {
@@ -283,12 +278,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold shadow-sm">
                             <span>LAST SYNC:</span>
               <span className="font-mono">
-                {!mounted ? "..." : lastUpdated
-                  ? (() => {
-                      const seconds = Math.floor((now.getTime() - new Date(lastUpdated).getTime()) / 1000);
-                      return seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds/60)}m ${seconds%60}s ago`;
-                    })()
-                  : "Just now"}
+                {!mounted ? "..." : relativeSyncTime}
               </span>
             </div>
           </div>

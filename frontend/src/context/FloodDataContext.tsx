@@ -119,6 +119,7 @@ interface FloodDataState {
   simulationMeta: SimulationMeta;
   // Last pipeline update timestamp
   lastUpdated: string | null;
+  relativeSyncTime: string;
   // Knowledge Graph Complete Payload
   kgData: any | null;
   // Pipeline (Inference Cycle) Data
@@ -164,9 +165,32 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [stormSimulationActive, setStormSimulationActive] = useState<boolean>(false);
   const [simulationMeta, setSimulationMeta] = useState<SimulationMeta>(DEFAULT_SIM_META);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [relativeSyncTime, setRelativeSyncTime] = useState<string>("Just now");
   const [pipelineData, setPipelineData] = useState<any | null>(null);
   const [kgData, setKgData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Derive relative sync time
+  useEffect(() => {
+    const updateRelativeTime = () => {
+      if (!lastUpdated) {
+        setRelativeSyncTime("Just now");
+        return;
+      }
+      const now = new Date().getTime();
+      const syncTime = new Date(lastUpdated).getTime();
+      const diffSecs = Math.floor((now - syncTime) / 1000);
+      
+      if (diffSecs < 10) setRelativeSyncTime("Just now");
+      else if (diffSecs < 60) setRelativeSyncTime(`${diffSecs} sec ago`);
+      else if (diffSecs < 3600) setRelativeSyncTime(`${Math.floor(diffSecs / 60)} min ago`);
+      else setRelativeSyncTime(`${Math.floor(diffSecs / 3600)} hr ago`);
+    };
+
+    updateRelativeTime();
+    const interval = setInterval(updateRelativeTime, 5000);
+    return () => clearInterval(interval);
+  }, [lastUpdated]);
 
   const refetchPipeline = useCallback(async () => {
     try {
@@ -185,7 +209,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
   const refetchKg = useCallback(async () => {
     try {
-      const res = await api.get("/kg/graph");
+      const res = await api.get("/kg/topology");
       if (res.data) setKgData(res.data);
     } catch (err: any) {
       console.warn("KG fetch failed:", err);
@@ -205,7 +229,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         const [dashboardRes, pipelineRes, kgRes] = await Promise.allSettled([
           api.get("/dashboard/live", { signal: controller.signal }),
           api.get("/predict/inference-cycle", { signal: controller.signal }),
-          api.get("/kg/graph", { signal: controller.signal })
+          api.get("/kg/topology", { signal: controller.signal })
         ]);
 
         if (!isMounted) return;
@@ -422,6 +446,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     stormSimulationActive,
     simulationMeta,
     lastUpdated,
+    relativeSyncTime,
     dashboardStatus,
     kgStatus,
     alertStatus,
@@ -460,6 +485,7 @@ const SAFE_DEFAULT: FloodDataState = {
   stormSimulationActive: false,
   simulationMeta: DEFAULT_SIM_META,
   lastUpdated: null,
+  relativeSyncTime: "Just now",
   dashboardStatus: "disconnected",
   kgStatus: "disconnected",
   alertStatus: "disconnected",
