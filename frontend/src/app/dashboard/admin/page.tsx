@@ -121,13 +121,6 @@ export default function AdminPanel() {
     }
   }, [logout, router]);
 
-  // If auth has loaded and user is not admin or unauthenticated, redirect to login
-  useEffect(() => {
-    if (!authLoading && (!isAuthenticated || !isAdmin || !accessToken)) {
-      router.replace("/login");
-    }
-  }, [authLoading, isAuthenticated, isAdmin, accessToken, router]);
-
   // Fetch pipeline status
   const { data: status, isLoading: statusLoading } = useQuery<PipelineStatus | null>({
     queryKey: ["adminPipelineStatus"],
@@ -135,7 +128,8 @@ export default function AdminPanel() {
       try {
         const res = await api.get("/api/v1/admin/pipeline/status");
         if (res?.status === 401 || (res as any)?.isUnauthorized) return null;
-        return res?.data ?? null;
+        const payload = res?.data?.data !== undefined ? res.data.data : res?.data;
+        return payload ?? null;
       } catch (err: any) {
         if (err?.response?.status === 401) return null;
         return null;
@@ -154,7 +148,8 @@ export default function AdminPanel() {
       try {
         const res = await api.get("/api/v1/admin/ml/metrics");
         if (res?.status === 401 || (res as any)?.isUnauthorized) return null;
-        return res?.data ?? null;
+        const payload = res?.data?.data !== undefined ? res.data.data : res?.data;
+        return payload ?? null;
       } catch (err: any) {
         if (err?.response?.status === 401) return null;
         return null;
@@ -172,7 +167,8 @@ export default function AdminPanel() {
       try {
         const res = await api.get("/api/v1/admin/logs?limit=30");
         if (res?.status === 401 || (res as any)?.isUnauthorized) return null;
-        return res?.data ?? null;
+        const payload = res?.data?.data !== undefined ? res.data.data : res?.data;
+        return payload ?? null;
       } catch (err: any) {
         if (err?.response?.status === 401) return null;
         return null;
@@ -271,7 +267,7 @@ export default function AdminPanel() {
         </div>
         <div className="flex items-center gap-2">
           <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border ${
-            status?.pipeline.status === "running"
+            status?.pipeline?.status === "running"
               ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800/50"
               : "bg-slate-50 text-slate-600 border-slate-200"
           }`}>
@@ -285,19 +281,19 @@ export default function AdminPanel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           {
-            label: "Districts", value: status?.database.districts ?? "—",
+            label: "Districts", value: status?.database?.districts ?? "—",
             icon: Database, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-900/20"
           },
           {
-            label: "Predictions", value: status?.database.predictions_total?.toLocaleString() ?? "—",
+            label: "Predictions", value: status?.database?.predictions_total?.toLocaleString() ?? "—",
             icon: Brain, color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-900/20"
           },
           {
-            label: "Weather Records", value: status?.database.weather_records_total?.toLocaleString() ?? "—",
+            label: "Weather Records", value: status?.database?.weather_records_total?.toLocaleString() ?? "—",
             icon: Activity, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-900/20"
           },
           {
-            label: "KG Events", value: status?.database.kg_events_total?.toLocaleString() ?? "—",
+            label: "KG Events", value: status?.database?.kg_events_total?.toLocaleString() ?? "—",
             icon: Zap, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/20"
           },
         ].map((stat) => (
@@ -324,12 +320,12 @@ export default function AdminPanel() {
             <div className="space-y-3">
               <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700">
                 <span className="text-sm text-slate-600 dark:text-slate-400">Inference Mode</span>
-                <StatusBadge ok={!!status?.pipeline.model_loaded} label={status?.pipeline.inference_mode ?? "Unknown"} />
+                <StatusBadge ok={!!status?.pipeline?.model_loaded} label={status?.pipeline?.inference_mode ?? "Unknown"} />
               </div>
               <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700">
                 <span className="text-sm text-slate-600 dark:text-slate-400">Last Inference</span>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  {status?.pipeline.last_inference_at
+                  {status?.pipeline?.last_inference_at
                     ? new Date(status.pipeline.last_inference_at).toLocaleTimeString()
                     : "Never"}
                 </span>
@@ -337,7 +333,7 @@ export default function AdminPanel() {
               <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700">
                 <span className="text-sm text-slate-600 dark:text-slate-400">Inference Time</span>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  {status?.pipeline.last_inference_ms
+                  {status?.pipeline?.last_inference_ms
                     ? `${(Number(status.pipeline.last_inference_ms) || 0).toFixed(1)} ms`
                     : "—"}
                 </span>
@@ -345,7 +341,7 @@ export default function AdminPanel() {
               <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700">
                 <span className="text-sm text-slate-600 dark:text-slate-400">Last Weather ETL</span>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  {status?.pipeline.last_weather_at
+                  {status?.pipeline?.last_weather_at
                     ? new Date(status.pipeline.last_weather_at).toLocaleTimeString()
                     : "Never"}
                 </span>
@@ -354,12 +350,12 @@ export default function AdminPanel() {
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={() => triggerETL.mutate()}
-                  disabled={status?.etl.running || triggerETL.isPending}
+                  disabled={status?.etl?.running || triggerETL.isPending}
                   className="btn-secondary text-xs py-2 px-3 flex-1 disabled:opacity-50"
                   id="btn-trigger-etl"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${status?.etl.running ? "animate-spin" : ""}`} />
-                  {status?.etl.running ? "Running..." : "Run ETL"}
+                  <RefreshCw className={`w-3.5 h-3.5 ${status?.etl?.running ? "animate-spin" : ""}`} />
+                  {status?.etl?.running ? "Running..." : "Run ETL"}
                 </button>
                 <button
                   onClick={() => resetCaches.mutate()}

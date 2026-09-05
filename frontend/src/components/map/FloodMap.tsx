@@ -24,11 +24,12 @@ if (typeof window !== "undefined" && (L as any)?.Icon?.Default) {
 }
 
 const RISK_COLORS: Record<string, string> = {
-  Critical: "#ef4444",
-  High: "#f97316",
-  Moderate: "#f59e0b",
-  Low: "#22c55e",
-  Safe: "#3b82f6",
+  Critical: "#ef4444", // Red
+  Severe: "#ef4444",   // Red
+  High: "#f97316",       // Orange
+  Moderate: "#f59e0b",   // Yellow
+  Low: "#22c55e",        // Green
+  Safe: "#22c55e",       // Green
 };
 
 interface District {
@@ -56,12 +57,12 @@ interface FloodMapProps {
   selectedDistrictId?: number | null;
 }
 
-const getRiskColor = (score: number, level?: string) => {
-  if (score >= 80 || level === "Critical" || level === "Severe") return "#ef4444";
-  if (score >= 60 || level === "High") return "#f97316";
-  if (score >= 40 || level === "Moderate") return "#f59e0b";
-  if (score >= 20 || level === "Low") return "#22c55e";
-  return "#3b82f6";
+const getRiskColor = (score?: number, level?: string) => {
+  const normLevel = (level || "").trim().toLowerCase();
+  if (normLevel === "critical" || normLevel === "severe" || (score != null && score >= 80)) return "#ef4444";
+  if (normLevel === "high" || (score != null && score >= 60)) return "#f97316";
+  if (normLevel === "moderate" || (score != null && score >= 40)) return "#f59e0b";
+  return "#22c55e";
 };
 
 const TN_COORDINATES: Record<string, [number, number]> = {

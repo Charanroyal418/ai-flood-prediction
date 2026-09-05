@@ -555,6 +555,7 @@ def simulate_storm_event(
         pass
     orchestrator = RealtimeOrchestrator(db)
     summary = orchestrator.run_pipeline(simulate_storm=new_state)
+    sim_meta = get_storm_simulation_meta()
     return {
         "success": True,
         "storm_simulation_active": new_state,

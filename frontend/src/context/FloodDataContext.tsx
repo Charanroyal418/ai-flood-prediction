@@ -387,6 +387,17 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
           if (data.timestamp) {
             setLastUpdated(data.timestamp);
           }
+          if (data.metrics?.gdnn_inference_ms) {
+            setModelMeta((prev) => ({
+              model_version: prev?.model_version || "v2.0.0-gdnn",
+              inference_time_ms: prev?.inference_time_ms || data.metrics.gdnn_inference_ms,
+              latency_ms: prev?.latency_ms || data.metrics.gdnn_inference_ms,
+              node_count: prev?.node_count || data.metrics.kg_nodes || 147,
+              edge_count: prev?.edge_count || data.metrics.kg_edges || 223,
+              attention_heads: prev?.attention_heads || data.metrics.attention_heads || 4,
+              last_inference: prev?.last_inference || data.timestamp || new Date().toISOString(),
+            }));
+          }
         }
 
         // 2. Process Pipeline Data
