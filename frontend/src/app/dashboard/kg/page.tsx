@@ -219,10 +219,12 @@ export default function DynamicKnowledgeGraph() {
   const { kgData: data, refetchKg: refetch, forceRetry } = useFloodData();
   const isError = data?.status === "error";
 
+  const [mounted, setMounted] = useState(false);
   // ── 3-second skeleton timeout ──
   const [showSkeleton, setShowSkeleton] = useState(true);
 
   useEffect(() => {
+    setMounted(true);
     const t = setTimeout(() => setShowSkeleton(false), 3000);
     return () => clearTimeout(t);
   }, []);
@@ -569,8 +571,8 @@ export default function DynamicKnowledgeGraph() {
   const dynNodes = selectedCommunity !== null ? activeNodes.length : (data?.stats?.total_nodes || 0);
   const dynEdges = selectedCommunity !== null ? activeEdges.length : (data?.stats?.total_edges || 0);
 
-  if (!data?.nodes?.length || isError) {
-    if (showSkeleton && !isError) {
+  if (!mounted || !data?.nodes?.length || isError) {
+    if ((showSkeleton || !mounted) && !isError) {
       // Skeleton while loading (max 3s)
       return (
         <div className="flex h-[80vh] items-center justify-center">

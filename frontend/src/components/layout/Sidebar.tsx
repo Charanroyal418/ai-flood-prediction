@@ -152,6 +152,7 @@ export default function Sidebar() {
                     <Link
                       key={item.href}
                       href={item.href}
+                      prefetch={false}
                       title={collapsed ? item.name : undefined}
                       className={`sidebar-item ${active ? "active" : ""}`}
                     >
@@ -249,6 +250,7 @@ export default function Sidebar() {
                         <Link
                           key={item.href}
                           href={item.href}
+                          prefetch={false}
                           onClick={() => setMobileNavOpen(false)}
                           className={`sidebar-item ${active ? "active" : ""}`}
                         >
