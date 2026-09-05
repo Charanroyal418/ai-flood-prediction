@@ -141,6 +141,7 @@ import os
 origins = [
     "https://ai-flood-prediction-lxjkk9a2i-charanroyal418s-projects.vercel.app",
     "https://ai-flood-prediction.vercel.app",
+    "https://ai-flood-prediction-iota.vercel.app",  # FIX-BUG-002: deployed iota URL
     "http://localhost:3000",
     "http://localhost:8000",
     "http://127.0.0.1:3000",

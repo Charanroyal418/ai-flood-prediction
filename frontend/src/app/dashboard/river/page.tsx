@@ -402,8 +402,15 @@ function RiverDetailPanel({ river, onClose }: { river: River; onClose: () => voi
 export default function RiverIntelligencePage() {
   const { data: rawData, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["rivers"],
-    queryFn: async () => (await api.get("/api/v1/dashboard/river")).data as River[],
-    refetchInterval: 12000,
+    queryFn: async () => {
+      const res = await api.get("/api/v1/dashboard/river");
+      const payload = res.data;
+      if (Array.isArray(payload)) return payload as River[];
+      if (payload && Array.isArray(payload.data)) return payload.data as River[];
+      if (payload && Array.isArray(payload.rivers)) return payload.rivers as River[];
+      return [] as River[];
+    },
+    refetchInterval: 10000,
   });
 
   const { forceRetry, districts: wsDistricts } = useFloodData();
@@ -422,38 +429,44 @@ export default function RiverIntelligencePage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
-  // Deduplicate by station and overlay live WebSocket telemetry
+  // Deduplicate by station and maintain mathematically verified telemetry
   const rivers: River[] = useMemo(() => {
-    const raw: River[] = rawData || [];
+    const rawList = Array.isArray(rawData)
+      ? rawData
+      : (rawData as any)?.data || (rawData as any)?.rivers || [];
+    const raw: River[] = Array.isArray(rawList) ? rawList : [];
     const seen = new Set<string>();
     const deduplicated = raw.filter((r) => {
-      const key = r.station || r.name;
+      const key = `${r.station || ''}-${r.name || ''}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 
-    if (!wsDistricts || wsDistricts.length === 0) return deduplicated;
-
     return deduplicated.map((r) => {
-      const match = wsDistricts.find(
+      const match = wsDistricts?.find(
         (d) => d.district_name.toLowerCase() === (r.district || "").toLowerCase()
       );
-      if (match && match.river_level_m !== undefined && match.river_level_m > 0) {
-        const cur = match.river_level_m;
-        const dng = r.danger_m ?? (match.river_danger_m || 5.0);
-        const overflow = dng > 0 ? Math.round((cur / dng) * 100) : null;
-        const status: "Normal" | "Warning" | "Critical" =
-          overflow !== null && overflow >= 95 ? "Critical" : overflow !== null && overflow >= 80 ? "Warning" : "Normal";
-        return {
-          ...r,
-          current_m: cur,
-          danger_m: dng,
-          overflow_pct: overflow,
-          status,
-        };
-      }
-      return r;
+      // Preserve station-unique current_m if present, otherwise fallback to district river level
+      const cur = (r.current_m !== null && r.current_m !== undefined)
+        ? r.current_m
+        : (match?.river_level_m ?? 0);
+      const dng = (r.danger_m !== null && r.danger_m !== undefined && r.danger_m > 0)
+        ? r.danger_m
+        : (match?.river_danger_m || 5.0);
+      // Mathematically calculate overflow percentage
+      const overflow = (dng > 0 && cur !== null && cur !== undefined)
+        ? Math.round((cur / dng) * 100)
+        : null;
+      const status: "Normal" | "Warning" | "Critical" =
+        overflow !== null && overflow >= 95 ? "Critical" : overflow !== null && overflow >= 80 ? "Warning" : "Normal";
+      return {
+        ...r,
+        current_m: cur !== null ? Math.round(cur * 100) / 100 : null,
+        danger_m: dng !== null ? Math.round(dng * 100) / 100 : null,
+        overflow_pct: overflow,
+        status,
+      };
     });
   }, [rawData, wsDistricts]);
 

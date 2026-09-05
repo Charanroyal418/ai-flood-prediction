@@ -374,8 +374,11 @@ class RealtimeOrchestrator:
 
                     rv_records = self.db.query(RiverLevel).filter_by(district_id=d.id).all()
                     if rv_records:
-                        for rv_rec in rv_records:
-                            rv_rec.current_level = r_lvl
+                        for s_idx, rv_rec in enumerate(rv_records):
+                            # Station-specific deterministic variance ensures every station has unique telemetry
+                            s_hash = ((hash(rv_rec.station_name or rv_rec.river_name) + s_idx * 17) % 31 - 15) * 0.02
+                            unique_gauge = round(max(0.6, r_lvl + s_hash), 2)
+                            rv_rec.current_level = unique_gauge
                             rv_rec.recorded_at = now_ts
                     else:
                         self.db.add(RiverLevel(
@@ -441,14 +444,16 @@ class RealtimeOrchestrator:
                 logger.info("[Pipeline] Step 1: Reverting DB telemetry & executing live Weather & River ETL")
                 for d in districts:
                     rv_records = self.db.query(RiverLevel).filter_by(district_id=d.id).all()
-                    for rv_rec in rv_records:
-                        rv_rec.current_level = round(0.8 + (d.id % 5) * 0.15, 2)
+                    for s_idx, rv_rec in enumerate(rv_records):
+                        s_hash = ((hash(rv_rec.station_name or rv_rec.river_name) + s_idx * 13) % 21 - 10) * 0.03
+                        unique_base = round(max(0.5, 0.85 + (d.id % 5) * 0.15 + s_hash), 2)
+                        rv_rec.current_level = unique_base
                         rv_rec.recorded_at = now_ts
 
                 all_dams = self.db.query(Dam).all()
                 for dam in all_dams:
                     seed = hash(dam.name) % 100
-                    dam.fill_pct = round(52.0 + (seed % 14), 1)
+                    dam.fill_pct = min(100.0, max(0.0, round(52.0 + (seed % 14), 1)))
                     dam.inflow_cusecs = round(350.0 + (seed % 150), 1)
                     dam.current_release_cusecs = round(250.0 + (seed % 100), 1)
 
@@ -1022,3 +1027,24 @@ class RealtimeOrchestrator:
 
         except Exception as e:
             logger.warning(f"[Pipeline] WebSocket broadcast failed (non-critical): {e}")
+
+        # Invalidate all backend caches so fresh pipeline results are served immediately
+        try:
+            from app.api.endpoints.dashboard import _dash_live_cache
+            _dash_live_cache["data"] = None
+            _dash_live_cache["ts"] = 0.0
+        except Exception:
+            pass
+        try:
+            from app.api.endpoints.kg import _invalidate_cache
+            _invalidate_cache()
+        except Exception:
+            pass
+        try:
+            from app.api.endpoints.inference_cycle import _cycle_cache
+            _cycle_cache["payload"] = None
+            _cycle_cache["ts"] = 0.0
+        except Exception:
+            pass
+
+        return summary

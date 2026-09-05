@@ -118,13 +118,18 @@ async def _send_channel_snapshot(websocket: WebSocket, channel: str):
                 .limit(10)
                 .all()
             )
+            # FIX-BUG-011: Fetch district names to avoid "Statewide" fallback in Alert Center
+            from app.models.district import District
+            districts_snap = {d.id: d.name for d in db.query(District).all()}
             await ws_manager.send_to_one(websocket, {
                 "type": "ALERT_HISTORY",
                 "channel": "alerts",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "alerts": [
                     {
+                        "id": f"alert-{a.id}",
                         "district_id": a.district_id,
+                        "district": districts_snap.get(a.district_id, f"District-{a.district_id}"),
                         "level": a.level,
                         "severity": a.severity,
                         "message": a.message,

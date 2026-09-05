@@ -203,7 +203,7 @@ export default function DynamicKnowledgeGraph() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
   // Must be called at top level — before any early returns
-  const { mode, stormSimulationActive, modelMeta, lastUpdated, relativeSyncTime, dashboardStatus } = useFloodData();
+  const { mode, stormSimulationActive, modelMeta, lastUpdated, relativeSyncTime, dashboardStatus, districts: wsDistricts } = useFloodData();
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
   const TIME_WINDOWS = [
@@ -262,12 +262,24 @@ export default function DynamicKnowledgeGraph() {
 
     // 2. Map ALL nodes for main visual graph representation
     const d3Nodes = filteredRawNodes.map((n: any) => {
-      const currentRisk = getRiskFromHistory(n, timeIdx);
-      let status = "Safe";
+      let currentRisk = getRiskFromHistory(n, timeIdx);
+      const cleanLabel = normalizeEntityName(n.label, n.id);
+      
+      // Overlay live WebSocket telemetry for district nodes at time 0
+      const match = wsDistricts?.find((d: any) =>
+        (d.name || d.district_name || "").toLowerCase() === cleanLabel.toLowerCase() ||
+        (n.id && (n.id === `d-${d.id}` || n.id === `d-${d.district_id}`))
+      );
+      if (match && timeIdx === 0 && match.risk_score !== undefined && match.risk_score !== null) {
+        currentRisk = Number(match.risk_score);
+      }
+
+      // Consistent risk classification: Low (<40), Moderate (40-59), High (60-79), Critical (>=80)
+      let status = "Low";
       if (currentRisk >= 80) status = "Critical";
       else if (currentRisk >= 60) status = "High";
       else if (currentRisk >= 40) status = "Moderate";
-      else if (currentRisk >= 20) status = "Low";
+      else status = "Low";
       
       const commIdx = communityMap[n.id] ?? 0;
       const communityColor = COMMUNITY_COLORS[commIdx % COMMUNITY_COLORS.length];
@@ -287,9 +299,11 @@ export default function DynamicKnowledgeGraph() {
         y: 0,
         data: {
           ...n,
-          label: normalizeEntityName(n.label, n.id),
+          label: cleanLabel,
           risk_score: currentRisk,
           status,
+          rainfall_mm: match?.rainfall_mm ?? n.rainfall_mm,
+          river_level_m: match?.river_level_m ?? n.river_level_m,
           communityColor,
           communityIdx: commIdx,
           communityName,
@@ -310,8 +324,7 @@ export default function DynamicKnowledgeGraph() {
       const statusColor = sourceRisk >= 80 ? STATUS_COLORS.Critical 
                         : sourceRisk >= 60 ? STATUS_COLORS.High 
                         : sourceRisk >= 40 ? STATUS_COLORS.Moderate 
-                        : sourceRisk >= 20 ? STATUS_COLORS.Low 
-                        : STATUS_COLORS.Safe;
+                        : STATUS_COLORS.Low;
 
       let strokeColor = statusColor;
       const isFuture = timeIdx > 0;

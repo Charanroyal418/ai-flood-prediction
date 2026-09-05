@@ -55,7 +55,11 @@ router = APIRouter()
 
 # ── In-process cache ──────────────────────────────────────────────────────────
 _cycle_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
-_CYCLE_CACHE_TTL = 300  # 5 minutes cache to ensure instant (<10ms) responses
+_CYCLE_CACHE_TTL = 30  # 30s cache so simulation events propagate within seconds
+
+def _invalidate_cycle_cache():
+    global _cycle_cache
+    _cycle_cache = {"ts": 0.0, "payload": None}
 
 # ── Inference counter ─────────────────────────────────────────────────────────
 _inference_count = 0
@@ -594,11 +598,14 @@ def _execute_inference_pipeline(db: Session) -> Any:
 
         calc_lvl, calc_color = get_risk_level_and_color(risk_score)
 
+        import math as _math
+        flood_prob = round(1 / (1 + _math.exp(-0.08 * (risk_score - 50))), 3)
+
         district_results.append({
             "district_id": d.id,
             "district": d.name,
             "risk_score": risk_score,
-            "flood_probability": round(risk_score / 100.0, 3),
+            "flood_probability": flood_prob,
             "risk_level": calc_lvl,
             "risk_color": calc_color,
             "confidence": round(float(r.get("confidence", 0.0)), 3),
@@ -731,14 +738,23 @@ def _execute_inference_pipeline(db: Session) -> Any:
     serialization_start = time.perf_counter()
 
     for d in district_results:
-        prob = d.get("risk_score", 0)
-        # Using a controlled random walk to simulate temporal projection
+        prob = float(d.get("risk_score", 0))
+        rain = float(d.get("rainfall_mm") or d.get("rainfall_24h") or 0.0)
+        elev = float(d.get("elevation") or 15.0)
+
+        # Physical temporal dynamics: runoff lag peaks at 6h-12h, recedes by 24h
+        surge_3h = min(100.0, round(prob * (1.08 if rain > 80 else 1.03), 1))
+        surge_6h = min(100.0, round(prob * (1.16 if rain > 80 else 1.06), 1))
+        surge_12h = min(100.0, round(prob * (1.22 if rain > 80 else 1.08), 1))
+        drainage = 0.94 if elev < 20 else 0.86
+        recess_24h = min(100.0, round(surge_12h * drainage, 1))
+
         d["forecast_horizons"] = {
             "now": round(prob, 1),
-            "3h": round(min(100, max(0, prob + np.random.uniform(-1, 4))), 1),
-            "6h": round(min(100, max(0, prob + np.random.uniform(-2, 8))), 1),
-            "12h": round(min(100, max(0, prob + np.random.uniform(-5, 12))), 1),
-            "24h": round(min(100, max(0, prob + np.random.uniform(-10, 18))), 1),
+            "3h": surge_3h,
+            "6h": surge_6h,
+            "12h": surge_12h,
+            "24h": recess_24h,
         }
 
     # Sanitize all outputs with sanitize_numpy before DB commit

@@ -69,7 +69,7 @@ router = APIRouter()
 
 # ─── Response Cache ───────────────────────────────────────────────────────────
 _kg_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
-_KG_CACHE_TTL = 300  # 5 minutes cache to keep response times <100ms
+_KG_CACHE_TTL = 30  # FIX-BUG-004: Reduced from 300s; simulation data must be visible within 30s
 
 
 def _invalidate_cache():

@@ -57,7 +57,7 @@ class SharedWebSocket {
   private channelListeners = new Map<WsChannel, Set<MessageListener>>();
   private statusListeners = new Set<StatusListener>();
   private retryCount = 0;
-  private maxRetries = 2;
+  private maxRetries = 10; // FIX-BUG-007: was 2; 10 retries with exp backoff covers ~5min cold-start
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
@@ -198,7 +198,8 @@ class SharedWebSocket {
             this.channelListeners.get("dashboard")?.forEach((cb) => cb(data));
           } else if (type === "KG_INITIAL_SNAPSHOT" || type === "KG_UPDATE") {
             this.channelListeners.get("kg")?.forEach((cb) => cb(data));
-          } else if (type === "ALERT_HISTORY" || type === "NEW_ALERT") {
+          } else if (type === "ALERT_HISTORY" || type === "NEW_ALERT" || type === "ALERTS_UPDATE") {
+            // FIX-BUG-003: ALERTS_UPDATE is broadcast by orchestrator; route it to alert listeners
             this.channelListeners.get("alerts")?.forEach((cb) => cb(data));
           } else if (type === "PIPELINE_STATUS") {
             this.channelListeners.get("pipeline")?.forEach((cb) => cb(data));

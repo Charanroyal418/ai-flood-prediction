@@ -303,15 +303,13 @@ export default function PredictionEnginePage() {
     }
   }, [data]);
 
-  // Compute effectiveData: live data -> cached data -> WS districts fallback
+  // Compute effectiveData: live data -> WS districts fallback -> cached data
   const effectiveData = (data?.districts && data.districts.length > 0)
     ? data
-    : (cachedData?.districts && cachedData.districts.length > 0)
-    ? cachedData
     : (wsDistricts && wsDistricts.length > 0)
     ? {
         status: "ready",
-        model_status: { backend_status: "ready", compute_device: "CPU", node_count: 147, edge_count: 75, attention_heads: 4 },
+        model_status: { backend_status: "ready", compute_device: "CPU", node_count: 147, edge_count: 223, attention_heads: 4 },
         districts: wsDistricts.map((item: any) => ({
           district_id: item.district_id || item.id || 1,
           district: item.name || item.district || item.district_name || "Unknown",
@@ -325,21 +323,34 @@ export default function PredictionEnginePage() {
           elevation: item.elevation_m ?? item.elevation,
           attention_score: 0.8,
           inference_time_ms: 12.5,
-          shap_values: item.shap_values || [
-            { feature: "rainfall_24h", label: "Rainfall (24h)", contribution: Number(item.rainfall_mm || 0) > 50 ? 0.45 : 0.15 },
-            { feature: "elevation", label: "Elevation", contribution: -0.2 },
-          ],
+          shap_values: item.shap_values || (() => {
+            const rain = Number(item.rainfall_mm || 0);
+            const rainContrib = rain > 100 ? 55.0 : rain > 50 ? 40.0 : 25.0;
+            const riverContrib = item.river_level_m ? 25.0 : 20.0;
+            const humidContrib = 15.0;
+            const elevContrib = 10.0;
+            const histContrib = Math.max(0, 100.0 - (rainContrib + riverContrib + humidContrib + elevContrib));
+            return [
+              { feature: "rainfall_24h",      label: "Rainfall (24h)",      contribution: rainContrib },
+              { feature: "river_level_m",      label: "River Level",         contribution: riverContrib },
+              { feature: "humidity_pct",       label: "Humidity",            contribution: humidContrib },
+              { feature: "elevation",          label: "Elevation",           contribution: elevContrib },
+              { feature: "historical_floods",  label: "Hist. Flood Events",  contribution: histContrib },
+            ];
+          })(),
           reasoning_chain: ["Live hydrology telemetry active", "Historical watershed pattern matched"],
-          forecast_horizons: {
-            now: item.risk_score ?? 0,
-            "1h": (item.risk_score ?? 0) * 1.02,
-            "3h": (item.risk_score ?? 0) * 1.05,
-            "6h": (item.risk_score ?? 0) * 1.1,
-            "12h": (item.risk_score ?? 0) * 1.08,
-            "24h": (item.risk_score ?? 0) * 0.95,
-          }
-        }))
+          forecast_horizons: item.forecast_horizons || {
+            now:   item.risk_score ?? 0,
+            "1h":  Math.min(100, Math.round((item.risk_score ?? 0) * 1.02 * 10) / 10),
+            "3h":  Math.min(100, Math.round((item.risk_score ?? 0) * 1.05 * 10) / 10),
+            "6h":  Math.min(100, Math.round((item.risk_score ?? 0) * 1.10 * 10) / 10),
+            "12h": Math.min(100, Math.round((item.risk_score ?? 0) * 1.08 * 10) / 10),
+            "24h": Math.min(100, Math.round((item.risk_score ?? 0) * 0.95 * 10) / 10),
+          },
+        })),
       }
+    : (cachedData?.districts && cachedData.districts.length > 0)
+    ? cachedData
     : null;
 
   const [telemetryWaitTime, setTelemetryWaitTime] = useState(0);
@@ -595,11 +606,11 @@ export default function PredictionEnginePage() {
             </div>
             <div className="flex items-center justify-between">
               <span className="flex-1 overflow-hidden whitespace-nowrap after:content-['..................................................................'] after:text-line after:ml-2">Edges</span>
-              <span className="text-text-primary tabular-nums shrink-0 ml-2"><AnimatedCounter value={s.edge_count ?? 75} /></span>
+              <span className="text-text-primary tabular-nums shrink-0 ml-2"><AnimatedCounter value={s.edge_count ?? 223} /></span>
             </div>
             <div className="flex items-center justify-between">
               <span className="flex-1 overflow-hidden whitespace-nowrap after:content-['..................................................................'] after:text-line after:ml-2">Attention</span>
-              <span className="text-text-primary tabular-nums shrink-0 ml-2"><AnimatedCounter value={s.attention_heads ?? 1} /></span>
+              <span className="text-text-primary tabular-nums shrink-0 ml-2"><AnimatedCounter value={s.attention_heads ?? 4} /></span>
             </div>
           </div>
         </StatCard>

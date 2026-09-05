@@ -451,7 +451,18 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
           setModelMeta(data.model_meta as ModelMeta);
         }
         if (data.storm_simulation_active !== undefined) {
-          setStormSimulationActive(Boolean(data.storm_simulation_active));
+          const incoming = Boolean(data.storm_simulation_active);
+          setStormSimulationActive((prev) => {
+            // FIX-BUG-006: Detect auto-expiry (was active, now not) and broadcast UI event
+            if (prev === true && incoming === false) {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("floodsense-sim-expired", {
+                  detail: { reason: "Storm simulation auto-expired after 15 minutes. System reverted to LIVE mode." }
+                }));
+              }
+            }
+            return incoming;
+          });
         } else if (data.storm_simulation !== undefined) {
           setStormSimulationActive(Boolean(data.storm_simulation));
         }
@@ -504,6 +515,10 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     const type = data.type as string;
 
     if (type === "ALERT_HISTORY" && Array.isArray(data.alerts)) {
+      setAlerts(data.alerts as Alert[]);
+    }
+    // FIX-BUG-003: Handle ALERTS_UPDATE from orchestrator broadcast (contains full alert list)
+    if (type === "ALERTS_UPDATE" && Array.isArray(data.alerts)) {
       setAlerts(data.alerts as Alert[]);
     }
     if (type === "NEW_ALERT" && data.alert) {

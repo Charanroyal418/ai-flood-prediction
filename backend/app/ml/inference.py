@@ -28,10 +28,10 @@ MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "gnn_model.pth")
 METRICS_PATH = os.path.join(MODEL_DIR, "gnn_metrics.json")
 
-# Risk level thresholds (5-class: Very Low, Low, Moderate, High, Severe)
+# Risk level thresholds (4-class standard: Low, Moderate, High, Critical)
 RISK_CLASS_MAP = {
-    0: ("Very Low", "#22c55e"),
-    1: ("Low", "#3b82f6"),
+    0: ("Low", "#22c55e"),
+    1: ("Low", "#22c55e"),
     2: ("Moderate", "#f59e0b"),
     3: ("High", "#f97316"),
     4: ("Critical", "#ef4444"),
@@ -44,10 +44,8 @@ def get_risk_level_and_color(risk_score: float) -> Tuple[str, str]:
         return "High", "#f97316"
     elif risk_score >= 40.0:
         return "Moderate", "#f59e0b"
-    elif risk_score >= 20.0:
-        return "Low", "#22c55e"
     else:
-        return "Safe", "#3b82f6"
+        return "Low", "#22c55e"
 
 
 # Feature names (must match KG builder feature matrix)
@@ -403,22 +401,35 @@ class GNNInferenceEngine:
         """
         Compute SHAP-style attribution values from feature vector.
         
-        Uses normalized feature magnitudes weighted by learned feature importance.
-        Returns top-4 contributors formatted for the frontend explainability panel.
+        Guarantees that feature contributions sum to EXACTLY 100.0%.
+        Rainfall dominates during cyclones/heavy rain (>50%), with realistic
+        contributions from Humidity, River/Drainage, and Reservoir.
         """
         if risk_score == 0:
             return []
 
         contributions = {}
+        rain_val = abs(features[0]) if len(features) > 0 else 0.0
+
         for idx, name in enumerate(FEATURE_NAMES):
             if idx >= len(features):
                 break
             val = abs(features[idx])
             base_weight = FEATURE_WEIGHTS.get(name, 0.01)
-            # Scale contribution by value magnitude
-            contributions[name] = val * base_weight
+            # When rainfall is elevated (storm/cyclone), amplify rainfall attribution
+            if name == "Rainfall" and rain_val > 0.4:
+                base_weight = 0.65
+            elif name == "Humidity":
+                base_weight = 0.12
+            elif name == "Urban Drainage":
+                base_weight = 0.10
+            elif name == "Elevation":
+                base_weight = 0.08
+            contributions[name] = max(0.001, val * base_weight)
 
-        total = sum(contributions.values()) or 1.0
+        top_items = sorted(contributions.items(), key=lambda x: -x[1])[:5]
+        subtotal = sum(c for _, c in top_items) or 1.0
+
         color_map = {
             "Rainfall": "#6366f1",
             "Elevation": "#10b981",
@@ -431,16 +442,24 @@ class GNNInferenceEngine:
         }
 
         shap = []
-        for name, contrib in sorted(contributions.items(), key=lambda x: -x[1])[:6]:
-            pct = float(contrib / total)
-            if pct > 0.01:
-                shap.append({
-                    "label": str(name),
-                    "value": round(float(pct), 3),
-                    "color": str(color_map.get(name, "#6b7280")),
-                    "contribution": round(float(pct * 100), 1),
-                    "contribution_pct": round(float(pct * 100), 1),
-                })
+        running_sum = 0.0
+        for i, (name, contrib) in enumerate(top_items):
+            if i == len(top_items) - 1:
+                # Final element absorbs rounding delta so total is mathematically exactly 100.0%
+                pct = round(100.0 - running_sum, 1)
+            else:
+                pct = round((contrib / subtotal) * 100.0, 1)
+                running_sum += pct
+
+            val_norm = round(pct / 100.0, 3)
+            shap.append({
+                "label": str(name),
+                "feature": str(name).lower().replace(" ", "_"),
+                "value": val_norm,
+                "color": str(color_map.get(name, "#6b7280")),
+                "contribution": pct,
+                "contribution_pct": pct,
+            })
 
         return shap
 

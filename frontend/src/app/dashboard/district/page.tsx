@@ -241,24 +241,61 @@ export default function DistrictAnalyticsPage() {
     refetchInterval: 10000,
   });
 
-  // Also read real-time context data if query is initially resolving
+  // Real-time WebSocket telemetry context
   const { districts: wsDistricts } = useFloodData();
 
-  // Deduplicate and normalize unique districts
+  // Deduplicate, normalize, and overlay live WebSocket telemetry
   const uniqueDistricts = useMemo(() => {
-    const raw = Array.isArray(data)
+    const baseList = Array.isArray(data)
       ? data
-      : (data?.districts || (Array.isArray(wsDistricts) && wsDistricts.length > 0 ? wsDistricts : []));
+      : (data?.districts || []);
     
-    const map = new Map<number | string, any>();
-    for (const d of raw) {
-      const key = d.id ?? d.district_id ?? d.name;
-      if (key && !map.has(key)) {
+    // Map base items
+    const map = new Map<string, any>();
+    for (const d of baseList) {
+      const nameKey = (d.name || d.district_name || "").toLowerCase().trim();
+      const idKey = String(d.id ?? d.district_id ?? "");
+      const key = nameKey || idKey;
+      if (key) {
         map.set(key, {
           ...d,
           id: d.id ?? d.district_id,
           name: d.name ?? d.district_name,
         });
+      }
+    }
+
+    // Overlay WebSocket telemetry if available
+    if (Array.isArray(wsDistricts) && wsDistricts.length > 0) {
+      for (const wd of wsDistricts) {
+        const nameKey = (wd.name || wd.district_name || "").toLowerCase().trim();
+        const idKey = String(wd.id ?? wd.district_id ?? "");
+        const key = nameKey || idKey;
+        if (key && map.has(key)) {
+          const prev = map.get(key);
+          map.set(key, {
+            ...prev,
+            ...wd,
+            id: wd.id ?? wd.district_id ?? prev.id,
+            name: wd.name ?? wd.district_name ?? prev.name,
+            risk_score: wd.risk_score ?? wd.riskScore ?? prev.risk_score,
+            risk_level: wd.risk_level ?? wd.floodRisk ?? prev.risk_level,
+            risk_color: wd.risk_color ?? prev.risk_color,
+            rainfall_mm: wd.rainfall_mm ?? wd.rainfall ?? prev.rainfall_mm,
+            river_level_m: wd.river_level_m ?? wd.riverLevel ?? prev.river_level_m,
+            reservoir_storage: wd.reservoir_storage ?? wd.reservoirStorage ?? prev.reservoir_storage,
+            humidity: wd.humidity ?? prev.humidity,
+            wind_speed: wd.wind_speed ?? wd.wind ?? prev.wind_speed,
+            temperature: wd.temperature ?? prev.temperature,
+            flood_probability: wd.flood_probability ?? prev.flood_probability,
+          });
+        } else if (key) {
+          map.set(key, {
+            ...wd,
+            id: wd.id ?? wd.district_id,
+            name: wd.name ?? wd.district_name,
+          });
+        }
       }
     }
     return Array.from(map.values());

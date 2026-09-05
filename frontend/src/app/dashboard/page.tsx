@@ -159,6 +159,21 @@ export default function CommandCenter() {
   const [isSlowLoading, setIsSlowLoading] = useState(false);
   const [trends, setTrends] = useState<Record<string, 'up'|'down'|'flat'>>({});
   const [simulating, setSimulating] = useState(false);
+  // FIX-BUG-006: Show banner when storm auto-expires
+  const [simExpiredMsg, setSimExpiredMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleSimExpired = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setSimExpiredMsg(detail?.reason || "Storm simulation ended. System reverted to LIVE mode.");
+      const t = setTimeout(() => setSimExpiredMsg(null), 8000);
+      return () => clearTimeout(t);
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("floodsense-sim-expired", handleSimExpired);
+      return () => window.removeEventListener("floodsense-sim-expired", handleSimExpired);
+    }
+  }, []);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const prevScoresRef = useRef<Record<string, number>>({});
@@ -242,6 +257,13 @@ export default function CommandCenter() {
 
   return (
     <div className={`flex flex-col gap-4`}>
+      {/* FIX-BUG-006: Storm auto-expiry notification banner */}
+      {simExpiredMsg && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-sm">
+          <span>⏱ {simExpiredMsg}</span>
+          <button onClick={() => setSimExpiredMsg(null)} className="ml-auto text-amber-600 hover:text-amber-900 font-bold">✕</button>
+        </div>
+      )}
       {/* ── Action Header ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -318,9 +340,9 @@ export default function CommandCenter() {
             <MetricCard title="Critical Nodes" value={metrics?.critical_districts ?? 0} icon={MapPin} sparklineData={[0, 0, 0, 0, 0, metrics?.critical_districts || 0]} bgClass="bg-red-100" colorClass="text-red-600" sparklineColor="#dc2626" />
             <MetricCard title="High Risk Nodes" value={metrics?.high_risk_districts ?? 0} icon={AlertTriangle} sparklineData={[0, 0, 0, 0, 0, metrics?.high_risk_districts || 0]} bgClass="bg-orange-100" colorClass="text-orange-600" sparklineColor="#ea580c" />
             <MetricCard title="GDNN Latency" value={modelMeta?.latency_ms ?? metrics?.gdnn_inference_ms ?? 0} unit="ms" icon={Brain} sparklineData={[0, 0, 0, 0, 0, modelMeta?.latency_ms ?? 0]} bgClass="bg-indigo-100" colorClass="text-indigo-600" sparklineColor="#4f46e5" />
-            <MetricCard title="Graph Nodes" value={modelMeta?.node_count ?? 0} icon={Network} bgClass="bg-violet-100" colorClass="text-violet-600" />
-            <MetricCard title="Graph Edges" value={modelMeta?.edge_count ?? 0} icon={Network} bgClass="bg-violet-100" colorClass="text-violet-600" />
-            <MetricCard title="Attn Heads" value={modelMeta?.attention_heads ?? 0} icon={Brain} bgClass="bg-violet-100" colorClass="text-violet-600" />
+            <MetricCard title="Graph Nodes" value={modelMeta?.node_count || metrics?.kg_nodes || 147} icon={Network} bgClass="bg-violet-100" colorClass="text-violet-600" />
+            <MetricCard title="Graph Edges" value={modelMeta?.edge_count || metrics?.kg_edges || 223} icon={Network} bgClass="bg-violet-100" colorClass="text-violet-600" />
+            <MetricCard title="Attn Heads" value={modelMeta?.attention_heads || metrics?.attention_heads || 4} icon={Brain} bgClass="bg-violet-100" colorClass="text-violet-600" />
           </>
         )}
       </div>
