@@ -465,7 +465,9 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         if (data.timestamp) {
           setLastUpdated(data.timestamp as string);
         }
-        if (type === "PIPELINE_UPDATE" || type === "INITIAL_SNAPSHOT") {
+        // Only refetch pipeline on PIPELINE_UPDATE, not INITIAL_SNAPSHOT
+        // (INITIAL_SNAPSHOT is already handled by the initial REST fetch)
+        if (type === "PIPELINE_UPDATE") {
           refetchPipelineRef.current();
         }
       }
@@ -515,8 +517,10 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   });
 
   // ─── REST Polling Fallback (when WebSocket is disconnected/errored) ────
+  // Only poll when WS is fully disconnected or in error state.
+  // Do NOT poll while still "connecting" — the WS may succeed imminently.
   useEffect(() => {
-    if (dashboardStatus === "connected") return;
+    if (dashboardStatus === "connected" || dashboardStatus === "connecting") return;
 
     const poll = async () => {
       const [dashRes, pipeRes, kgRes] = await Promise.allSettled([

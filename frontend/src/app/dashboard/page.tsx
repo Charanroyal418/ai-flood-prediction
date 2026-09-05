@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { useFloodData } from "@/context/FloodDataContext";
+import Link from "next/link";
 import {
   Brain, Droplets, AlertTriangle, Shield, Activity, MapPin, 
   CloudRain, Zap, Network, ChevronRight, Info, ArrowUpRight, ArrowDownRight, Minus
@@ -72,7 +73,7 @@ const RiskRow = ({ rank, district: d, trend = 'flat' }: { rank: number; district
     </td>
     <td className="py-3 px-3 text-[15px] font-medium text-text-primary font-sans flex items-center gap-2">
       <MapPin className="w-4 h-4 text-slate-400" />
-      {d.name}
+      {d.name ?? d.district_name}
     </td>
     <td className="py-3 px-3 text-right text-text-primary font-bold tabular-nums font-sans text-[15px]">
       <div className="flex items-center justify-end gap-1">
@@ -372,7 +373,7 @@ export default function CommandCenter() {
                 <tbody className="relative">
                   <AnimatePresence>
                     {(() => {
-                      const rows = (topDistricts ?? []).filter((d: any) => d.name && d.name.trim() !== '').slice(0, 5);
+                      const rows = (topDistricts ?? []).filter((d: any) => (d.name || d.district_name || "").trim() !== '').slice(0, 5);
                       return isLoading && !hasWsData ? (
                         Array.from({ length: 5 }).map((_, i) => (
                           <SkeletonRow key={`skeleton-${i}`} />
@@ -400,7 +401,7 @@ export default function CommandCenter() {
           <div className="glass-card p-4 flex flex-col h-[280px]">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[10px] uppercase tracking-[0.05em] text-[#9AA1B2] font-bold">Active Alerts</h3>
-              <a href="/dashboard/alerts" className="text-[10px] font-bold text-signal-500 hover:text-signal-900 hover:underline transition-colors duration-200">View All</a>
+              <Link href="/dashboard/alerts" className="text-[10px] font-bold text-signal-500 hover:text-signal-900 hover:underline transition-colors duration-200">View All</Link>
             </div>
             <div className="overflow-y-auto no-scrollbar p-3 space-y-2">
               {isError && !hasWsData ? (
