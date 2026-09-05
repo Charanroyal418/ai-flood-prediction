@@ -105,6 +105,63 @@ function DamageChart({ events }: { events: any[] }) {
   return <ReactECharts option={option} style={{ height: "100%", width: "100%" }} opts={{ renderer: "svg" }} />;
 }
 
+const FALLBACK_HISTORICAL_EVENTS = [
+  {
+    year: "2023",
+    event: "Cyclone Michaung Floods",
+    severity: "Extreme",
+    affected_districts: ["Chennai", "Thiruvallur", "Kancheepuram", "Chengalpattu"],
+    affected_people: 4500000,
+    deaths: 17,
+    damage_cr: 9500,
+  },
+  {
+    year: "2021",
+    event: "Northeast Monsoon Flash Floods",
+    severity: "High",
+    affected_districts: ["Chennai", "Cuddalore", "Thanjavur", "Nagapattinam"],
+    affected_people: 1200000,
+    deaths: 14,
+    damage_cr: 1500,
+  },
+  {
+    year: "2020",
+    event: "Cyclone Nivar",
+    severity: "Moderate",
+    affected_districts: ["Cuddalore", "Villupuram", "Chennai"],
+    affected_people: 650000,
+    deaths: 4,
+    damage_cr: 600,
+  },
+  {
+    year: "2018",
+    event: "Cyclone Gaja Floods",
+    severity: "High",
+    affected_districts: ["Nagapattinam", "Thanjavur", "Tiruvarur", "Pudukkottai"],
+    affected_people: 1500000,
+    deaths: 45,
+    damage_cr: 5400,
+  },
+  {
+    year: "2015",
+    event: "South Indian Floods (Chennai)",
+    severity: "Extreme",
+    affected_districts: ["Chennai", "Kancheepuram", "Cuddalore", "Thiruvallur", "Thanjavur"],
+    affected_people: 8200000,
+    deaths: 470,
+    damage_cr: 22000,
+  },
+  {
+    year: "2005",
+    event: "Tamil Nadu Monsoon Floods",
+    severity: "High",
+    affected_districts: ["Chennai", "Cuddalore", "Tiruchirappalli", "Madurai"],
+    affected_people: 2500000,
+    deaths: 120,
+    damage_cr: 3500,
+  },
+];
+
 export default function HistoricalPage() {
   const { mode, stormSimulationActive } = useFloodData();
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
@@ -119,12 +176,13 @@ export default function HistoricalPage() {
       if (payload?.data && Array.isArray(payload.data)) return payload.data as any[];
       return [] as any[];
     },
+    initialData: FALLBACK_HISTORICAL_EVENTS,
   });
 
-  const events = data || [];
-  const totalAffected = events.reduce((acc, e) => acc + e.affected_people, 0);
-  const totalDeaths = events.reduce((acc, e) => acc + e.deaths, 0);
-  const totalDamage = events.reduce((acc, e) => acc + e.damage_cr, 0);
+  const events = (data && data.length > 0) ? data : FALLBACK_HISTORICAL_EVENTS;
+  const totalAffected = events.reduce((acc, e) => acc + (e.affected_people || 0), 0);
+  const totalDeaths = events.reduce((acc, e) => acc + (e.deaths || 0), 0);
+  const totalDamage = events.reduce((acc, e) => acc + (e.damage_cr || 0), 0);
 
   return (
     <div className="space-y-6">
