@@ -55,7 +55,7 @@ router = APIRouter()
 
 # ── In-process cache ──────────────────────────────────────────────────────────
 _cycle_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
-_CYCLE_CACHE_TTL = 25  # seconds
+_CYCLE_CACHE_TTL = 300  # 5 minutes cache to ensure instant (<10ms) responses
 
 # ── Inference counter ─────────────────────────────────────────────────────────
 _inference_count = 0
@@ -95,52 +95,54 @@ def _execute_inference_pipeline(db: Session) -> Any:
         is_storm = get_storm_simulation_active()
 
         if not is_storm:
-            etl = WeatherETL(db)
-            etl_start = time.perf_counter()
-            raw_data = etl.extract()
-            api_latency_ms = round((time.perf_counter() - etl_start) * 1000, 1)
+            # Check DB for recent weather records populated by background scheduler
+            dist_map = {d.id: d.name for d in db.query(District).all()}
+            all_wh = db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(200).all()
+            w_seen = set()
+            for w in all_wh:
+                if w.district_id in w_seen:
+                    continue
+                w_seen.add(w.district_id)
+                weather_records.append({
+                    "district_id": w.district_id,
+                    "district": dist_map.get(w.district_id, f"District-{w.district_id}"),
+                    "rainfall_mm": round(w.rainfall_mm or 0, 2),
+                    "temperature": round(w.temperature or 28, 1),
+                    "humidity": round(w.humidity or 70, 1),
+                    "wind_speed": round(w.wind_speed or 0, 1),
+                    "pressure": round(w.pressure or 1013, 1),
+                    "cloud_cover": round(getattr(w, "cloud_cover", 0) or 0, 1),
+                    "rain_probability": round(getattr(w, "rain_probability", 0) or 0, 1),
+                })
+            stations_count = len(weather_records)
 
-            if raw_data:
-                valid = etl.validate(raw_data)
-                transformed = etl.transform(valid)
-                etl.load(transformed)
-                stations_count = len(raw_data)
+            if stations_count == 0:
+                # First run or empty DB: fetch from Open-Meteo
+                etl = WeatherETL(db)
+                etl_start = time.perf_counter()
+                raw_data = etl.extract()
+                api_latency_ms = round((time.perf_counter() - etl_start) * 1000, 1)
 
-                for row in raw_data:
-                    dist = db.query(District).filter(District.id == row["district_id"]).first()
-                    weather_records.append({
-                        "district_id": row["district_id"],
-                        "district": dist.name if dist else f"District-{row['district_id']}",
-                        "rainfall_mm": round(row["rainfall_mm"], 2),
-                        "temperature": round(row["temperature"], 1),
-                        "humidity": round(row["humidity"], 1),
-                        "wind_speed": round(row["wind_speed"], 1),
-                        "pressure": round(row["pressure"], 1),
-                        "cloud_cover": round(row.get("cloud_cover", 0), 1),
-                        "rain_probability": round(row.get("rain_probability", 0), 1),
-                    })
+                if raw_data:
+                    valid = etl.validate(raw_data)
+                    transformed = etl.transform(valid)
+                    etl.load(transformed)
+                    stations_count = len(raw_data)
+
+                    for row in raw_data:
+                        weather_records.append({
+                            "district_id": row["district_id"],
+                            "district": dist_map.get(row["district_id"], f"District-{row['district_id']}"),
+                            "rainfall_mm": round(row["rainfall_mm"], 2),
+                            "temperature": round(row["temperature"], 1),
+                            "humidity": round(row["humidity"], 1),
+                            "wind_speed": round(row["wind_speed"], 1),
+                            "pressure": round(row["pressure"], 1),
+                            "cloud_cover": round(row.get("cloud_cover", 0), 1),
+                            "rain_probability": round(row.get("rain_probability", 0), 1),
+                        })
             else:
-                # Fallback: read from DB
-                log("Open-Meteo unavailable, using cached weather from DB")
-                all_wh = db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(200).all()
-                w_seen = set()
-                for w in all_wh:
-                    if w.district_id in w_seen:
-                        continue
-                    w_seen.add(w.district_id)
-                    dist = db.query(District).filter(District.id == w.district_id).first()
-                    weather_records.append({
-                        "district_id": w.district_id,
-                        "district": dist.name if dist else f"District-{w.district_id}",
-                        "rainfall_mm": round(w.rainfall_mm or 0, 2),
-                        "temperature": round(w.temperature or 28, 1),
-                        "humidity": round(w.humidity or 70, 1),
-                        "wind_speed": round(w.wind_speed or 0, 1),
-                        "pressure": round(w.pressure or 1013, 1),
-                        "cloud_cover": round(getattr(w, "cloud_cover", 0) or 0, 1),
-                        "rain_probability": round(getattr(w, "rain_probability", 0) or 0, 1),
-                    })
-                stations_count = len(weather_records)
+                log(f"Consumed {stations_count} live district weather metrics from database")
         else:
             log("Storm simulation active: consuming injected storm telemetry from DB")
             all_wh = db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(200).all()
