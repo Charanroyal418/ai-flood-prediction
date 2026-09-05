@@ -255,9 +255,18 @@ class TestWebSocketChecklist:
 
     def test_ws_unified_handshake_and_ping(self, client):
         with client.websocket_connect("/api/v1/ws") as ws:
-            ws.send_json({"action": "ping"})
-            resp = ws.receive_json()
-            assert resp.get("type") == "pong"
+            # Server delivers subscribed confirmation and snapshot on connection
+            msg = ws.receive_json()
+            # Send ping heartbeat
+            ws.send_json({"action": "ping", "type": "ping"})
+            # Read frames until pong is received (skipping subscribed / snapshot frames)
+            pong = None
+            for _ in range(5):
+                frame = ws.receive_json()
+                if frame.get("type") == "pong":
+                    pong = frame
+                    break
+            assert pong is not None and pong.get("type") == "pong"
 
     def test_ws_dashboard_channel_auto_connect(self, client):
         with client.websocket_connect("/api/v1/ws/dashboard") as ws:
