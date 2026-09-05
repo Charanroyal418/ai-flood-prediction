@@ -154,8 +154,14 @@ def get_inference_cycle_route(background_tasks: BackgroundTasks):
     from app.api.endpoints.inference_cycle import run_inference_cycle
     return run_inference_cycle(background_tasks)
 
-import time
-import random
-from datetime import datetime
+
+@router.get("/active-risks")
+def get_active_risks(db: Session = Depends(get_db)):
+    """Returns active district risk rankings for UI analytics widgets."""
+    from app.models.district import District
+    districts = db.query(District).order_by(District.risk_score.desc()).limit(10).all()
+    if not districts:
+        return []
+    return [{"district": d.name, "score": d.risk_score or 0} for d in districts]
 
 

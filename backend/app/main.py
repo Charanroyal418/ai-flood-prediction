@@ -188,6 +188,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router, prefix="", include_in_schema=False)
 
 
 # ── Root Redirect & Health Alias ──────────────────────────────────────────────
