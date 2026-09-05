@@ -216,9 +216,16 @@ export default function DynamicKnowledgeGraph() {
     { label: "+24h", key: "24h" }
   ];
 
-  const { kgData: data, refetchKg: refetch } = useFloodData();
-  const isLoading = !data;
+  const { kgData: data, refetchKg: refetch, forceRetry } = useFloodData();
   const isError = data?.status === "error";
+
+  // ── 3-second skeleton timeout ──
+  const [showSkeleton, setShowSkeleton] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowSkeleton(false), 3000);
+    return () => clearTimeout(t);
+  }, []);
 
   const getRiskFromHistory = (node: any, idx: number) => {
     if (!node.history || node.history.length <= idx) return node.risk_score;
@@ -562,29 +569,39 @@ export default function DynamicKnowledgeGraph() {
   const dynNodes = selectedCommunity !== null ? activeNodes.length : (data?.stats?.total_nodes || 0);
   const dynEdges = selectedCommunity !== null ? activeEdges.length : (data?.stats?.total_edges || 0);
 
-  if (isLoading || !data || !data.nodes || data.nodes.length === 0) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-4 max-w-md text-center">
-          <Activity className="w-8 h-8 text-violet-500 animate-pulse mx-auto mb-4" />
-          <h2 className="text-lg font-bold text-slate-800">Loading Graph Engine...</h2>
-          <p className="text-sm text-slate-500">Constructing the node topology from live data.</p>
+  if (!data?.nodes?.length || isError) {
+    if (showSkeleton && !isError) {
+      // Skeleton while loading (max 3s)
+      return (
+        <div className="flex h-[80vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-4 max-w-md text-center">
+            <Activity className="w-8 h-8 text-violet-500 animate-pulse mx-auto mb-4" />
+            <h2 className="text-lg font-bold text-slate-800">Loading Graph Engine...</h2>
+            <p className="text-sm text-slate-500">Constructing the node topology from live data.</p>
+          </div>
         </div>
-      </div>
-    );
-  }
-
-  if (isError) return (
+      );
+    }
+    // Empty/error state after 3s or on explicit error
+    return (
       <div className="flex h-[80vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 max-w-md text-center">
           <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
             <X className="w-7 h-7 text-red-500" />
           </div>
-          <h2 className="text-lg font-heading font-bold text-slate-800">Knowledge Graph Unavailable</h2>
-          <button onClick={() => refetch()} className="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold shadow-md transition-all"><RefreshCw className="w-4 h-4 inline mr-2" /> Try Again</button>
+          <h2 className="text-lg font-heading font-bold text-slate-800">
+            {isError ? "Knowledge Graph Unavailable" : "No Graph Data"}
+          </h2>
+          <p className="text-sm text-slate-500">
+            {isError ? "The graph engine could not load topology data." : "Graph data is not available yet. The backend may still be starting up."}
+          </p>
+          <button onClick={() => forceRetry()} className="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold shadow-md transition-all">
+            <RefreshCw className="w-4 h-4 inline mr-2" /> Force Retry
+          </button>
         </div>
       </div>
-  );
+    );
+  }
 
   return (
     <div className="space-y-5 h-[calc(100vh-6rem)] pb-6 flex flex-col">

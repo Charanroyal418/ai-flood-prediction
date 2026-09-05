@@ -7,7 +7,7 @@ import api from "@/lib/api";
 import { useFloodData } from "@/context/FloodDataContext";
 import { 
   CloudRain, Thermometer, Wind, Droplets, MapPin, 
-  Mountain, Waves, Activity, AlertTriangle, Zap, Search, AlertCircle
+  Mountain, Waves, Activity, AlertTriangle, Zap, Search, AlertCircle, RefreshCw
 } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -39,8 +39,15 @@ const safeVal = (val: any, unit: string = "") => (val != null && val !== "") ? `
 
 export default function WeatherCenter() {
   const queryClient = useQueryClient();
-  const { mode, stormSimulationActive, toggleStormSimulation } = useFloodData();
+  const { mode, stormSimulationActive, toggleStormSimulation, forceRetry } = useFloodData();
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
+
+  const [showSkeleton, setShowSkeleton] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowSkeleton(false), 3000);
+    return () => clearTimeout(t);
+  }, []);
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", "live"],
@@ -114,12 +121,38 @@ export default function WeatherCenter() {
     }]
   } : {};
 
-  if (isLoading || !data) {
+  const hasData = Boolean(data && data.districts && data.districts.length > 0);
+
+  if (!hasData) {
+    if (showSkeleton) {
+      return (
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+            <p className="text-sm font-semibold text-slate-500 font-heading">Fetching weather telemetry...</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex h-[60vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
-          <p className="text-sm font-semibold text-slate-500 font-heading">Fetching weather telemetry...</p>
+        <div className="flex flex-col items-center gap-4 max-w-sm text-center">
+          <div className="w-14 h-14 rounded-full bg-violet-50 flex items-center justify-center">
+            <CloudRain className="w-7 h-7 text-violet-500" />
+          </div>
+          <h2 className="text-lg font-heading font-bold text-slate-800">No Weather Telemetry</h2>
+          <p className="text-sm text-slate-500">
+            Waiting for meteorological telemetry from the live stations.
+          </p>
+          <button
+            onClick={() => {
+              if (forceRetry) forceRetry();
+              queryClient.invalidateQueries({ queryKey: ["dashboard", "live"] });
+            }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold shadow-md transition-all cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" /> Force Retry
+          </button>
         </div>
       </div>
     );

@@ -12,6 +12,7 @@
  *   WebSocket (alerts channel)    -> FloodDataContext -> Alerts page
  *
  * Replaces TanStack Query polling with push-based updates.
+ * Falls back to 30-second REST polling when WebSocket is disconnected.
  */
 
 import React, {
@@ -21,8 +22,9 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
 } from "react";
-import { useWebSocket, WsConnectionStatus } from "@/lib/useWebSocket";
+import { useWebSocket, WsConnectionStatus, reconnectWebSocket } from "@/lib/useWebSocket";
 import api from "@/lib/api";
 
 // ─── Type Definitions ────────────────────────────────────────────────────────
@@ -100,7 +102,9 @@ export interface SimulationMeta {
   predictionSource: string;
 }
 
-// ─── Context State ───────────────────────────────────────────────────────────
+// ─── Context State ────────────────────────────────────────────────────────────
+
+export type EngineStatus = "online" | "reconnecting" | "offline";
 
 interface FloodDataState {
   // Mode indicator
@@ -128,6 +132,8 @@ interface FloodDataState {
   dashboardStatus: WsConnectionStatus;
   kgStatus: WsConnectionStatus;
   alertStatus: WsConnectionStatus;
+  // Engine health (from /api/v1/health only)
+  engineStatus: EngineStatus;
   // Derived stats
   criticalCount: number;
   highCount: number;
@@ -140,6 +146,8 @@ interface FloodDataState {
   requestSnapshot: () => void;
   refetchPipeline: () => Promise<void>;
   refetchKg: () => Promise<void>;
+  /** Re-ping health + reconnect WS + refetch all data — wired to Force Retry button */
+  forceRetry: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -153,6 +161,18 @@ const DEFAULT_SIM_META: SimulationMeta = {
   simulationId: "SIM-20260727-001",
   predictionSource: "Simulated Weather Inputs",
 };
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Returns true if the error is an AbortError or axios cancellation — not a real backend failure */
+function isAbortError(err: any): boolean {
+  return (
+    err?.name === "AbortError" ||
+    err?.code === "ERR_CANCELED" ||
+    err?.message === "canceled" ||
+    err?.message?.includes("aborted")
+  );
+}
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -169,8 +189,15 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [pipelineData, setPipelineData] = useState<any | null>(null);
   const [kgData, setKgData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>("reconnecting");
 
-  // Derive relative sync time
+  // ── Safety: never leave isLoading=true beyond 3 seconds ──────────────────
+  useEffect(() => {
+    const t = setTimeout(() => setIsLoading(false), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // ── Relative sync time ────────────────────────────────────────────────────
   useEffect(() => {
     const updateRelativeTime = () => {
       if (!lastUpdated) {
@@ -180,7 +207,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
       const now = new Date().getTime();
       const syncTime = new Date(lastUpdated).getTime();
       const diffSecs = Math.floor((now - syncTime) / 1000);
-      
+
       if (diffSecs < 10) setRelativeSyncTime("Just now");
       else if (diffSecs < 60) setRelativeSyncTime(`${diffSecs} sec ago`);
       else if (diffSecs < 3600) setRelativeSyncTime(`${Math.floor(diffSecs / 60)} min ago`);
@@ -192,35 +219,92 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [lastUpdated]);
 
+  // ── Engine Health Check (source of truth for engineStatus) ───────────────
+  const healthRetryRef = useRef(0);
+
+  const checkEngineHealth = useCallback(async (): Promise<void> => {
+    setEngineStatus("reconnecting");
+    healthRetryRef.current = 0;
+
+    const attempt = async (): Promise<void> => {
+      try {
+        const res = await api.get("/api/v1/health", { timeout: 8000 });
+        const s = res?.data?.status;
+        if (s === "online" || s === "ok" || res?.status === 200) {
+          setEngineStatus("online");
+          return;
+        }
+        throw new Error("Unexpected health status");
+      } catch (err) {
+        if (isAbortError(err)) return; // Don't fail on abort
+        healthRetryRef.current += 1;
+        if (healthRetryRef.current < 3) {
+          await new Promise((r) => setTimeout(r, 2000));
+          return attempt();
+        }
+        setEngineStatus("offline");
+      }
+    };
+
+    await attempt();
+  }, []);
+
+  // Run health check once on mount
+  useEffect(() => {
+    checkEngineHealth();
+  }, [checkEngineHealth]);
+
+  // ── Pipeline Data Fetcher ─────────────────────────────────────────────────
+  // Use ref to prevent stale closure issues in recursive setTimeout
+  const refetchPipelineRef = useRef<() => Promise<void>>(async () => {});
+
   const refetchPipeline = useCallback(async () => {
     try {
       const res = await api.get("/api/v1/predict/inference-cycle");
       if (res.data) {
         setPipelineData(res.data);
         if (res.data.status === "waiting_for_telemetry" || res.data.status === "processing") {
-          setTimeout(refetchPipeline, 3000);
+          setTimeout(() => refetchPipelineRef.current(), 3000);
         }
       }
     } catch (err: any) {
-      console.warn("Pipeline fetch failed:", err);
-      setPipelineData({ status: "error", message: err.message || "Pipeline engine offline or timed out." });
+      if (!isAbortError(err)) {
+        console.warn("Pipeline fetch failed:", err);
+        // Only set error if we don't already have valid data
+        setPipelineData((prev: any) => {
+          if (prev && prev.status !== "error") return prev;
+          return { status: "error", message: err.message || "Pipeline engine offline or timed out." };
+        });
+      }
     }
   }, []);
 
+  // Keep ref in sync
+  useEffect(() => {
+    refetchPipelineRef.current = refetchPipeline;
+  }, [refetchPipeline]);
+
+  // ── KG Data Fetcher ───────────────────────────────────────────────────────
   const refetchKg = useCallback(async () => {
     try {
       const res = await api.get("/api/v1/kg/topology");
       if (res.data) setKgData(res.data);
     } catch (err: any) {
-      console.warn("KG fetch failed:", err);
-      setKgData({ status: "error", message: err.message, nodes: [], edges: [], communities: [], stats: {} });
+      if (!isAbortError(err)) {
+        console.warn("KG fetch failed:", err);
+        setKgData((prev: any) => {
+          if (prev && prev.status !== "error") return prev;
+          return { status: "error", message: err.message, nodes: [], edges: [], communities: [], stats: {} };
+        });
+      }
     }
   }, []);
 
-  // Initial Sync from REST API
+  // ── Initial REST Sync ─────────────────────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
+    // 10s timeout for initial fetch
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const fetchInitialData = async () => {
@@ -229,7 +313,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         const [dashboardRes, pipelineRes, kgRes] = await Promise.allSettled([
           api.get("/api/v1/dashboard/live", { signal: controller.signal }),
           api.get("/api/v1/predict/inference-cycle", { signal: controller.signal }),
-          api.get("/api/v1/kg/topology", { signal: controller.signal })
+          api.get("/api/v1/kg/topology", { signal: controller.signal }),
         ]);
 
         if (!isMounted) return;
@@ -266,19 +350,29 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
           const data = pipelineRes.value.data;
           setPipelineData(data);
           if (data.status === "waiting_for_telemetry" || data.status === "processing") {
-            setTimeout(refetchPipeline, 3000);
+            setTimeout(() => refetchPipelineRef.current(), 3000);
           }
         } else if (pipelineRes.status === "rejected") {
-          setPipelineData({ status: "error", message: pipelineRes.reason.message || "Pipeline engine offline or timed out." });
+          const err = pipelineRes.reason;
+          // Don't mark as error if request was simply aborted (cold start / slow network)
+          if (!isAbortError(err)) {
+            setPipelineData({
+              status: "error",
+              message: err.message || "Pipeline engine offline or timed out.",
+            });
+          }
+          // If aborted: leave as null — refetchPipeline will retry
         }
 
         // 3. Process KG Data
         if (kgRes.status === "fulfilled" && kgRes.value?.data) {
           setKgData(kgRes.value.data);
         } else if (kgRes.status === "rejected") {
-          setKgData({ status: "error", message: kgRes.reason.message, nodes: [], edges: [], communities: [], stats: {} });
+          const err = kgRes.reason;
+          if (!isAbortError(err)) {
+            setKgData({ status: "error", message: err.message, nodes: [], edges: [], communities: [], stats: {} });
+          }
         }
-
       } catch (err) {
         if (!controller.signal.aborted) {
           console.warn("Initial FloodDataContext fetch warning:", err);
@@ -293,13 +387,14 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
     fetchInitialData();
 
-    return () => { 
-      isMounted = false; 
+    return () => {
+      isMounted = false;
       controller.abort();
     };
-  }, [refetchPipeline]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount only
 
-  // ─── Dashboard Channel ─────────────────────────────────────────────
+  // ─── Dashboard Channel ─────────────────────────────────────────────────
   const handleDashboardMessage = useCallback(
     (data: Record<string, unknown>) => {
       const type = data.type as string;
@@ -327,11 +422,11 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
           setLastUpdated(data.timestamp as string);
         }
         if (type === "PIPELINE_UPDATE" || type === "INITIAL_SNAPSHOT") {
-          refetchPipeline();
+          refetchPipelineRef.current();
         }
       }
     },
-    [refetchPipeline]
+    []
   );
 
   const { status: dashboardStatus, send: sendDashboard } = useWebSocket({
@@ -339,7 +434,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     onMessage: handleDashboardMessage,
   });
 
-  // ─── Knowledge Graph Channel ───────────────────────────────────────
+  // ─── Knowledge Graph Channel ───────────────────────────────────────────
   const handleKgMessage = useCallback((data: Record<string, unknown>) => {
     const type = data.type as string;
 
@@ -358,7 +453,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     onMessage: handleKgMessage,
   });
 
-  // ─── Alerts Channel ────────────────────────────────────────────────
+  // ─── Alerts Channel ────────────────────────────────────────────────────
   const handleAlertMessage = useCallback((data: Record<string, unknown>) => {
     const type = data.type as string;
 
@@ -375,7 +470,38 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     onMessage: handleAlertMessage,
   });
 
-  // ─── Actions ───────────────────────────────────────────────────────
+  // ─── REST Polling Fallback (when WebSocket is disconnected/errored) ────
+  useEffect(() => {
+    if (dashboardStatus === "connected") return;
+
+    const poll = async () => {
+      const [dashRes, pipeRes, kgRes] = await Promise.allSettled([
+        api.get("/api/v1/dashboard/live"),
+        api.get("/api/v1/predict/inference-cycle"),
+        api.get("/api/v1/kg/topology"),
+      ]);
+
+      if (dashRes.status === "fulfilled" && dashRes.value?.data) {
+        const d = dashRes.value.data;
+        if (d.districts?.length) setDistricts(d.districts);
+        if (d.alerts?.length) setAlerts(d.alerts);
+        if (d.timestamp) setLastUpdated(d.timestamp);
+      }
+      if (pipeRes.status === "fulfilled" && pipeRes.value?.data) {
+        setPipelineData(pipeRes.value.data);
+      }
+      if (kgRes.status === "fulfilled" && kgRes.value?.data) {
+        setKgData(kgRes.value.data);
+      }
+    };
+
+    // Poll immediately, then every 30s
+    poll();
+    const interval = setInterval(poll, 30_000);
+    return () => clearInterval(interval);
+  }, [dashboardStatus]);
+
+  // ─── Actions ───────────────────────────────────────────────────────────
   const triggerPipeline = useCallback(
     (storm = false) => {
       sendDashboard({ action: "trigger_pipeline", storm });
@@ -420,7 +546,39 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     sendDashboard({ action: "get_snapshot" });
   }, [sendDashboard]);
 
-  // ─── Derived Stats ─────────────────────────────────────────────────
+  /**
+   * Force Retry — re-pings health, reconnects WS, refetches all data.
+   * Wired to the "Force Retry" button on any page.
+   */
+  const forceRetry = useCallback(async () => {
+    setIsLoading(true);
+    const safetyTimer = setTimeout(() => setIsLoading(false), 5000);
+    try {
+      // 1. Re-check engine health
+      await checkEngineHealth();
+      // 2. Reset & reconnect WebSocket
+      reconnectWebSocket();
+      // 3. Parallel refetch of all data
+      const [dashRes] = await Promise.allSettled([
+        api.get("/api/v1/dashboard/live"),
+        refetchPipelineRef.current(),
+        refetchKg(),
+      ]);
+      if (dashRes.status === "fulfilled" && dashRes.value?.data) {
+        const d = dashRes.value.data;
+        if (d.districts) setDistricts(d.districts);
+        if (d.alerts) setAlerts(d.alerts);
+        if (d.timestamp) setLastUpdated(d.timestamp);
+      }
+    } catch (err) {
+      console.warn("[forceRetry] Error:", err);
+    } finally {
+      clearTimeout(safetyTimer);
+      setIsLoading(false);
+    }
+  }, [checkEngineHealth, refetchKg]);
+
+  // ─── Derived Stats ─────────────────────────────────────────────────────
   const criticalCount = useMemo(
     () =>
       (districts || []).filter((d) =>
@@ -450,6 +608,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     dashboardStatus,
     kgStatus,
     alertStatus,
+    engineStatus,
     criticalCount,
     highCount,
     totalNodes: kgNodes.length,
@@ -460,6 +619,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     requestSnapshot,
     refetchPipeline,
     refetchKg,
+    forceRetry,
     pipelineData,
     kgData,
     isLoading,
@@ -489,6 +649,7 @@ const SAFE_DEFAULT: FloodDataState = {
   dashboardStatus: "disconnected",
   kgStatus: "disconnected",
   alertStatus: "disconnected",
+  engineStatus: "reconnecting",
   criticalCount: 0,
   highCount: 0,
   totalNodes: 0,
@@ -499,6 +660,7 @@ const SAFE_DEFAULT: FloodDataState = {
   requestSnapshot: () => {},
   refetchPipeline: async () => {},
   refetchKg: async () => {},
+  forceRetry: async () => {},
   pipelineData: null,
   kgData: null,
   isLoading: false,
@@ -510,4 +672,3 @@ export function useFloodData(): FloodDataState {
   if (!ctx) return SAFE_DEFAULT;
   return ctx;
 }
-

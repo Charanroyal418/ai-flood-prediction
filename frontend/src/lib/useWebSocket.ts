@@ -221,6 +221,29 @@ class WebSocketMultiplexer {
       this.heartbeatTimer = null;
     }
   }
+
+  /** Close the current socket, reset retry count, and reconnect immediately. */
+  public resetAndReconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.clearHeartbeat();
+    if (this.ws) {
+      // Null out handlers before closing so onclose doesn't schedule another retry
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+        this.ws.close(1000, "Manual reset");
+      }
+      this.ws = null;
+    }
+    this.retryCount = 0;
+    this.setStatus("connecting");
+    this.connect();
+  }
 }
 
 // Global multiplexer instance across frontend
@@ -230,6 +253,11 @@ function getMultiplexer(): WebSocketMultiplexer {
     multiplexerInstance = new WebSocketMultiplexer();
   }
   return multiplexerInstance;
+}
+
+/** Trigger a full WebSocket reset + reconnect from anywhere (e.g. Force Retry). */
+export function reconnectWebSocket(): void {
+  getMultiplexer().resetAndReconnect();
 }
 
 /**
@@ -285,5 +313,9 @@ export function useWebSocket({
     [channel, multiplexer]
   );
 
-  return { status, send };
+  const reconnect = useCallback(() => {
+    multiplexer.resetAndReconnect();
+  }, [multiplexer]);
+
+  return { status, send, reconnect };
 }

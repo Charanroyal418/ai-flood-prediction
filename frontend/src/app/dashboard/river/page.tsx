@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { useFloodData } from "@/context/FloodDataContext";
 import dynamicImport from "next/dynamic";
 import {
   Waves, AlertTriangle, TrendingUp, Activity, Search, ChevronDown,
@@ -399,11 +400,19 @@ function RiverDetailPanel({ river, onClose }: { river: River; onClose: () => voi
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function RiverIntelligencePage() {
-  const { data: rawData, isLoading, refetch } = useQuery({
+  const { data: rawData, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["rivers"],
     queryFn: async () => (await api.get("/api/v1/dashboard/river")).data as River[],
     refetchInterval: 12000,
   });
+
+  const { forceRetry } = useFloodData();
+  const [showSkeleton, setShowSkeleton] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setShowSkeleton(false), 3000);
+    return () => clearTimeout(t);
+  }, []);
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -504,20 +513,19 @@ export default function RiverIntelligencePage() {
     });
   }, [rivers, search, basinFilter, statusFilter, sortField, sortDir]);
 
-  // ── Loading state ────────────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
-          <p className="text-sm font-semibold text-slate-500">Fetching river telemetry…</p>
+  // ── Loading & Empty states ──────────────────────────────────────────────────
+  if (rivers.length === 0) {
+    if (showSkeleton) {
+      return (
+        <div className="flex h-64 items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+            <p className="text-sm font-semibold text-slate-500">Fetching river telemetry…</p>
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // ── Empty state ──────────────────────────────────────────────────────────────
-  if (!isLoading && rivers.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="flex flex-col items-center gap-4 max-w-sm text-center">
@@ -528,12 +536,23 @@ export default function RiverIntelligencePage() {
           <p className="text-sm text-slate-500">
             Waiting for river gauge data to synchronise from the ETL pipeline.
           </p>
-          <button
-            onClick={() => refetch()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-sm font-bold transition-all border border-blue-100"
-          >
-            <RefreshCw className="w-4 h-4" /> Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (forceRetry) forceRetry();
+                refetch();
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4" /> Force Retry
+            </button>
+            <button
+              onClick={() => refetch()}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-sm font-bold transition-all border border-blue-100 cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4" /> Refresh
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -554,12 +573,19 @@ export default function RiverIntelligencePage() {
             Live hydrometric telemetry for Tamil Nadu river network
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold border border-blue-100 transition-colors"
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {isFetching && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-lg text-blue-600 text-xs font-semibold animate-pulse">
+              <RefreshCw className="w-3 h-3 animate-spin" /> Syncing...
+            </span>
+          )}
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold border border-blue-100 transition-colors cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* ── Section 1: KPI Cards ── */}

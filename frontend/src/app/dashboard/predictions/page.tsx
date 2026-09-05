@@ -208,13 +208,12 @@ export default function PredictionEnginePage() {
   const [stoppingSim, setStoppingSim] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
 
-  const { pipelineData: contextData, refetchPipeline } = useFloodData();
+  const { pipelineData: contextData, refetchPipeline, engineStatus, forceRetry } = useFloodData();
   const data = contextData ? {
     ...contextData,
     districts: contextData.districts || contextData.stages?.gdnn_output?.district_ranking || []
   } : null;
-  const isLoading = !data;
-  const isError = data?.status === "error"; 
+  const isError = data?.status === "error";
   const dataUpdatedAt = contextData?.timestamp || 0;
   
   const [telemetryWaitTime, setTelemetryWaitTime] = useState(0);
@@ -278,8 +277,15 @@ export default function PredictionEnginePage() {
   const hasWsData = wsDistricts && wsDistricts.length > 0;
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
-  const showFallback = telemetryWaitTime >= 5;
+  // ── Fix: actually increment telemetryWaitTime so showFallback fires ──
   const isWaiting = (!data || data.status === "waiting_for_telemetry" || !data.districts || data.districts.length === 0);
+  useEffect(() => {
+    if (!isWaiting || data?.status === "error") return;
+    const interval = setInterval(() => setTelemetryWaitTime(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [isWaiting, data?.status]);
+
+  const showFallback = telemetryWaitTime >= 5;
 
   if (isWaiting && !showFallback && data?.status !== "error") {
     if (hasWsData) {
@@ -317,17 +323,21 @@ export default function PredictionEnginePage() {
   }
 
   if (data?.status === "error") {
+    // Filter out raw abort/cancel messages — show a clean user-facing message
+    const errMsg = (data?.message && !data.message.includes("cancel") && !data.message.includes("abort"))
+      ? data.message
+      : "Pipeline engine did not respond. The backend may be starting up.";
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
           <AlertTriangle className="w-8 h-8 text-risk-severe" />
           <h2 className="text-sm font-bold text-text-primary">
-            Engine Offline
+            {engineStatus === "offline" ? "Engine Offline" : "Pipeline Unavailable"}
           </h2>
           <p className="text-xs text-text-secondary max-w-sm">
-            {data?.message || "Failed to load prediction pipeline."}
+            {errMsg}
           </p>
-          <button onClick={() => refetchPipeline()} className="btn-primary bg-risk-severe hover:bg-red-800">
+          <button onClick={() => forceRetry()} className="btn-primary bg-risk-severe hover:bg-red-800">
             <RefreshCw className="w-4 h-4" /> Force Retry
           </button>
         </div>
