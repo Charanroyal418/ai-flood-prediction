@@ -69,7 +69,7 @@ router = APIRouter()
 
 # ─── Response Cache ───────────────────────────────────────────────────────────
 _kg_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
-_KG_CACHE_TTL = 10  # 10 seconds for real-time risk propagation
+_KG_CACHE_TTL = 300  # 5 minutes cache to keep response times <100ms
 
 
 def _invalidate_cache():
@@ -81,30 +81,26 @@ def _invalidate_cache():
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def get_2d_projections(embeddings: np.ndarray) -> np.ndarray:
-    """Projects high-dimensional embeddings to 2D using t-SNE or fast SVD fallback.
-    Falls back to deterministic circular layout — never random coordinates.
+    """Projects high-dimensional embeddings to 2D using fast, deterministic SVD PCA.
+    Runs in <2ms compared to 25+ seconds for t-SNE, preventing request timeouts.
     """
     if embeddings.shape[0] < 2:
         return np.zeros((embeddings.shape[0], 2)), "None"
     try:
-        from sklearn.manifold import TSNE
-        perplexity = min(30.0, float(embeddings.shape[0]) - 1.0)
-        tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42,
-                    init='random', learning_rate='auto')
-        return tsne.fit_transform(embeddings), "t-SNE"
+        # Fast SVD-based PCA projection
+        centered = embeddings - np.mean(embeddings, axis=0)
+        U, S, Vt = np.linalg.svd(centered, full_matrices=False)
+        coords = U[:, :2] * S[:2]
+        return coords, "PCA (SVD)"
     except Exception:
-        try:
-            U, S, Vt = np.linalg.svd(embeddings, full_matrices=False)
-            return U[:, :2] * S[:2], "PCA (SVD)"
-        except Exception:
-            # Deterministic circular layout — stable, reproducible, no fake data
-            n = embeddings.shape[0]
-            angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
-            radius = max(n * 30, 200)
-            return np.column_stack([
-                radius * np.cos(angles),
-                radius * np.sin(angles)
-            ]), "Circular Fallback"
+        # Deterministic circular layout fallback
+        n = embeddings.shape[0]
+        angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+        radius = max(n * 30, 200)
+        return np.column_stack([
+            radius * np.cos(angles),
+            radius * np.sin(angles)
+        ]), "Circular Fallback"
 
 
 def _build_community_detail(communities: List[List[str]], G: nx.DiGraph) -> List[Dict]:

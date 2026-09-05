@@ -348,8 +348,8 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
-    // 10s timeout for initial fetch
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    // 30s timeout for initial fetch to tolerate cloud cold-starts
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     const fetchInitialData = async () => {
       try {
