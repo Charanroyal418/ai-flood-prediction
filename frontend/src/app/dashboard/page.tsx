@@ -131,22 +131,6 @@ export default function CommandCenter() {
     toggleStormSimulation,
   } = useFloodData();
 
-  const [isSlowLoading, setIsSlowLoading] = useState(false);
-  const hasWsData = wsDistricts.length > 0;
-  
-  const [trends, setTrends] = useState<Record<string, 'up'|'down'|'flat'>>({});
-  const prevScoresRef = useRef<Record<string, number>>({});
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (!hasWsData && isLoading) {
-      timer = setTimeout(() => setIsSlowLoading(true), 5000);
-    } else {
-      setIsSlowLoading(false);
-    }
-    return () => clearTimeout(timer);
-  }, [hasWsData, isLoading]);
-
   const { data, isLoading, refetch, isError } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
@@ -157,6 +141,16 @@ export default function CommandCenter() {
     staleTime: 0,
   });
 
+  // ── All state declarations FIRST (no TDZ in minified output) ─────────────
+  const [isSlowLoading, setIsSlowLoading] = useState(false);
+  const [trends, setTrends] = useState<Record<string, 'up'|'down'|'flat'>>({});
+  const [simulating, setSimulating] = useState(false);
+
+  // ── Refs ────────────────────────────────────────────────────────────────────
+  const prevScoresRef = useRef<Record<string, number>>({});
+
+  // ── Derived values (no hooks, safe to compute inline) ──────────────────────
+  const hasWsData = wsDistricts.length > 0;
 
   const metrics = hasWsData
     ? {
@@ -180,9 +174,19 @@ export default function CommandCenter() {
       }))
     : (data?.alerts || []);
 
-  const events = data?.events || [];
-    const isStormActive = stormSimulationActive || Boolean(data?.metrics?.storm_simulation_active);
+  const isStormActive = stormSimulationActive || Boolean(data?.metrics?.storm_simulation_active);
   const highestRiskLevel = criticalCount > 0 ? "Critical" : highCount > 0 ? "High" : "Moderate";
+
+  // ── Effects (all state/derived values used in deps are declared above) ──────
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (!hasWsData && isLoading) {
+      timer = setTimeout(() => setIsSlowLoading(true), 5000);
+    } else {
+      setIsSlowLoading(false);
+    }
+    return () => clearTimeout(timer);
+  }, [hasWsData, isLoading]);
 
   useEffect(() => {
     setTrends(prev => {
@@ -203,7 +207,7 @@ export default function CommandCenter() {
     });
   }, [topDistricts]);
 
-  const [simulating, setSimulating] = useState(false);
+  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleSimulate = async () => {
     setSimulating(true);
     try {
