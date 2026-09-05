@@ -184,38 +184,23 @@ async def _get_kg_snapshot() -> dict:
     }
 
 
+SUPPORTED_CHANNELS = {"dashboard", "kg", "alerts", "weather", "river", "pipeline"}
+
+
 @router.websocket("")
 @router.websocket("/")
-async def ws_unified(websocket: WebSocket, db: Session = Depends(deps.get_db)):
+async def ws_unified(websocket: WebSocket):
     """
     Unified WebSocket endpoint for multiplexed channels.
     Matches NEXT_PUBLIC_WS_URL=wss://.../api/v1/ws (without subpath).
-    Automatically multiplexes dashboard, kg, and alerts channels.
+    Accepts handshake immediately without DB dependency (never returns 500 during handshake).
+    Subscribes to channels via: { "action": "subscribe", "channel": "dashboard" }.
     """
     await websocket.accept()
     logger.info("[WS/unified] Client connected to unified stream")
-    subscribed_channels = ["dashboard", "kg", "alerts", "pipeline"]
-    for ch in subscribed_channels:
-        async with ws_manager._lock:
-            if websocket not in ws_manager._connections[ch]:
-                ws_manager._connections[ch].append(websocket)
+    subscribed_channels = set()
 
     try:
-        # Send initial snapshots on connect
-        try:
-            snap = await _get_dashboard_snapshot(db)
-            snap["channel"] = "dashboard"
-            await ws_manager.send_to_one(websocket, snap)
-        except Exception as e:
-            logger.warning(f"[WS/unified] Error sending initial dashboard snapshot: {e}")
-
-        try:
-            kg_snap = await _get_kg_snapshot()
-            kg_snap["channel"] = "kg"
-            await ws_manager.send_to_one(websocket, kg_snap)
-        except Exception as e:
-            logger.warning(f"[WS/unified] Error sending initial KG snapshot: {e}")
-
         while True:
             try:
                 data = await websocket.receive_json()
@@ -227,14 +212,96 @@ async def ws_unified(websocket: WebSocket, db: Session = Depends(deps.get_db)):
                         "type": "pong",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     })
-                elif channel == "dashboard" or action == "get_dashboard":
-                    snap = await _get_dashboard_snapshot(db)
-                    snap["channel"] = "dashboard"
-                    await ws_manager.send_to_one(websocket, snap)
+
+                elif action == "subscribe":
+                    if not channel or channel not in SUPPORTED_CHANNELS:
+                        await ws_manager.send_to_one(websocket, {
+                            "type": "error",
+                            "code": 400,
+                            "message": f"Invalid channel '{channel}'. Supported channels: {sorted(list(SUPPORTED_CHANNELS))}",
+                        })
+                        continue
+
+                    async with ws_manager._lock:
+                        if websocket not in ws_manager._connections[channel]:
+                            ws_manager._connections[channel].append(websocket)
+                    subscribed_channels.add(channel)
+
+                    await ws_manager.send_to_one(websocket, {
+                        "type": "subscribed",
+                        "channel": channel,
+                        "status": "ok",
+                    })
+
+                    # Deliver initial channel snapshot
+                    from app.db.session import SessionLocal
+                    db = SessionLocal()
+                    try:
+                        if channel in ("dashboard", "weather", "river"):
+                            snap = await _get_dashboard_snapshot(db)
+                            snap["channel"] = channel
+                            await ws_manager.send_to_one(websocket, snap)
+                        elif channel == "kg":
+                            snap = await _get_kg_snapshot()
+                            snap["channel"] = "kg"
+                            await ws_manager.send_to_one(websocket, snap)
+                        elif channel == "alerts":
+                            recent_alerts = (
+                                db.query(Alert)
+                                .order_by(Alert.created_at.desc())
+                                .limit(10)
+                                .all()
+                            )
+                            await ws_manager.send_to_one(websocket, {
+                                "type": "ALERT_HISTORY",
+                                "channel": "alerts",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "alerts": [
+                                    {
+                                        "district_id": a.district_id,
+                                        "level": a.level,
+                                        "severity": a.severity,
+                                        "message": a.message,
+                                        "suggested_response": a.suggested_response,
+                                        "confidence": a.confidence,
+                                        "created_at": a.created_at.isoformat() if a.created_at else None,
+                                    }
+                                    for a in recent_alerts
+                                ],
+                            })
+                        elif channel == "pipeline":
+                            await ws_manager.send_to_one(websocket, {
+                                "type": "PIPELINE_STATUS",
+                                "channel": "pipeline",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "status": "connected",
+                                "message": "Listening for pipeline updates...",
+                            })
+                    except Exception as snap_err:
+                        logger.warning(f"[WS/unified] Error sending snapshot for {channel}: {snap_err}")
+                    finally:
+                        db.close()
+
+                elif channel == "dashboard" or action == "get_dashboard" or action == "get_snapshot":
+                    from app.db.session import SessionLocal
+                    db = SessionLocal()
+                    try:
+                        snap = await _get_dashboard_snapshot(db)
+                        snap["channel"] = "dashboard"
+                        await ws_manager.send_to_one(websocket, snap)
+                    except Exception as e:
+                        logger.warning(f"[WS/unified] Error getting dashboard snapshot: {e}")
+                    finally:
+                        db.close()
+
                 elif channel == "kg" or action == "get_kg":
-                    snap = await _get_kg_snapshot()
-                    snap["channel"] = "kg"
-                    await ws_manager.send_to_one(websocket, snap)
+                    try:
+                        snap = await _get_kg_snapshot()
+                        snap["channel"] = "kg"
+                        await ws_manager.send_to_one(websocket, snap)
+                    except Exception as e:
+                        logger.warning(f"[WS/unified] Error getting kg snapshot: {e}")
+
                 elif action == "trigger_pipeline":
                     import asyncio
                     from app.db.session import SessionLocal
@@ -256,6 +323,7 @@ async def ws_unified(websocket: WebSocket, db: Session = Depends(deps.get_db)):
                             pipeline_db.close()
 
                     asyncio.ensure_future(_run())
+
             except Exception as recv_err:
                 logger.debug(f"[WS/unified] Receive error: {recv_err}")
                 break
@@ -269,7 +337,7 @@ async def ws_unified(websocket: WebSocket, db: Session = Depends(deps.get_db)):
 
 
 @router.websocket("/dashboard")
-async def ws_dashboard(websocket: WebSocket, db: Session = Depends(deps.get_db)):
+async def ws_dashboard(websocket: WebSocket):
     """
     WebSocket: Real-time dashboard updates.
     
@@ -284,10 +352,18 @@ async def ws_dashboard(websocket: WebSocket, db: Session = Depends(deps.get_db))
     await ws_manager.connect(websocket, "dashboard")
     logger.info("[WS/dashboard] Client connected")
 
+    from app.db.session import SessionLocal
+
     try:
         # Send initial snapshot immediately on connect
-        snapshot = await _get_dashboard_snapshot(db)
-        await ws_manager.send_to_one(websocket, snapshot)
+        db = SessionLocal()
+        try:
+            snapshot = await _get_dashboard_snapshot(db)
+            await ws_manager.send_to_one(websocket, snapshot)
+        except Exception as snap_err:
+            logger.error(f"[WS/dashboard] Initial snapshot error: {snap_err}")
+        finally:
+            db.close()
 
         # Listen for client messages
         while True:
@@ -302,8 +378,12 @@ async def ws_dashboard(websocket: WebSocket, db: Session = Depends(deps.get_db))
                     })
 
                 elif action == "get_snapshot":
-                    snapshot = await _get_dashboard_snapshot(db)
-                    await ws_manager.send_to_one(websocket, snapshot)
+                    snap_db = SessionLocal()
+                    try:
+                        snapshot = await _get_dashboard_snapshot(snap_db)
+                        await ws_manager.send_to_one(websocket, snapshot)
+                    finally:
+                        snap_db.close()
 
                 elif action == "trigger_pipeline":
                     # Non-blocking pipeline trigger
@@ -385,7 +465,7 @@ async def ws_knowledge_graph(websocket: WebSocket):
 
 
 @router.websocket("/alerts")
-async def ws_alerts(websocket: WebSocket, db: Session = Depends(deps.get_db)):
+async def ws_alerts(websocket: WebSocket):
     """
     WebSocket: Real-time alert stream.
     
@@ -394,30 +474,38 @@ async def ws_alerts(websocket: WebSocket, db: Session = Depends(deps.get_db)):
     await ws_manager.connect(websocket, "alerts")
     logger.info("[WS/alerts] Client connected")
 
+    from app.db.session import SessionLocal
+
     try:
         # Send recent alerts on connect
-        recent_alerts = (
-            db.query(Alert)
-            .order_by(Alert.created_at.desc())
-            .limit(10)
-            .all()
-        )
-        await ws_manager.send_to_one(websocket, {
-            "type": "ALERT_HISTORY",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "alerts": [
-                {
-                    "district_id": a.district_id,
-                    "level": a.level,
-                    "severity": a.severity,
-                    "message": a.message,
-                    "suggested_response": a.suggested_response,
-                    "confidence": a.confidence,
-                    "created_at": a.created_at.isoformat() if a.created_at else None,
-                }
-                for a in recent_alerts
-            ],
-        })
+        db = SessionLocal()
+        try:
+            recent_alerts = (
+                db.query(Alert)
+                .order_by(Alert.created_at.desc())
+                .limit(10)
+                .all()
+            )
+            await ws_manager.send_to_one(websocket, {
+                "type": "ALERT_HISTORY",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "alerts": [
+                    {
+                        "district_id": a.district_id,
+                        "level": a.level,
+                        "severity": a.severity,
+                        "message": a.message,
+                        "suggested_response": a.suggested_response,
+                        "confidence": a.confidence,
+                        "created_at": a.created_at.isoformat() if a.created_at else None,
+                    }
+                    for a in recent_alerts
+                ],
+            })
+        except Exception as alert_err:
+            logger.error(f"[WS/alerts] Initial alert fetch error: {alert_err}")
+        finally:
+            db.close()
 
         while True:
             try:

@@ -105,7 +105,7 @@ class WebSocketMultiplexer {
     this.activeChannels.add(channel);
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.sendRaw({ channel });
+      this.sendRaw({ action: "subscribe", channel });
     } else if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
       this.connect();
     }
@@ -148,9 +148,16 @@ class WebSocketMultiplexer {
         this.setStatus("connected");
         this.retryCount = 0;
 
-        // Subscribe to active channels
+        // Immediate subscriptions as required:
+        this.sendRaw({ action: "subscribe", channel: "dashboard" });
+        this.sendRaw({ action: "subscribe", channel: "kg" });
+        this.sendRaw({ action: "subscribe", channel: "alerts" });
+
+        // Also subscribe to any other active channels
         this.activeChannels.forEach((ch) => {
-          this.sendRaw({ channel: ch });
+          if (ch !== "dashboard" && ch !== "kg" && ch !== "alerts") {
+            this.sendRaw({ action: "subscribe", channel: ch });
+          }
         });
 
         // Start heartbeat
