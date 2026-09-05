@@ -145,11 +145,15 @@ app = FastAPI(
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
-# Use configurable origins — never wildcard in production
+# Explicit production & preview origins — never wildcard together with credentials
 import os
 origins = [
+    "https://ai-flood-prediction-lxjkk9a2i-charanroyal418s-projects.vercel.app",
+    "https://ai-flood-prediction.vercel.app",
     "http://localhost:3000",
     "http://localhost:8000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
 ]
 if os.getenv("NEXT_PUBLIC_FRONTEND_URL"):
     origins.append(os.getenv("NEXT_PUBLIC_FRONTEND_URL"))
@@ -159,7 +163,7 @@ if os.getenv("VERCEL_URL"):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

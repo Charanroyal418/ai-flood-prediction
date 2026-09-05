@@ -35,7 +35,9 @@ export function getWsUrl(): string {
   if (!url) {
     if (typeof window !== "undefined") {
       const isHttps = window.location.protocol === "https:";
-      let host = "localhost:8000";
+      let host = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+        ? "localhost:8000"
+        : "tn-flood-ai-backend.onrender.com";
       if (process.env.NEXT_PUBLIC_API_URL) {
         try {
           host = new URL(process.env.NEXT_PUBLIC_API_URL).host;

@@ -1,7 +1,11 @@
 import axios from 'axios';
 
-// Canonical base URL: strip trailing /api/v1 and trailing slashes so base is clean
-const RAW_API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Canonical base URL: prioritize NEXT_PUBLIC_API_URL, fallback to production Render URL on Vercel/web, localhost for local dev
+const RAW_API = process.env.NEXT_PUBLIC_API_URL || (
+  typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? 'https://tn-flood-ai-backend.onrender.com'
+    : 'http://localhost:8000'
+);
 export const API = RAW_API.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
 export const API_URL = `${API}/api/v1`;
 
