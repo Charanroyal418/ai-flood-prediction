@@ -62,22 +62,24 @@ class AlertEngine:
     @staticmethod
     def _create_alert_if_needed(db: Session, district_id: int, level: str, severity: str, reason: str):
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        recent_threshold = now - timedelta(hours=6)
+        recent_threshold = now - timedelta(hours=2)
         
         existing = db.query(Alert).filter(
             Alert.district_id == district_id,
             Alert.created_at >= recent_threshold
-        ).first()
+        ).order_by(Alert.created_at.desc()).first()
         
-        if not existing:
+        # Only create if no alert in the last 2 hours OR if the level escalated
+        if not existing or existing.level != level:
             alert = Alert(
                 district_id=district_id,
                 level=level,
                 severity=severity,
-                message=f"{severity} Alert. {reason}",
+                message=f"[{level}] Flood alert for District {district_id}: {reason}",
                 confidence=0.9,
                 expected_time=now + timedelta(hours=2),
-                suggested_response="Evacuate low lying areas" if severity == "Severe" else "Stay alert"
+                suggested_response="Evacuate low lying areas" if severity in ["Severe", "Critical"] else "Monitor water levels and stay alert"
             )
             db.add(alert)
-            logger.warning(f"[AlertEngine] Triggered {level} Alert for District {district_id}: {reason}")
+            db.flush()
+            logger.info(f"[AlertEngine] Triggered {level} Alert for District {district_id}: {reason}")

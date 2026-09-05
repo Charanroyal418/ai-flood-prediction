@@ -36,6 +36,8 @@ from app.ml.inference import gnn_engine, get_risk_level_and_color
 from app.services.alert_engine import AlertEngine
 from app.models.district import District
 from app.models.alert import Alert
+from app.models.entities import Dam
+from app.models.river import RiverLevel
 from app.models.history import (
     PredictionHistory,
     ModelInference,
@@ -78,7 +80,7 @@ def clear_simulation_state(db: Optional[Session] = None, reason: str = "Manual S
     _STORM_SIMULATION_ACTIVATED_AT = None
     logger.info(f"[Orchestrator] Clearing simulation state: {reason}")
 
-    # 1. Reset in-process inference cycle cache & dashboard live cache
+    # 1. Reset in-process caches
     try:
         from app.api.endpoints.inference_cycle import _cycle_cache
         _cycle_cache["payload"] = None
@@ -93,22 +95,35 @@ def clear_simulation_state(db: Optional[Session] = None, reason: str = "Manual S
     except Exception:
         pass
 
+    try:
+        from app.api.endpoints.kg import _invalidate_cache
+        _invalidate_cache()
+    except Exception:
+        pass
+
     if db is not None:
         try:
-            from app.models.river import RiverLevel
             now_ts = datetime.now(timezone.utc)
             districts = db.query(District).all()
 
-            # 2. Revert DB telemetry overrides
+            # 2. Revert all DB river levels to nominal
             for d in districts:
-                rv_rec = db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
-                if rv_rec:
+                rv_records = db.query(RiverLevel).filter_by(district_id=d.id).all()
+                for rv_rec in rv_records:
                     rv_rec.current_level = round(0.8 + (d.id % 5) * 0.15, 2)
                     rv_rec.recorded_at = now_ts
 
+            # 3. Reset dam telemetry to nominal
+            all_dams = db.query(Dam).all()
+            for dam in all_dams:
+                seed = hash(dam.name) % 100
+                dam.fill_pct = round(52.0 + (seed % 14), 1)
+                dam.inflow_cusecs = round(350.0 + (seed % 150), 1)
+                dam.current_release_cusecs = round(250.0 + (seed % 100), 1)
+
             db.query(WeatherHistory).filter(WeatherHistory.rainfall_mm > 80.0).delete(synchronize_session=False)
             
-            # 3. Log explicit simulation expired / cleared event
+            # 4. Log explicit simulation expired / cleared event
             evt = KnowledgeGraphEvents(
                 source_district_id=1,
                 target_district_id=1,
@@ -123,7 +138,7 @@ def clear_simulation_state(db: Optional[Session] = None, reason: str = "Manual S
             db.add(evt)
             db.commit()
 
-            # 4. Rebuild Knowledge Graph
+            # 5. Rebuild Knowledge Graph
             kg_builder.build_skeleton()
             kg_builder.update_graph_from_db(db)
         except Exception as e:
@@ -269,45 +284,99 @@ class RealtimeOrchestrator:
 
             # ─── STEP 1: Telemetry Ingestion (Storm Simulation or Live ETL) ───
             if active_storm:
-                logger.info("[Pipeline] Step 1: Ingesting extreme Cyclone Michaung storm telemetry into DB feature tables")
+                scenario_name = _STORM_SIMULATION_META.get("scenario", "Cyclone Michaung")
+                sim_rain = float(_STORM_SIMULATION_META.get("rainfall_mm") or 180.0)
+                sim_targets = set(_STORM_SIMULATION_META.get("target_districts") or PRIMARY_CYCLONE_DISTRICTS)
+                
+                is_mild = sim_rain <= 60.0 or "mild" in scenario_name.lower()
+                is_heavy = (60.0 < sim_rain <= 180.0) or "heavy" in scenario_name.lower()
+                
+                logger.info(
+                    f"[Pipeline] Step 1: Ingesting simulated telemetry for '{scenario_name}' "
+                    f"({'Mild' if is_mild else ('Heavy' if is_heavy else 'Cyclone')}) - Base: {sim_rain}mm"
+                )
+
                 for d in districts:
-                    is_primary = d.name in PRIMARY_CYCLONE_DISTRICTS
+                    is_primary = d.name in sim_targets or d.name in PRIMARY_CYCLONE_DISTRICTS
                     is_buffer = d.name in BUFFER_STORM_DISTRICTS
 
-                    if is_primary:
-                        rain_mm = 385.0 + (d.id % 5) * 12.0   # 385mm - 433mm extreme rainfall
-                        r_lvl = 4.88                          # 97.6% of danger level (5.0m)
-                        hum = 98.0
-                        pres = 984.0
-                        w_spd = 95.0
-                    elif is_buffer:
-                        rain_mm = 145.0 + (d.id % 4) * 8.0    # 145mm - 169mm heavy rainfall
-                        r_lvl = 4.15                          # 83% of danger level
-                        hum = 94.0
-                        pres = 992.0
-                        w_spd = 55.0
+                    if is_mild:
+                        # Mild Rain: ~35-50mm, river ~1.8m, dam ~62%
+                        if is_primary:
+                            rain_mm = min(52.0, max(35.0, sim_rain)) + (d.id % 4) * 2.0
+                            r_lvl = 1.85
+                            hum = 82.0
+                            pres = 1002.0
+                            w_spd = 35.0
+                        elif is_buffer:
+                            rain_mm = 20.0 + (d.id % 3) * 2.0
+                            r_lvl = 1.30
+                            hum = 78.0
+                            pres = 1005.0
+                            w_spd = 22.0
+                        else:
+                            rain_mm = 8.0 + (d.id % 3) * 1.5
+                            r_lvl = 0.95
+                            hum = 72.0
+                            pres = 1008.0
+                            w_spd = 14.0
+                    elif is_heavy:
+                        # Heavy Rain: ~110-150mm, river ~4.1m, dam ~85%
+                        if is_primary:
+                            rain_mm = min(160.0, max(115.0, sim_rain)) + (d.id % 4) * 6.0
+                            r_lvl = 4.15
+                            hum = 94.0
+                            pres = 992.0
+                            w_spd = 65.0
+                        elif is_buffer:
+                            rain_mm = 75.0 + (d.id % 4) * 4.0
+                            r_lvl = 3.10
+                            hum = 88.0
+                            pres = 998.0
+                            w_spd = 45.0
+                        else:
+                            rain_mm = 18.0 + (d.id % 3) * 3.0
+                            r_lvl = 1.20
+                            hum = 75.0
+                            pres = 1006.0
+                            w_spd = 18.0
                     else:
-                        rain_mm = 15.0 + (d.id % 3) * 5.0     # 15mm - 25mm mild rainfall
-                        r_lvl = 1.10                          # 22% of danger level
-                        hum = 75.0
-                        pres = 1006.0
-                        w_spd = 18.0
+                        # Cyclone: ~350-430mm, river ~4.88m, dam ~96%
+                        if is_primary:
+                            rain_mm = max(360.0, sim_rain) + (d.id % 5) * 12.0
+                            r_lvl = 4.88
+                            hum = 98.0
+                            pres = 984.0
+                            w_spd = 110.0
+                        elif is_buffer:
+                            rain_mm = 145.0 + (d.id % 4) * 8.0
+                            r_lvl = 4.15
+                            hum = 94.0
+                            pres = 992.0
+                            w_spd = 65.0
+                        else:
+                            rain_mm = 25.0 + (d.id % 3) * 5.0
+                            r_lvl = 1.10
+                            hum = 75.0
+                            pres = 1006.0
+                            w_spd = 18.0
 
                     w_storm = WeatherHistory(
                         district_id=d.id,
                         temperature=23.0 if is_primary else (25.0 if is_buffer else 28.0),
                         humidity=hum,
                         pressure=pres,
-                        rainfall_mm=rain_mm,
+                        rainfall_mm=round(rain_mm, 1),
                         wind_speed=w_spd,
                         recorded_at=now_ts
                     )
                     self.db.add(w_storm)
 
-                    rv_rec = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
-                    if rv_rec:
-                        rv_rec.current_level = r_lvl
-                        rv_rec.recorded_at = now_ts
+                    rv_records = self.db.query(RiverLevel).filter_by(district_id=d.id).all()
+                    if rv_records:
+                        for rv_rec in rv_records:
+                            rv_rec.current_level = r_lvl
+                            rv_rec.recorded_at = now_ts
                     else:
                         self.db.add(RiverLevel(
                             district_id=d.id,
@@ -317,15 +386,72 @@ class RealtimeOrchestrator:
                             danger_level=5.0,
                             recorded_at=now_ts
                         ))
+
+                # Update Dam telemetry matching the storm scenario
+                all_dams = self.db.query(Dam).all()
+                for dam in all_dams:
+                    dam_dist = next((d for d in districts if d.id == dam.district_id), None)
+                    d_name = dam_dist.name if dam_dist else ""
+                    is_dam_primary = d_name in sim_targets or d_name in PRIMARY_CYCLONE_DISTRICTS
+                    is_dam_buffer = d_name in BUFFER_STORM_DISTRICTS
+
+                    if is_mild:
+                        if is_dam_primary:
+                            dam.fill_pct = 62.5
+                            dam.inflow_cusecs = 2800.0
+                            dam.current_release_cusecs = 1400.0
+                        elif is_dam_buffer:
+                            dam.fill_pct = 56.0
+                            dam.inflow_cusecs = 1100.0
+                            dam.current_release_cusecs = 600.0
+                        else:
+                            dam.fill_pct = 50.0
+                            dam.inflow_cusecs = 450.0
+                            dam.current_release_cusecs = 250.0
+                    elif is_heavy:
+                        if is_dam_primary:
+                            dam.fill_pct = 85.0
+                            dam.inflow_cusecs = 15000.0
+                            dam.current_release_cusecs = 11000.0
+                        elif is_dam_buffer:
+                            dam.fill_pct = 74.0
+                            dam.inflow_cusecs = 7000.0
+                            dam.current_release_cusecs = 5000.0
+                        else:
+                            dam.fill_pct = 58.0
+                            dam.inflow_cusecs = 1500.0
+                            dam.current_release_cusecs = 1000.0
+                    else:
+                        if is_dam_primary:
+                            dam.fill_pct = 96.5
+                            dam.inflow_cusecs = 38000.0
+                            dam.current_release_cusecs = 32000.0
+                        elif is_dam_buffer:
+                            dam.fill_pct = 86.0
+                            dam.inflow_cusecs = 18000.0
+                            dam.current_release_cusecs = 14000.0
+                        else:
+                            dam.fill_pct = 65.0
+                            dam.inflow_cusecs = 3000.0
+                            dam.current_release_cusecs = 2000.0
+
                 self.db.commit()
                 summary["steps_completed"].append("storm_telemetry_injection")
             else:
                 logger.info("[Pipeline] Step 1: Reverting DB telemetry & executing live Weather & River ETL")
                 for d in districts:
-                    rv_rec = self.db.query(RiverLevel).filter_by(district_id=d.id).order_by(RiverLevel.recorded_at.desc()).first()
-                    if rv_rec:
+                    rv_records = self.db.query(RiverLevel).filter_by(district_id=d.id).all()
+                    for rv_rec in rv_records:
                         rv_rec.current_level = round(0.8 + (d.id % 5) * 0.15, 2)
                         rv_rec.recorded_at = now_ts
+
+                all_dams = self.db.query(Dam).all()
+                for dam in all_dams:
+                    seed = hash(dam.name) % 100
+                    dam.fill_pct = round(52.0 + (seed % 14), 1)
+                    dam.inflow_cusecs = round(350.0 + (seed % 150), 1)
+                    dam.current_release_cusecs = round(250.0 + (seed % 100), 1)
+
                 self.db.query(WeatherHistory).filter(WeatherHistory.rainfall_mm > 80.0).delete(synchronize_session=False)
                 self.db.commit()
 
@@ -439,34 +565,6 @@ class RealtimeOrchestrator:
                 return summary
 
             if active_storm:
-                # Ensure Feature Matrix H matches spatial storm targets
-                for i, nid in enumerate(node_ids):
-                    if nid.startswith("d-"):
-                        try:
-                            d_idx = int(nid.split("-")[1])
-                            d_obj = next((d for d in districts if d.id == d_idx), None)
-                        except (ValueError, StopIteration):
-                            d_obj = None
-
-                        if d_obj and d_obj.name in PRIMARY_CYCLONE_DISTRICTS:
-                            H[i, :, 0] = 1.00  # Extreme rainfall
-                            H[i, :, 1] = 0.98  # Severe river flood ratio
-                            H[i, :, 2] = 0.98  # Humidity
-                            H[i, :, 3] = 0.00  # Low pressure
-                        elif d_obj and d_obj.name in BUFFER_STORM_DISTRICTS:
-                            H[i, :, 0] = 0.65  # Heavy rainfall
-                            H[i, :, 1] = 0.72  # High river ratio
-                            H[i, :, 2] = 0.94  # High humidity
-                            H[i, :, 3] = 0.20  # Medium low pressure
-                        else:
-                            H[i, :, 0] = 0.12  # Normal rain
-                            H[i, :, 1] = 0.18  # Normal river ratio
-                            H[i, :, 2] = 0.75  # Normal humidity
-                            H[i, :, 3] = 0.50  # Normal pressure
-                    elif nid.startswith(("rv-", "c-", "rs-", "dam-")):
-                        H[i, :, 0] = 0.92
-                        H[i, :, 1] = 0.95
-
                 summary["steps_completed"].append("storm_simulation")
 
             # ─── STEP 5: GNN Inference ────────────────────────────────────
@@ -494,6 +592,19 @@ class RealtimeOrchestrator:
             districts = self.db.query(District).all()
             alerts_generated = 0
 
+            # Batch query latest weather and river telemetry
+            w_all = self.db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(200).all()
+            w_map: Dict[int, WeatherHistory] = {}
+            for w in w_all:
+                if w.district_id not in w_map:
+                    w_map[w.district_id] = w
+
+            r_all = self.db.query(RiverLevel).order_by(RiverLevel.recorded_at.desc()).limit(200).all()
+            r_map: Dict[int, RiverLevel] = {}
+            for r in r_all:
+                if r.district_id not in r_map:
+                    r_map[r.district_id] = r
+
             for district in districts:
                 node_id = f"d-{district.id}"
                 result = result_map.get(node_id)
@@ -514,6 +625,14 @@ class RealtimeOrchestrator:
                         f"score -> {risk_score:.1f}"
                     )
 
+                w_d = w_map.get(district.id)
+                r_d = r_map.get(district.id)
+                if w_d and r_d and r_d.danger_level and r_d.danger_level > 0:
+                    r_ratio = float(r_d.current_level / r_d.danger_level)
+                    rain_val = float(w_d.rainfall_mm or 0.0)
+                    if rain_val >= 250.0 or (rain_val >= 180.0 and r_ratio >= 0.92):
+                        risk_score = min(98.5, max(risk_score, 88.5))
+
                 # Re-compute risk_level to strictly match risk_score boundaries (>=80 Critical, >=60 High, etc.)
                 risk_level, _ = get_risk_level_and_color(risk_score)
 
@@ -530,6 +649,7 @@ class RealtimeOrchestrator:
                     forecast_24h=round(min(1.0, base_prob * 1.25), 3),
                     confidence=confidence,
                     shap_values=shap_values,
+                    created_at=datetime.now(timezone.utc),
                 )
                 self.db.add(pred)
 
@@ -544,11 +664,16 @@ class RealtimeOrchestrator:
                     now = datetime.now(timezone.utc)
                     
                     # Alert if no recent alert OR the risk level changed (escalation/de-escalation)
+                    # OR if 30 minutes have elapsed since the last alert for this district
                     should_alert = False
                     if not recent_alert:
                         should_alert = True
-                    elif recent_alert.level != risk_level or active_storm:
+                    elif recent_alert.level != risk_level:
                         should_alert = True
+                    else:
+                        alert_time = recent_alert.created_at.replace(tzinfo=timezone.utc) if recent_alert.created_at.tzinfo is None else recent_alert.created_at
+                        if (now - alert_time).total_seconds() > 1800:
+                            should_alert = True
                         
                     if should_alert:
                         top_reason = "High rainfall"
@@ -631,12 +756,25 @@ class RealtimeOrchestrator:
             # Run async broadcast in a new event loop if called from sync context
             self._trigger_ws_broadcast(result_map, districts, alerts_generated, summary)
 
-            # ─── STEP 10: UPDATE GLOBAL INFERENCE CACHE ──────────────────────────────
-            # This ensures /predict/inference-cycle serves this new state immediately
+            # ─── STEP 10: UPDATE GLOBAL INFERENCE CACHE & INVALIDATE CACHES ──
             try:
-                from app.api.endpoints.inference_cycle import _cycle_cache
-                _cycle_cache["payload"] = sanitize_numpy(stages)
+                from app.api.endpoints.inference_cycle import _execute_inference_pipeline, _cycle_cache, sanitize_numpy
+                fresh_payload = _execute_inference_pipeline(self.db)
+                _cycle_cache["payload"] = sanitize_numpy(fresh_payload)
                 _cycle_cache["ts"] = time.time()
+            except Exception as e:
+                logger.warning(f"[Pipeline] Could not refresh inference cycle cache: {e}")
+
+            try:
+                from app.api.endpoints.kg import _invalidate_cache as _inv_kg
+                _inv_kg()
+            except Exception:
+                pass
+
+            try:
+                from app.api.endpoints.dashboard import _dash_live_cache
+                _dash_live_cache["data"] = None
+                _dash_live_cache["ts"] = 0.0
             except Exception:
                 pass
 
@@ -734,6 +872,12 @@ class RealtimeOrchestrator:
                 if r.district_id not in r_map:
                     r_map[r.district_id] = r
 
+            # Get latest dam storage per district
+            all_dams = self.db.query(Dam).all()
+            dam_map = {dam.district_id: dam for dam in all_dams if dam.district_id is not None}
+            valid_dam_fill = [float(dam.fill_pct) for dam in all_dams if dam.fill_pct is not None]
+            avg_dam_fill = round(float(sum(valid_dam_fill) / len(valid_dam_fill)), 1) if valid_dam_fill else 58.0
+
             # Build broadcast payload
             district_updates = []
             for d in districts:
@@ -741,10 +885,14 @@ class RealtimeOrchestrator:
                 r = result_map.get(node_id, {})
                 w = w_map.get(d.id)
                 r_lvl = r_map.get(d.id)
+                dam_obj = dam_map.get(d.id)
+                res_storage = round(float(dam_obj.fill_pct), 1) if (dam_obj and dam_obj.fill_pct is not None) else avg_dam_fill
                 
                 lon, lat = 0.0, 0.0
-                if d.geom_json and "coordinates" in d.geom_json:
-                    lon, lat = d.geom_json["coordinates"]
+                if d.geom_json and isinstance(d.geom_json, dict) and "coordinates" in d.geom_json:
+                    coords = d.geom_json["coordinates"]
+                    if isinstance(coords, (list, tuple)) and len(coords) >= 2 and isinstance(coords[0], (int, float)):
+                        lon, lat = float(coords[0]), float(coords[1])
                 
                 score = r.get("risk_score", 0)
                 lvl, color = get_risk_level_and_color(score)
@@ -767,6 +915,7 @@ class RealtimeOrchestrator:
                     "wind_speed": w.wind_speed if w else 0.0,
                     "river_level_m": r_lvl.current_level if r_lvl else 0.0,
                     "river_danger_m": r_lvl.danger_level if r_lvl else 5.0,
+                    "reservoir_storage": res_storage,
                     "flood_probability": score / 100.0,
                     "confidence": r.get("confidence", 0.82),
                     "ai_confidence": r.get("confidence", 0.82),
@@ -810,12 +959,36 @@ class RealtimeOrchestrator:
                 ],
                 "edges": [
                     {
-                        "source": u,
-                        "target": v,
-                        "weight": kg_builder.graph[u][v].get("weight", 0.5),
+                        "source": edge[0],
+                        "target": edge[1],
+                        "weight": kg_builder.graph[edge[0]][edge[1]].get("weight", 0.5) if (edge[0] in kg_builder.graph and edge[1] in kg_builder.graph[edge[0]]) else 0.5,
                     }
-                    for u, v in kg_builder.graph.edges()
+                    for edge in kg_builder.graph.edges()
+                    if isinstance(edge, (tuple, list)) and len(edge) >= 2
                 ],
+            }
+
+            # Build alerts payload for active alert subscribers
+            recent_alerts = self.db.query(Alert).order_by(Alert.created_at.desc()).limit(15).all()
+            alert_list = [
+                {
+                    "id": f"alert-{a.id}",
+                    "district_id": a.district_id,
+                    "district": next((d.name for d in districts if d.id == a.district_id), f"District-{a.district_id}"),
+                    "level": a.level,
+                    "severity": a.severity,
+                    "message": a.message,
+                    "suggested_response": a.suggested_response,
+                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                    "confidence": a.confidence,
+                    "rainfall_mm": (w_map.get(a.district_id).rainfall_mm if w_map.get(a.district_id) else None),
+                }
+                for a in recent_alerts
+            ]
+            alerts_msg = {
+                "type": "ALERTS_UPDATE",
+                "timestamp": summary["timestamp"],
+                "alerts": alert_list,
             }
 
             # Try to get the running event loop
@@ -828,6 +1001,9 @@ class RealtimeOrchestrator:
                     asyncio.ensure_future(
                         ws_manager.broadcast(kg_msg, "kg")
                     )
+                    asyncio.ensure_future(
+                        ws_manager.broadcast(alerts_msg, "alerts")
+                    )
                 else:
                     loop.run_until_complete(
                         ws_manager.broadcast(dashboard_msg, "dashboard")
@@ -835,10 +1011,14 @@ class RealtimeOrchestrator:
                     loop.run_until_complete(
                         ws_manager.broadcast(kg_msg, "kg")
                     )
+                    loop.run_until_complete(
+                        ws_manager.broadcast(alerts_msg, "alerts")
+                    )
             except RuntimeError:
                 # No event loop - create one
                 asyncio.run(ws_manager.broadcast(dashboard_msg, "dashboard"))
                 asyncio.run(ws_manager.broadcast(kg_msg, "kg"))
+                asyncio.run(ws_manager.broadcast(alerts_msg, "alerts"))
 
         except Exception as e:
             logger.warning(f"[Pipeline] WebSocket broadcast failed (non-critical): {e}")

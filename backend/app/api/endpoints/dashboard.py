@@ -105,21 +105,21 @@ def _build_dashboard_live(db: Session) -> Any:
     # Get all districts
     districts = db.query(District).all()
     
-    all_preds = db.query(PredictionHistory).order_by(PredictionHistory.created_at.desc()).limit(200).all()
+    all_preds = db.query(PredictionHistory).order_by(PredictionHistory.id.desc()).limit(200).all()
     pred_map = {}
     for p in all_preds:
         if p.district_id not in pred_map:
             pred_map[p.district_id] = p
             
     # Get latest weather per district
-    all_weather = db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(200).all()
+    all_weather = db.query(WeatherHistory).order_by(WeatherHistory.id.desc()).limit(200).all()
     weather_map = {}
     for w in all_weather:
         if w.district_id not in weather_map:
             weather_map[w.district_id] = w
             
     # Get latest river levels per district
-    all_rivers = db.query(RiverLevel).order_by(RiverLevel.recorded_at.desc()).limit(200).all()
+    all_rivers = db.query(RiverLevel).order_by(RiverLevel.id.desc()).limit(200).all()
     river_map = {}
     for r in all_rivers:
         if r.district_id not in river_map:
@@ -128,6 +128,8 @@ def _build_dashboard_live(db: Session) -> Any:
     # Get dams mapped by district_id
     all_dams = db.query(Dam).all()
     dam_map = {dam.district_id: dam for dam in all_dams if dam.district_id is not None}
+    valid_dam_fill = [float(dam.fill_pct) for dam in all_dams if dam.fill_pct is not None]
+    avg_dam_fill = round(float(sum(valid_dam_fill) / len(valid_dam_fill)), 1) if valid_dam_fill else 58.0
 
     # Get historical flood events
     all_historical = db.query(HistoricalFloodEvent).all()
@@ -160,7 +162,7 @@ def _build_dashboard_live(db: Session) -> Any:
 
         # 2. Reservoir storage
         dam_obj = dam_map.get(d.id)
-        reservoir_storage = float(dam_obj.fill_pct) if dam_obj and dam_obj.fill_pct is not None else None
+        reservoir_storage = round(float(dam_obj.fill_pct), 1) if dam_obj and dam_obj.fill_pct is not None else avg_dam_fill
 
         # 3. Historical flood events
         hist_events = [h for h in all_historical if h.affected_districts and any(_clean_district_key(x) == d_clean for x in h.affected_districts)]
@@ -535,6 +537,9 @@ def simulate_storm_event(
         _orch_module.STORM_SIMULATION_MAX_DURATION_MINUTES = body.duration_minutes
 
     set_storm_simulation_active(new_state, db)
+    global _dash_live_cache
+    _dash_live_cache["data"] = None
+    _dash_live_cache["ts"] = 0.0
     orchestrator = RealtimeOrchestrator(db)
     summary = orchestrator.run_pipeline(simulate_storm=new_state)
     sim_meta = get_storm_simulation_meta()

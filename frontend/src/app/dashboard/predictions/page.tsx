@@ -386,10 +386,11 @@ export default function PredictionEnginePage() {
 
   const handleStopSimulation = async () => {
     try {
-      setStoppingSim(true);
       await api.post("/api/v1/dashboard/simulate-storm?active=false");
       await refetchPipeline();
+      queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "live"] });
+      queryClient.invalidateQueries({ queryKey: ["rivers"] });
     } catch (err) {} finally {
       setStoppingSim(false);
     }

@@ -161,9 +161,9 @@ class KnowledgeGraphBuilder:
         districts = db.query(District).all()
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        # Load real edges from DB — remove stale district-to-district edges first
+        # Load real edges from DB — remove stale district and flood event edges first
         edges_to_remove = [(u, v) for u, v in self.graph.edges()
-                           if u.startswith("d-") and v.startswith("d-")]
+                           if (u.startswith("d-") and v.startswith("d-")) or u.startswith("fe-") or v.startswith("fe-")]
         self.graph.remove_edges_from(edges_to_remove)
 
         db_edges = db.query(GraphEdge).all()
@@ -186,8 +186,8 @@ class KnowledgeGraphBuilder:
             )
 
         # Build lookup maps (batch queries — avoid N+1)
-        latest_weathers = db.query(Weather).order_by(Weather.recorded_at.desc()).limit(100).all()
-        weather_map: Dict[int, Weather] = {}
+        latest_weathers = db.query(WeatherHistory).order_by(WeatherHistory.recorded_at.desc()).limit(200).all()
+        weather_map: Dict[int, WeatherHistory] = {}
         for w in latest_weathers:
             if w.district_id not in weather_map:
                 weather_map[w.district_id] = w
@@ -234,7 +234,7 @@ class KnowledgeGraphBuilder:
             r_lvl = river_map.get(d.id)
             pred = pred_map.get(d.id)
 
-            rain_mm = float(rf.mm_24h if (rf and rf.mm_24h is not None) else 0.0)
+            rain_mm = float(w.rainfall_mm if (w and w.rainfall_mm is not None) else (rf.mm_24h if (rf and rf.mm_24h is not None) else 0.0))
             river_ratio = float(r_lvl.current_level / r_lvl.danger_level
                                 if (r_lvl and r_lvl.danger_level and r_lvl.danger_level > 0 and r_lvl.current_level is not None) else 0.15)
             telemetry_risk = min(95.0, max(10.0, rain_mm * 0.4 + river_ratio * 40.0))
@@ -389,9 +389,10 @@ class KnowledgeGraphBuilder:
                 self.graph.nodes[fe_id].update({
                     "label": f"{d_name} Flood",
                     "risk_score": float(pred.current_risk_score),
+                    "rainfall": float(pred.current_risk_score * 2.0),
                     "recorded_at": str(pred.created_at),
                 })
-                self.graph.add_edge(fe_id, f"d-{pred.district_id}",
+                self.graph.add_edge(f"d-{pred.district_id}", fe_id,
                                     weight=1.0, type="flood_event",
                                     relationship_type="flood_event",
                                     confidence=0.95, travel_time_min=0,

@@ -406,7 +406,7 @@ export default function RiverIntelligencePage() {
     refetchInterval: 12000,
   });
 
-  const { forceRetry } = useFloodData();
+  const { forceRetry, districts: wsDistricts } = useFloodData();
   const [showSkeleton, setShowSkeleton] = useState(true);
 
   useEffect(() => {
@@ -422,17 +422,40 @@ export default function RiverIntelligencePage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
-  // Deduplicate by station (the true unique key from the backend)
+  // Deduplicate by station and overlay live WebSocket telemetry
   const rivers: River[] = useMemo(() => {
     const raw: River[] = rawData || [];
     const seen = new Set<string>();
-    return raw.filter((r) => {
+    const deduplicated = raw.filter((r) => {
       const key = r.station || r.name;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [rawData]);
+
+    if (!wsDistricts || wsDistricts.length === 0) return deduplicated;
+
+    return deduplicated.map((r) => {
+      const match = wsDistricts.find(
+        (d) => d.district_name.toLowerCase() === (r.district || "").toLowerCase()
+      );
+      if (match && match.river_level_m !== undefined && match.river_level_m > 0) {
+        const cur = match.river_level_m;
+        const dng = r.danger_m ?? (match.river_danger_m || 5.0);
+        const overflow = dng > 0 ? Math.round((cur / dng) * 100) : null;
+        const status: "Normal" | "Warning" | "Critical" =
+          overflow !== null && overflow >= 95 ? "Critical" : overflow !== null && overflow >= 80 ? "Warning" : "Normal";
+        return {
+          ...r,
+          current_m: cur,
+          danger_m: dng,
+          overflow_pct: overflow,
+          status,
+        };
+      }
+      return r;
+    });
+  }, [rawData, wsDistricts]);
 
   // Build basin list from actual backend data
   const basins = useMemo(() => {

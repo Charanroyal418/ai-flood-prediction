@@ -39,7 +39,7 @@ const safeVal = (val: any, unit: string = "") => (val != null && val !== "") ? `
 
 export default function WeatherCenter() {
   const queryClient = useQueryClient();
-  const { mode, stormSimulationActive, toggleStormSimulation, forceRetry } = useFloodData();
+  const { mode, stormSimulationActive, toggleStormSimulation, forceRetry, districts: wsDistricts } = useFloodData();
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
   const [showSkeleton, setShowSkeleton] = useState(true);
@@ -50,9 +50,9 @@ export default function WeatherCenter() {
   }, []);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["dashboard", "live"],
+    queryKey: ["dashboardLive"],
     queryFn: async () => (await api.get("/api/v1/dashboard/live")).data,
-    refetchInterval: 15000,
+    refetchInterval: 10000,
   });
 
   const [simulating, setSimulating] = useState(false);
@@ -65,6 +65,7 @@ export default function WeatherCenter() {
     setSimulating(true);
     try {
       await toggleStormSimulation(!isStormActive);
+      await queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard", "live"] });
     } catch (err) {
       console.error(err);
@@ -79,7 +80,29 @@ export default function WeatherCenter() {
     }
   }, [selectedDistrictId]);
 
-  const districts = data?.districts || [];
+  const queryDistricts = data?.districts || [];
+  const districts = useMemo(() => {
+    if (!wsDistricts || wsDistricts.length === 0) return queryDistricts;
+    return queryDistricts.map((qd: any) => {
+      const match = wsDistricts.find(
+        (w) => w.district_id === qd.id || w.district_name.toLowerCase() === qd.name.toLowerCase()
+      );
+      if (match) {
+        return {
+          ...qd,
+          rainfall_mm: match.rainfall_mm ?? qd.rainfall_mm,
+          humidity: match.humidity ?? qd.humidity,
+          temperature: match.temperature ?? qd.temperature,
+          wind_speed: match.wind_speed ?? qd.wind_speed,
+          risk_score: match.risk_score ?? qd.risk_score,
+          risk_level: match.risk_level ?? qd.risk_level,
+          risk_color: match.risk_color ?? qd.risk_color,
+        };
+      }
+      return qd;
+    });
+  }, [queryDistricts, wsDistricts]);
+
   const weeklyForecast = data?.weekly_forecast || [];
   
   const avgRainfall = districts.length ? (districts.reduce((sum: number, d: any) => sum + (d.rainfall_mm || 0), 0) / districts.length).toFixed(1) : "0";

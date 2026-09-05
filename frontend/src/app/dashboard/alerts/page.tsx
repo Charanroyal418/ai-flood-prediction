@@ -59,7 +59,7 @@ function AlertCard({ alert }: { alert: any }) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div>
               <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Rainfall (24h)</p>
-              <p className="text-sm font-mono font-bold text-text-primary">{alert.rainfall_mm ?? 385} mm</p>
+              <p className="text-sm font-mono font-bold text-text-primary">{alert.rainfall_mm != null ? `${alert.rainfall_mm} mm` : "—"}</p>
             </div>
             <div>
               <p className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider mb-1">Model Conf</p>

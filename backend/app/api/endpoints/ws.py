@@ -27,6 +27,8 @@ from app.services.ws_manager import ws_manager
 from app.models.district import District
 from app.models.history import PredictionHistory, WeatherHistory, ModelInference
 from app.models.alert import Alert
+from app.models.entities import Dam
+from app.models.river import RiverLevel
 from app.kg.builder import kg_builder
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,17 @@ router = APIRouter()
 async def _get_dashboard_snapshot(db: Session) -> dict:
     """Build the initial dashboard snapshot from DB."""
     districts = db.query(District).all()
+    all_rivers = db.query(RiverLevel).order_by(RiverLevel.recorded_at.desc()).limit(200).all()
+    river_map = {}
+    for r in all_rivers:
+        if r.district_id not in river_map:
+            river_map[r.district_id] = r
+
+    all_dams = db.query(Dam).all()
+    dam_map = {dam.district_id: dam for dam in all_dams if dam.district_id is not None}
+    valid_dam_fill = [float(dam.fill_pct) for dam in all_dams if dam.fill_pct is not None]
+    avg_dam_fill = round(float(sum(valid_dam_fill) / len(valid_dam_fill)), 1) if valid_dam_fill else 58.0
+
     district_list = []
 
     for d in districts:
@@ -94,6 +107,10 @@ async def _get_dashboard_snapshot(db: Session) -> dict:
                 except Exception:
                     pass
 
+        dam_obj = dam_map.get(d.id)
+        res_val = round(float(dam_obj.fill_pct), 1) if (dam_obj and dam_obj.fill_pct is not None) else avg_dam_fill
+        r_rec = river_map.get(d.id)
+
         district_list.append({
             "district_id": d.id,
             "district_name": d.name,
@@ -107,6 +124,9 @@ async def _get_dashboard_snapshot(db: Session) -> dict:
             "rainfall_mm": latest_weather.rainfall_mm if latest_weather else 0,
             "humidity": latest_weather.humidity if latest_weather else 0,
             "temperature": latest_weather.temperature if latest_weather else 0,
+            "river_level_m": r_rec.current_level if r_rec else 0.0,
+            "river_danger_m": r_rec.danger_level if r_rec else 5.0,
+            "reservoir_storage": res_val,
         })
 
     # Latest model inference stats
