@@ -28,9 +28,9 @@ MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "gnn_model.pth")
 METRICS_PATH = os.path.join(MODEL_DIR, "gnn_metrics.json")
 
-# Risk level thresholds (4-class standard: Low, Moderate, High, Critical)
+# Risk level thresholds (5-class: Safe, Low, Moderate, High, Critical)
 RISK_CLASS_MAP = {
-    0: ("Low", "#22c55e"),
+    0: ("Safe", "#3b82f6"),
     1: ("Low", "#22c55e"),
     2: ("Moderate", "#f59e0b"),
     3: ("High", "#f97316"),
@@ -44,8 +44,10 @@ def get_risk_level_and_color(risk_score: float) -> Tuple[str, str]:
         return "High", "#f97316"
     elif risk_score >= 40.0:
         return "Moderate", "#f59e0b"
-    else:
+    elif risk_score >= 20.0:
         return "Low", "#22c55e"
+    else:
+        return "Safe", "#3b82f6"
 
 
 # Feature names (must match KG builder feature matrix)
