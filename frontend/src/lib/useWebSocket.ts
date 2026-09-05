@@ -1,11 +1,13 @@
 /**
- * WebSocket Client Utilities (Multiplexed)
- * ----------------------------------------
- * Creates ONE WebSocket connection to NEXT_PUBLIC_WS_URL (defaulting to /api/v1/ws)
- * without appending subpaths like /dashboard or /kg.
- * Multiplexes channel subscriptions and messages via JSON payloads:
- *   { "channel": "dashboard" }
- *   { "channel": "kg" }
+ * WebSocket Client Utilities (Single Unified Multiplexer)
+ * --------------------------------------------------------
+ * Creates exactly ONE WebSocket connection to process.env.NEXT_PUBLIC_WS_URL.
+ * No channel-specific sockets (/ws/dashboard, /ws/kg, /ws/alerts).
+ *
+ * After onopen, sends:
+ *   { action: "subscribe", channel: "dashboard" }
+ *   { action: "subscribe", channel: "kg" }
+ *   { action: "subscribe", channel: "alerts" }
  */
 
 "use client";
@@ -26,43 +28,34 @@ interface UseWebSocketOptions {
   onConnect?: () => void;
   onDisconnect?: () => void;
   enabled?: boolean;
-  heartbeatMs?: number;
-  maxRetries?: number;
 }
 
+const DEFAULT_WS_URL = "wss://tn-flood-ai-backend.onrender.com/api/v1/ws";
+
 export function getWsUrl(): string {
-  let url = process.env.NEXT_PUBLIC_WS_URL;
-  if (!url) {
-    if (typeof window !== "undefined") {
-      const isHttps = window.location.protocol === "https:";
-      let host = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-        ? "localhost:8000"
-        : "tn-flood-ai-backend.onrender.com";
-      if (process.env.NEXT_PUBLIC_API_URL) {
-        try {
-          host = new URL(process.env.NEXT_PUBLIC_API_URL).host;
-        } catch {
-          host = process.env.NEXT_PUBLIC_API_URL.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-        }
-      }
-      url = `${isHttps ? "wss:" : "ws:"}//${host}/api/v1/ws`;
-    } else {
+  let url = process.env.NEXT_PUBLIC_WS_URL || DEFAULT_WS_URL;
+  if (typeof window !== "undefined") {
+    const isLocal =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    if (isLocal && !process.env.NEXT_PUBLIC_WS_URL) {
       url = "ws://localhost:8000/api/v1/ws";
     }
   }
-  // NEVER append /dashboard or /kg - strip them if present
-  return url.replace(/\/+(dashboard|kg|alerts|pipeline)\/?$/, "").replace(/\/+$/, "");
+  // Guarantee NO subpaths like /dashboard, /kg, /alerts are ever appended
+  return url
+    .replace(/\/+(dashboard|kg|alerts|pipeline)\/?$/i, "")
+    .replace(/\/+$/, "");
 }
 
 type MessageListener = (data: Record<string, unknown>) => void;
 type StatusListener = (status: WsConnectionStatus) => void;
 
-class WebSocketMultiplexer {
-  private ws: WebSocket | null = null;
+class SharedWebSocket {
+  private socket: WebSocket | null = null;
   private status: WsConnectionStatus = "disconnected";
   private channelListeners = new Map<WsChannel, Set<MessageListener>>();
   private statusListeners = new Set<StatusListener>();
-  private activeChannels = new Set<WsChannel>();
   private retryCount = 0;
   private maxRetries = 10;
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -77,6 +70,10 @@ class WebSocketMultiplexer {
 
   public getStatus(): WsConnectionStatus {
     return this.status;
+  }
+
+  public getSocket(): WebSocket | null {
+    return this.socket;
   }
 
   private setStatus(newStatus: WsConnectionStatus) {
@@ -100,27 +97,12 @@ class WebSocketMultiplexer {
   }
 
   public subscribe(channel: WsChannel, listener: MessageListener) {
-    const listeners = this.channelListeners.get(channel);
-    if (listeners) {
-      listeners.add(listener);
-    }
-    this.activeChannels.add(channel);
-
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.sendRaw({ action: "subscribe", channel });
-    } else if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-      this.connect();
-    }
+    this.channelListeners.get(channel)?.add(listener);
+    this.ensureConnected();
   }
 
   public unsubscribe(channel: WsChannel, listener: MessageListener) {
-    const listeners = this.channelListeners.get(channel);
-    if (listeners) {
-      listeners.delete(listener);
-      if (listeners.size === 0) {
-        this.activeChannels.delete(channel);
-      }
-    }
+    this.channelListeners.get(channel)?.delete(listener);
   }
 
   public send(channel: WsChannel, message: Record<string, unknown>) {
@@ -128,14 +110,30 @@ class WebSocketMultiplexer {
   }
 
   public sendRaw(message: Record<string, unknown>) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(message));
     }
+  }
+
+  public ensureConnected() {
+    if (typeof window === "undefined") return;
+    if (
+      this.socket &&
+      (this.socket.readyState === WebSocket.OPEN ||
+        this.socket.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+    this.connect();
   }
 
   public connect() {
     if (typeof window === "undefined") return;
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.socket &&
+      (this.socket.readyState === WebSocket.OPEN ||
+        this.socket.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
 
@@ -143,32 +141,43 @@ class WebSocketMultiplexer {
     this.setStatus("connecting");
 
     try {
+      // Exactly ONE new WebSocket() instance in the entire project
       const socket = new WebSocket(url);
-      this.ws = socket;
+      this.socket = socket;
 
       socket.onopen = () => {
         this.setStatus("connected");
         this.retryCount = 0;
 
-        // Immediate subscriptions as required:
-        this.sendRaw({ action: "subscribe", channel: "dashboard" });
-        this.sendRaw({ action: "subscribe", channel: "kg" });
-        this.sendRaw({ action: "subscribe", channel: "alerts" });
+        // Subscribe to channels immediately after connection
+        socket.send(
+          JSON.stringify({
+            action: "subscribe",
+            channel: "dashboard",
+          })
+        );
 
-        // Also subscribe to any other active channels
-        this.activeChannels.forEach((ch) => {
-          if (ch !== "dashboard" && ch !== "kg" && ch !== "alerts") {
-            this.sendRaw({ action: "subscribe", channel: ch });
-          }
-        });
+        socket.send(
+          JSON.stringify({
+            action: "subscribe",
+            channel: "kg",
+          })
+        );
 
-        // Start heartbeat
+        socket.send(
+          JSON.stringify({
+            action: "subscribe",
+            channel: "alerts",
+          })
+        );
+
+        // Heartbeat keepalive every 30s
         this.clearHeartbeat();
         this.heartbeatTimer = setInterval(() => {
-          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.sendRaw({ action: "ping" });
+          if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ action: "ping" }));
           }
-        }, 30_000);
+        }, 30000);
       };
 
       socket.onmessage = (event) => {
@@ -179,10 +188,13 @@ class WebSocketMultiplexer {
           const type = data?.type as string | undefined;
           const msgChannel = data?.channel as WsChannel | undefined;
 
-          // Dispatch by explicit channel or message type
           if (msgChannel && this.channelListeners.has(msgChannel)) {
             this.channelListeners.get(msgChannel)!.forEach((cb) => cb(data));
-          } else if (type === "INITIAL_SNAPSHOT" || type === "PIPELINE_UPDATE" || type === "PIPELINE_TRIGGERED") {
+          } else if (
+            type === "INITIAL_SNAPSHOT" ||
+            type === "PIPELINE_UPDATE" ||
+            type === "PIPELINE_TRIGGERED"
+          ) {
             this.channelListeners.get("dashboard")?.forEach((cb) => cb(data));
           } else if (type === "KG_INITIAL_SNAPSHOT" || type === "KG_UPDATE") {
             this.channelListeners.get("kg")?.forEach((cb) => cb(data));
@@ -191,13 +203,12 @@ class WebSocketMultiplexer {
           } else if (type === "PIPELINE_STATUS") {
             this.channelListeners.get("pipeline")?.forEach((cb) => cb(data));
           } else {
-            // General broadcast to all
             this.channelListeners.forEach((listeners) => {
               listeners.forEach((cb) => cb(data));
             });
           }
         } catch (err) {
-          console.error("[WS] Failed to parse message:", err);
+          console.error("[WS] Message parsing error:", err);
         }
       };
 
@@ -208,7 +219,7 @@ class WebSocketMultiplexer {
         if (event.code === 1000 || event.code === 1001) return;
 
         if (this.retryCount < this.maxRetries) {
-          const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30_000);
+          const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
           this.retryCount += 1;
           this.reconnectTimer = setTimeout(() => this.connect(), delay);
         } else {
@@ -231,23 +242,24 @@ class WebSocketMultiplexer {
     }
   }
 
-  /** Close the current socket, reset retry count, and reconnect immediately. */
   public resetAndReconnect() {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     this.clearHeartbeat();
-    if (this.ws) {
-      // Null out handlers before closing so onclose doesn't schedule another retry
-      this.ws.onclose = null;
-      this.ws.onerror = null;
-      this.ws.onopen = null;
-      this.ws.onmessage = null;
-      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
-        this.ws.close(1000, "Manual reset");
+    if (this.socket) {
+      this.socket.onclose = null;
+      this.socket.onerror = null;
+      this.socket.onopen = null;
+      this.socket.onmessage = null;
+      if (
+        this.socket.readyState === WebSocket.OPEN ||
+        this.socket.readyState === WebSocket.CONNECTING
+      ) {
+        this.socket.close(1000, "Manual reset");
       }
-      this.ws = null;
+      this.socket = null;
     }
     this.retryCount = 0;
     this.setStatus("connecting");
@@ -255,22 +267,23 @@ class WebSocketMultiplexer {
   }
 }
 
-// Global multiplexer instance across frontend
-let multiplexerInstance: WebSocketMultiplexer | null = null;
-function getMultiplexer(): WebSocketMultiplexer {
-  if (!multiplexerInstance) {
-    multiplexerInstance = new WebSocketMultiplexer();
+// Single shared WebSocket instance across the entire frontend
+let sharedSocketInstance: SharedWebSocket | null = null;
+
+export function getSharedWebSocket(): SharedWebSocket {
+  if (!sharedSocketInstance) {
+    sharedSocketInstance = new SharedWebSocket();
   }
-  return multiplexerInstance;
+  return sharedSocketInstance;
 }
 
 /** Trigger a full WebSocket reset + reconnect from anywhere (e.g. Force Retry). */
 export function reconnectWebSocket(): void {
-  getMultiplexer().resetAndReconnect();
+  getSharedWebSocket().resetAndReconnect();
 }
 
 /**
- * Hook for managing a multiplexed WebSocket connection to a named channel.
+ * Hook for consuming from the shared single WebSocket connection.
  */
 export function useWebSocket({
   channel,
@@ -279,8 +292,8 @@ export function useWebSocket({
   onDisconnect,
   enabled = true,
 }: UseWebSocketOptions) {
-  const multiplexer = getMultiplexer();
-  const [status, setStatus] = useState<WsConnectionStatus>(multiplexer.getStatus());
+  const shared = getSharedWebSocket();
+  const [status, setStatus] = useState<WsConnectionStatus>(shared.getStatus());
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
 
@@ -306,25 +319,25 @@ export function useWebSocket({
       onMessageRef.current(data);
     };
 
-    multiplexer.addStatusListener(handleStatus);
-    multiplexer.subscribe(channel, handleMessage);
+    shared.addStatusListener(handleStatus);
+    shared.subscribe(channel, handleMessage);
 
     return () => {
-      multiplexer.removeStatusListener(handleStatus);
-      multiplexer.unsubscribe(channel, handleMessage);
+      shared.removeStatusListener(handleStatus);
+      shared.unsubscribe(channel, handleMessage);
     };
-  }, [channel, enabled, multiplexer]);
+  }, [channel, enabled, shared]);
 
   const send = useCallback(
     (message: Record<string, unknown>) => {
-      multiplexer.send(channel, message);
+      shared.send(channel, message);
     },
-    [channel, multiplexer]
+    [channel, shared]
   );
 
   const reconnect = useCallback(() => {
-    multiplexer.resetAndReconnect();
-  }, [multiplexer]);
+    shared.resetAndReconnect();
+  }, [shared]);
 
   return { status, send, reconnect };
 }
