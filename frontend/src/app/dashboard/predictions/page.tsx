@@ -12,8 +12,19 @@ import {
 } from "lucide-react";
 import { safeFormat } from "@/lib/utils";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { motion, AnimatePresence, useSpring, useTransform } from "framer-motion";
-import FloodMap from "@/components/map/FloodMap";
+import dynamic from "next/dynamic";
+
+const FloodMap = dynamic(() => import("@/components/map/FloodMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-paper-50/50 rounded-3xl animate-pulse">
+      <div className="flex flex-col items-center gap-2">
+        <MapPin className="w-8 h-8 text-signal-400 animate-bounce" />
+        <span className="text-xs text-text-secondary font-medium">Loading Map Engine...</span>
+      </div>
+    </div>
+  ),
+});
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,8 +207,54 @@ function StatCard({ icon: Icon, title, value, subtitle, accent = false, children
   );
 }
 
+function PredictionSkeleton() {
+  return (
+    <div className="flex flex-col gap-8 p-4 font-sans animate-pulse">
+      {/* Header Skeleton */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="h-10 w-72 bg-paper-100 rounded-2xl mb-2 border border-line/40" />
+          <div className="h-4 w-96 bg-paper-100/60 rounded-xl border border-line/30" />
+        </div>
+        <div className="h-10 w-32 bg-paper-100 rounded-2xl border border-line/40" />
+      </div>
+
+      {/* Top Status Bar Skeleton */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="bg-paper-100 rounded-3xl p-6 border border-line h-28" />
+        ))}
+      </div>
+
+      {/* Pipeline Flow Skeleton */}
+      <div className="bg-paper-100 border border-line rounded-3xl p-8 h-32" />
+
+      {/* Main Grid Skeleton */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+        <div className="xl:col-span-4 h-[900px] flex flex-col gap-6">
+          <div className="bg-paper-100 border border-line rounded-3xl h-[400px]" />
+          <div className="bg-paper-100 border border-line rounded-3xl flex-1" />
+        </div>
+        <div className="xl:col-span-8 flex flex-col gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-paper-100 rounded-[32px] p-8 border border-line h-[420px]" />
+            <div className="bg-paper-100 rounded-3xl p-8 border border-line h-[420px]" />
+          </div>
+          <div className="bg-paper-100 rounded-3xl p-8 border border-line h-[300px]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PredictionEnginePage() {
   const queryClient = useQueryClient();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [flowStage, setFlowStage] = useState(-1);
   const [selectedDistrictId, setSelectedDistrictId] = useState<number | null>(null);
   const [countdown, setCountdown] = useState(30);
@@ -349,6 +406,10 @@ export default function PredictionEnginePage() {
   }, [isWaiting, data?.status]);
 
   const showFallback = telemetryWaitTime >= 5;
+
+  if (!mounted) {
+    return <PredictionSkeleton />;
+  }
 
   if (isWaiting && !showFallback && data?.status !== "error") {
     return (
