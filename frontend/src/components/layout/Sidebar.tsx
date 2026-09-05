@@ -96,7 +96,7 @@ export default function Sidebar() {
     <>
       {/* ── Desktop Sidebar ─────────────────────────────────────────────────── */}
       <nav
-        className={`hidden md:flex flex-col h-full bg-paper-100 text-text-primary border-r border-line z-20 relative overflow-visible transition-all duration-200 ${
+        className={`hidden md:flex flex-col h-full bg-paper-100 text-text-primary border-r border-line z-50 relative overflow-visible transition-all duration-200 ${
           collapsed ? "w-16" : "w-64"
         }`}
         style={{ flexShrink: 0 }}

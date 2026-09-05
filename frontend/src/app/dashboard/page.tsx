@@ -105,7 +105,7 @@ function MetricCard({ title, value, unit, icon: Icon, sparklineData, bgClass, co
         {unit && <span className="text-[16px] font-medium text-slate-500 font-sans mb-1">{unit}</span>}
       </div>
       {sparklineData && (
-        <div className="absolute -bottom-2 -right-2 w-32 h-16 opacity-40 z-0">
+        <div className="absolute -bottom-2 -right-2 w-32 h-16 opacity-40 z-0 pointer-events-none">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={sparklineData.map((val: number, i: number) => ({ val, i }))}>
               <Area type="monotone" dataKey="val" stroke={sparklineColor} fill={sparklineColor} fillOpacity={0.2} strokeWidth={2} isAnimationActive={false} />
@@ -310,7 +310,7 @@ export default function CommandCenter() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 h-[600px]">
         {/* Map */}
         <div className="xl:col-span-2 glass-card overflow-hidden flex flex-col relative">
-          <div className="absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-md border border-white/60 px-5 py-4 rounded-[16px] shadow-[0_4px_12px_rgba(0,0,0,0.06)]">
+          <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur-md border border-white/60 px-5 py-4 rounded-[16px] shadow-[0_4px_12px_rgba(0,0,0,0.06)] pointer-events-none">
             <p className="text-[10px] uppercase tracking-[0.05em] font-bold text-[#9AA1B2] mb-3">Risk Legend</p>
             <div className="flex gap-4">
               {["Critical", "High", "Moderate", "Low"].map(level => (
@@ -406,10 +406,10 @@ export default function CommandCenter() {
                     >
                       {/* Pulse animation for active severe alerts */}
                       {isSevere && (
-                        <div className="absolute top-4 right-4 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping opacity-75" />
+                        <div className="absolute top-4 right-4 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping opacity-75 pointer-events-none" />
                       )}
                       {isSevere && (
-                        <div className="absolute top-4 right-4 w-2.5 h-2.5 rounded-full bg-red-500" />
+                        <div className="absolute top-4 right-4 w-2.5 h-2.5 rounded-full bg-red-500 pointer-events-none" />
                       )}
                       
                       <div className="flex justify-between items-start mb-3">
