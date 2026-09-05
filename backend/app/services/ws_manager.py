@@ -38,9 +38,16 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, channel: str = "dashboard"):
         """Accept and register a new WebSocket connection."""
-        await websocket.accept()
+        from starlette.websockets import WebSocketState
+        try:
+            if getattr(websocket, "client_state", None) == WebSocketState.CONNECTING:
+                await websocket.accept()
+        except Exception as e:
+            logger.warning(f"[WS] accept() in connect(): {e}")
+
         async with self._lock:
-            self._connections[channel].append(websocket)
+            if websocket not in self._connections[channel]:
+                self._connections[channel].append(websocket)
         logger.info(
             f"[WS] Client connected to '{channel}' channel. "
             f"Total: {len(self._connections[channel])}"

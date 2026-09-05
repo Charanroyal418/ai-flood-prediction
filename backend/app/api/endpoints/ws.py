@@ -20,6 +20,8 @@ Protocol:
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from starlette import status
+from starlette.websockets import WebSocketState
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -258,120 +260,184 @@ async def _send_channel_snapshot(websocket: WebSocket, channel: str):
         db.close()
 
 
-@router.websocket("")
-@router.websocket("/")
-async def ws_unified(websocket: WebSocket, initial_channel: str = None):
+async def handle_websocket_connection(websocket: WebSocket, initial_channel: str = None):
     """
-    Unified WebSocket endpoint for multiplexed channels.
-    Matches NEXT_PUBLIC_WS_URL=wss://.../api/v1/ws (without subpath).
-    Accepts handshake immediately without DB dependency (never returns 500 during handshake).
-    Subscribes to channels via: { "action": "subscribe", "channel": "dashboard" }.
+    Core WebSocket handler for all routes (/ws, /ws/dashboard, /ws/kg, /ws/alerts, /ws/pipeline).
+    
+    Guarantees:
+    1. Accepts the websocket connection BEFORE any channel parsing or DB queries.
+    2. Defaults to 'dashboard' channel if no channel is provided initially.
+    3. Handshake and initial setup are wrapped in try/except, closing with WS_1011_INTERNAL_ERROR
+       instead of bubbling an exception that causes HTTP 500.
+    4. Auto-subscribes to the initial channel and delivers its initial snapshot.
+    5. Handles subscribe, ping, get_dashboard, get_kg, and trigger_pipeline messages.
     """
-    await websocket.accept()
-    logger.info("[WS/unified] Client connected to unified stream")
+    # ── Step 1: Accept the handshake BEFORE any channel parsing or DB work ──
+    try:
+        if getattr(websocket, "client_state", None) == WebSocketState.CONNECTING:
+            await websocket.accept()
+    except Exception as accept_err:
+        logger.error(f"[WS] Handshake accept failed: {accept_err}")
+        try:
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        except Exception:
+            pass
+        return
+
     subscribed_channels = set()
 
-    # If client connected to a specific channel endpoint, auto-subscribe immediately
-    if initial_channel and initial_channel in SUPPORTED_CHANNELS:
+    # ── Step 2: Handshake & initial channel subscription wrapped in try/except ──
+    try:
+        # Determine initial channel from arg, query parameter, or default to "dashboard"
+        query_ch = None
+        if hasattr(websocket, "query_params") and websocket.query_params:
+            query_ch = websocket.query_params.get("channel") or websocket.query_params.get("initial_channel")
+        
+        target_channel = (initial_channel or query_ch or "dashboard").lower().strip()
+        if not target_channel or target_channel not in SUPPORTED_CHANNELS:
+            target_channel = "dashboard"
+
+        logger.info(f"[WS] Client connected to '{target_channel}' stream")
+
+        # Auto-subscribe to the resolved channel
         async with ws_manager._lock:
-            if websocket not in ws_manager._connections[initial_channel]:
-                ws_manager._connections[initial_channel].append(websocket)
-        subscribed_channels.add(initial_channel)
+            if websocket not in ws_manager._connections[target_channel]:
+                ws_manager._connections[target_channel].append(websocket)
+        subscribed_channels.add(target_channel)
+
+        # Send subscription confirmation
         await ws_manager.send_to_one(websocket, {
             "type": "subscribed",
-            "channel": initial_channel,
+            "channel": target_channel,
             "status": "ok",
         })
-        await _send_channel_snapshot(websocket, initial_channel)
 
+        # Deliver initial snapshot for the subscribed channel
+        await _send_channel_snapshot(websocket, target_channel)
+
+    except WebSocketDisconnect:
+        logger.info("[WS] Client disconnected during initial handshake")
+        for ch in list(subscribed_channels):
+            await ws_manager.disconnect(websocket, ch)
+        return
+    except Exception as init_err:
+        logger.error(f"[WS] Error during initial setup: {init_err}")
+        try:
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        except Exception:
+            pass
+        for ch in list(subscribed_channels):
+            await ws_manager.disconnect(websocket, ch)
+        return
+
+    # ── Step 3: Message Receive Loop ──
     try:
         while True:
             try:
                 data = await websocket.receive_json()
-                action = data.get("action", "")
-                channel = data.get("channel", "")
-
-                if action == "ping" or data.get("type") == "ping":
-                    await ws_manager.send_to_one(websocket, {
-                        "type": "pong",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
-
-                elif action == "subscribe":
-                    if not channel or channel not in SUPPORTED_CHANNELS:
-                        await ws_manager.send_to_one(websocket, {
-                            "type": "error",
-                            "code": 400,
-                            "message": f"Invalid channel '{channel}'. Supported channels: {sorted(list(SUPPORTED_CHANNELS))}",
-                        })
-                        continue
-
-                    async with ws_manager._lock:
-                        if websocket not in ws_manager._connections[channel]:
-                            ws_manager._connections[channel].append(websocket)
-                    subscribed_channels.add(channel)
-
-                    await ws_manager.send_to_one(websocket, {
-                        "type": "subscribed",
-                        "channel": channel,
-                        "status": "ok",
-                    })
-
-                    # Deliver initial channel snapshot
-                    await _send_channel_snapshot(websocket, channel)
-
-                elif channel == "dashboard" or action == "get_dashboard" or action == "get_snapshot":
-                    from app.db.session import SessionLocal
-                    db = SessionLocal()
-                    try:
-                        snap = await _get_dashboard_snapshot(db)
-                        snap["channel"] = "dashboard"
-                        await ws_manager.send_to_one(websocket, snap)
-                    except Exception as e:
-                        logger.warning(f"[WS/unified] Error getting dashboard snapshot: {e}")
-                    finally:
-                        db.close()
-
-                elif channel == "kg" or action == "get_kg":
-                    try:
-                        snap = await _get_kg_snapshot()
-                        snap["channel"] = "kg"
-                        await ws_manager.send_to_one(websocket, snap)
-                    except Exception as e:
-                        logger.warning(f"[WS/unified] Error getting kg snapshot: {e}")
-
-                elif action == "trigger_pipeline":
-                    import asyncio
-                    from app.db.session import SessionLocal
-                    from app.services.orchestrator import RealtimeOrchestrator
-
-                    async def _run():
-                        pipeline_db = SessionLocal()
-                        try:
-                            orch = RealtimeOrchestrator(pipeline_db)
-                            result = orch.run_pipeline(
-                                simulate_storm=data.get("storm", False)
-                            )
-                            await ws_manager.send_to_one(websocket, {
-                                "type": "PIPELINE_TRIGGERED",
-                                "channel": "dashboard",
-                                "result": result,
-                            })
-                        finally:
-                            pipeline_db.close()
-
-                    asyncio.ensure_future(_run())
-
-            except Exception as recv_err:
-                logger.debug(f"[WS/unified] Receive error: {recv_err}")
+            except WebSocketDisconnect:
                 break
+            except Exception as recv_err:
+                logger.debug(f"[WS] Receive error / client disconnect: {recv_err}")
+                break
+
+            if not isinstance(data, dict):
+                continue
+
+            action = str(data.get("action", "")).lower().strip()
+            msg_type = str(data.get("type", "")).lower().strip()
+            # If frontend sends no channel initially, default to "dashboard"
+            raw_channel = data.get("channel")
+            channel = str(raw_channel).lower().strip() if raw_channel else "dashboard"
+
+            if action == "ping" or msg_type == "ping":
+                await ws_manager.send_to_one(websocket, {
+                    "type": "pong",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+
+            elif action == "subscribe":
+                # If channel is unsupported or missing, safely fallback to "dashboard"
+                if not channel or channel not in SUPPORTED_CHANNELS:
+                    channel = "dashboard"
+
+                async with ws_manager._lock:
+                    if websocket not in ws_manager._connections[channel]:
+                        ws_manager._connections[channel].append(websocket)
+                subscribed_channels.add(channel)
+
+                await ws_manager.send_to_one(websocket, {
+                    "type": "subscribed",
+                    "channel": channel,
+                    "status": "ok",
+                })
+
+                # Deliver channel snapshot
+                await _send_channel_snapshot(websocket, channel)
+
+            elif channel == "dashboard" or action in ("get_dashboard", "get_snapshot"):
+                from app.db.session import SessionLocal
+                db = SessionLocal()
+                try:
+                    snap = await _get_dashboard_snapshot(db)
+                    snap["channel"] = "dashboard"
+                    await ws_manager.send_to_one(websocket, snap)
+                except Exception as e:
+                    logger.warning(f"[WS] Error getting dashboard snapshot: {e}")
+                finally:
+                    db.close()
+
+            elif channel == "kg" or action == "get_kg":
+                try:
+                    snap = await _get_kg_snapshot()
+                    snap["channel"] = "kg"
+                    await ws_manager.send_to_one(websocket, snap)
+                except Exception as e:
+                    logger.warning(f"[WS] Error getting kg snapshot: {e}")
+
+            elif action == "trigger_pipeline":
+                import asyncio
+                from app.db.session import SessionLocal
+                from app.services.orchestrator import RealtimeOrchestrator
+
+                async def _run():
+                    pipeline_db = SessionLocal()
+                    try:
+                        orch = RealtimeOrchestrator(pipeline_db)
+                        result = orch.run_pipeline(
+                            simulate_storm=data.get("storm", False)
+                        )
+                        await ws_manager.send_to_one(websocket, {
+                            "type": "PIPELINE_TRIGGERED",
+                            "channel": "dashboard",
+                            "result": result,
+                        })
+                    finally:
+                        pipeline_db.close()
+
+                asyncio.ensure_future(_run())
+
     except WebSocketDisconnect:
-        logger.info("[WS/unified] Client disconnected")
+        logger.info("[WS] Client disconnected")
     except Exception as e:
-        logger.error(f"[WS/unified] Unexpected error: {e}")
+        logger.error(f"[WS] Unexpected error in connection loop: {e}")
+        try:
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        except Exception:
+            pass
     finally:
-        for ch in subscribed_channels:
+        for ch in list(subscribed_channels):
             await ws_manager.disconnect(websocket, ch)
+
+
+@router.websocket("")
+@router.websocket("/")
+async def ws_unified(websocket: WebSocket):
+    """
+    Unified WebSocket endpoint matching NEXT_PUBLIC_WS_URL=wss://.../api/v1/ws.
+    Accepts connection immediately before channel parsing and defaults to 'dashboard'.
+    """
+    await handle_websocket_connection(websocket, initial_channel=None)
 
 
 @router.websocket("/dashboard")
@@ -380,8 +446,8 @@ async def ws_unified(websocket: WebSocket, initial_channel: str = None):
 @router.websocket("/pipeline")
 async def ws_legacy_bridge(websocket: WebSocket):
     """
-    Bridge any legacy channel route into the unified stream so it never throws 500 during handshake,
-    while auto-subscribing the client to its targeted channel immediately.
+    Channel-specific legacy WebSocket endpoints.
+    Accepts connection immediately and auto-subscribes to the targeted channel.
     """
     channel = websocket.url.path.rstrip("/").split("/")[-1].lower()
-    await ws_unified(websocket, initial_channel=channel)
+    await handle_websocket_connection(websocket, initial_channel=channel)
