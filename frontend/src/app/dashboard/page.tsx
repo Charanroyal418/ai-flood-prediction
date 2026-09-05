@@ -131,16 +131,27 @@ export default function CommandCenter() {
     toggleStormSimulation,
     engineStatus,
     forceRetry,
+    adminState,
   } = useFloodData();
 
   const { data, isLoading, refetch, isError } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
-      const res = await api.get("/api/v1/dashboard/live");
-      return res.data;
+      try {
+        const res = await api.get("/api/v1/dashboard/live");
+        return res.data;
+      } catch (err: any) {
+        if (err?.response?.status === 401) return null;
+        throw err;
+      }
     },
     refetchInterval: stormSimulationActive ? 3000 : 15000,
     staleTime: 0,
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 401) return false;
+      return failureCount < 2;
+    },
+    throwOnError: false,
   });
 
   // ── All state declarations FIRST (no TDZ in minified output) ─────────────
@@ -233,7 +244,14 @@ export default function CommandCenter() {
       {/* ── Action Header ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold text-text-primary font-sans">Regional Overview</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-[24px] font-bold text-text-primary font-sans">Regional Overview</h1>
+            {adminState === "unauthorized" && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300 shadow-sm">
+                Admin features unavailable
+              </span>
+            )}
+          </div>
           <p className="text-xs text-text-secondary mt-1">Tamil Nadu State Disaster Management Authority</p>
         </div>
         <button

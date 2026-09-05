@@ -82,11 +82,21 @@ export default function Sidebar() {
   const { data: liveData } = useQuery({
     queryKey: ["dashboardLive"],
     queryFn: async () => {
-      const res = await api.get("/api/v1/dashboard/live");
-      return res.data;
+      try {
+        const res = await api.get("/api/v1/dashboard/live");
+        return res?.data ?? null;
+      } catch (err: any) {
+        if (err?.response?.status === 401) return null;
+        return null;
+      }
     },
     refetchInterval: 10000,
     staleTime: 5000,
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 401) return false;
+      return failureCount < 2;
+    },
+    throwOnError: false,
   });
 
   const alertCount = liveData?.metrics?.active_alerts_count ?? 0;

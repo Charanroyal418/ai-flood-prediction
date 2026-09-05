@@ -69,26 +69,24 @@ api.interceptors.response.use(
     const config = error.config;
     if (!config) return Promise.reject(error);
 
-    // On 401 Unauthorized for admin endpoints or on admin page:
-    if (error.response?.status === 401) {
-      const isUrlAdmin = typeof config.url === 'string' && config.url.includes('/admin/');
-      const isPathAdmin = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard/admin');
-
-      if (isUrlAdmin || isPathAdmin) {
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.removeItem('floodsense_access_token');
-            localStorage.removeItem('floodsense_refresh_token');
-            localStorage.removeItem('floodsense_user');
-            delete api.defaults.headers.common['Authorization'];
-          } catch {}
-
-          if (window.location.pathname !== '/login') {
-            window.location.replace('/login');
-          }
-        }
+    // ── 401 Unauthorized for admin endpoints ──────────────────────────────────
+    // 1. Do not redirect on 401.
+    // 2. Do not reject with a global fatal error.
+    // 3. Ignore 401 only for /admin/* endpoints.
+    // 4. Return null data so caller receives null without crashing navigation.
+    const isUrlAdmin = typeof config.url === 'string' && (config.url.includes('/admin/') || config.url.startsWith('/admin'));
+    if (error.response?.status === 401 && isUrlAdmin) {
+      if (typeof window !== 'undefined') {
+        try {
+          window.dispatchEvent(new CustomEvent('floodsense-admin-unauthorized'));
+        } catch {}
       }
-      return Promise.reject(error);
+      return Promise.resolve({
+        ...error.response,
+        data: null,
+        status: 401,
+        isUnauthorized: true,
+      });
     }
 
     const isRetryable = !error.response || error.response.status >= 500;

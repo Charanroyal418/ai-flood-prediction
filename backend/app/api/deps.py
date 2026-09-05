@@ -55,7 +55,7 @@ def require_auth(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
+            detail="Unauthorized",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user

@@ -105,8 +105,9 @@ export interface SimulationMeta {
 // ─── Context State ────────────────────────────────────────────────────────────
 
 export type EngineStatus = "online" | "reconnecting" | "offline";
+export type AdminState = "authorized" | "unauthorized" | "idle";
 
-interface FloodDataState {
+export interface FloodDataState {
   // Mode indicator
   mode: "LIVE" | "SIMULATION";
   // Real-time district risk data
@@ -134,6 +135,10 @@ interface FloodDataState {
   alertStatus: WsConnectionStatus;
   // Engine health (from /api/v1/health only)
   engineStatus: EngineStatus;
+  // Admin State
+  adminState: AdminState;
+  setAdminState: (state: AdminState) => void;
+  checkAdminStatus: () => Promise<any>;
   // Derived stats
   criticalCount: number;
   highCount: number;
@@ -190,6 +195,40 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [kgData, setKgData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [engineStatus, setEngineStatus] = useState<EngineStatus>("reconnecting");
+  const [adminState, setAdminState] = useState<AdminState>("idle");
+
+  // Check admin status gracefully without throwing or affecting global error state
+  const checkAdminStatus = useCallback(async () => {
+    try {
+      const res = await api.get("/api/v1/admin/pipeline/status");
+      if (res?.status === 401 || (res as any)?.isUnauthorized) {
+        setAdminState("unauthorized");
+        return null;
+      }
+      if (res?.data) {
+        setAdminState("authorized");
+        return res.data;
+      }
+      return null;
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        setAdminState("unauthorized");
+        return null;
+      }
+      return null;
+    }
+  }, []);
+
+  // Listen for background unauthorized event broadcast by api.ts interceptor
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setAdminState("unauthorized");
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("floodsense-admin-unauthorized", handleUnauthorized);
+      return () => window.removeEventListener("floodsense-admin-unauthorized", handleUnauthorized);
+    }
+  }, []);
 
   // ── Safety: never leave isLoading=true beyond 3 seconds ──────────────────
   useEffect(() => {
@@ -614,6 +653,9 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     kgStatus,
     alertStatus,
     engineStatus,
+    adminState,
+    setAdminState,
+    checkAdminStatus,
     criticalCount,
     highCount,
     totalNodes: kgNodes.length,
@@ -655,6 +697,9 @@ const SAFE_DEFAULT: FloodDataState = {
   kgStatus: "disconnected",
   alertStatus: "disconnected",
   engineStatus: "reconnecting",
+  adminState: "idle",
+  setAdminState: () => {},
+  checkAdminStatus: async () => null,
   criticalCount: 0,
   highCount: 0,
   totalNodes: 0,

@@ -24,7 +24,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     logger.error(f"HTTP error occurred: {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
-        content={"message": exc.detail},
+        content={"detail": exc.detail, "message": exc.detail},
         headers=_get_cors_headers(request)
     )
 

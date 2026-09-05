@@ -129,57 +129,83 @@ export default function AdminPanel() {
   }, [authLoading, isAuthenticated, isAdmin, accessToken, router]);
 
   // Fetch pipeline status
-  const { data: status, isLoading: statusLoading, error: statusError } = useQuery<PipelineStatus>({
+  const { data: status, isLoading: statusLoading } = useQuery<PipelineStatus | null>({
     queryKey: ["adminPipelineStatus"],
-    queryFn: async () => (await api.get("/api/v1/admin/pipeline/status")).data,
+    queryFn: async () => {
+      try {
+        const res = await api.get("/api/v1/admin/pipeline/status");
+        if (res?.status === 401 || (res as any)?.isUnauthorized) return null;
+        return res?.data ?? null;
+      } catch (err: any) {
+        if (err?.response?.status === 401) return null;
+        return null;
+      }
+    },
     enabled: canQueryAdmin,
     retry: false,
+    throwOnError: false,
     refetchInterval: (query) => (canQueryAdmin && !query.state.error ? 5000 : false),
   });
 
   // Fetch model metrics
-  const { data: metrics, error: metricsError } = useQuery<ModelMetrics>({
+  const { data: metrics } = useQuery<ModelMetrics | null>({
     queryKey: ["adminModelMetrics"],
-    queryFn: async () => (await api.get("/api/v1/admin/ml/metrics")).data,
+    queryFn: async () => {
+      try {
+        const res = await api.get("/api/v1/admin/ml/metrics");
+        if (res?.status === 401 || (res as any)?.isUnauthorized) return null;
+        return res?.data ?? null;
+      } catch (err: any) {
+        if (err?.response?.status === 401) return null;
+        return null;
+      }
+    },
     enabled: canQueryAdmin,
     retry: false,
+    throwOnError: false,
   });
 
   // Fetch logs
-  const { data: logsData, error: logsError } = useQuery({
+  const { data: logsData } = useQuery({
     queryKey: ["adminLogs"],
-    queryFn: async () => (await api.get("/api/v1/admin/logs?limit=30")).data,
+    queryFn: async () => {
+      try {
+        const res = await api.get("/api/v1/admin/logs?limit=30");
+        if (res?.status === 401 || (res as any)?.isUnauthorized) return null;
+        return res?.data ?? null;
+      } catch (err: any) {
+        if (err?.response?.status === 401) return null;
+        return null;
+      }
+    },
     enabled: Boolean(canQueryAdmin && logsOpen),
     retry: false,
+    throwOnError: false,
   });
 
   // GNN training status poll
-  const { data: gnnStatus, error: gnnError } = useQuery({
+  const { data: gnnStatus } = useQuery({
     queryKey: ["gnnTrainStatus"],
-    queryFn: async () => (await api.get("/api/v1/admin/ml/retrain-gnn/status")).data,
+    queryFn: async () => {
+      try {
+        const res = await api.get("/api/v1/admin/ml/retrain-gnn/status");
+        if (res?.status === 401 || (res as any)?.isUnauthorized) return null;
+        return res?.data ?? null;
+      } catch (err: any) {
+        if (err?.response?.status === 401) return null;
+        return null;
+      }
+    },
     enabled: canQueryAdmin,
     retry: false,
+    throwOnError: false,
     refetchInterval: (query) => (canQueryAdmin && !query.state.error ? 3000 : false),
   });
-
-  // Intercept any 401 error response and redirect to login instead of retrying
-  useEffect(() => {
-    const errors = [statusError, metricsError, logsError, gnnError];
-    for (const err of errors) {
-      if ((err as any)?.response?.status === 401) {
-        handle401();
-        break;
-      }
-    }
-  }, [statusError, metricsError, logsError, gnnError, handle401]);
 
   // Mutations
   const triggerETL = useMutation({
     mutationFn: () => api.post("/api/v1/admin/etl/run"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["adminPipelineStatus"] }),
-    onError: (err: any) => {
-      if (err?.response?.status === 401) handle401();
-    },
   });
 
   const triggerGNN = useMutation({
@@ -188,17 +214,11 @@ export default function AdminPanel() {
       qc.invalidateQueries({ queryKey: ["gnnTrainStatus"] });
       qc.invalidateQueries({ queryKey: ["adminModelMetrics"] });
     },
-    onError: (err: any) => {
-      if (err?.response?.status === 401) handle401();
-    },
   });
 
   const resetCaches = useMutation({
     mutationFn: () => api.post("/api/v1/admin/pipeline/reset"),
     onSuccess: () => qc.invalidateQueries(),
-    onError: (err: any) => {
-      if (err?.response?.status === 401) handle401();
-    },
   });
 
   const isTraining = gnnStatus?.running || gnnStatus?.progress?.stage === "training";
