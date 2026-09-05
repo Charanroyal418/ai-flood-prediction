@@ -459,7 +459,7 @@ export default function RiverIntelligencePage() {
         ? Math.round((cur / dng) * 100)
         : null;
       const status: "Normal" | "Warning" | "Critical" =
-        overflow !== null && overflow >= 95 ? "Critical" : overflow !== null && overflow >= 80 ? "Warning" : "Normal";
+        overflow !== null && overflow >= 85 ? "Critical" : overflow !== null && overflow >= 70 ? "Warning" : "Normal";
       return {
         ...r,
         current_m: cur !== null ? Math.round(cur * 100) / 100 : null,

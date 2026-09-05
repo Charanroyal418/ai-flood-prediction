@@ -578,17 +578,18 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
       setStormSimulationActive(targetState);
       try {
         const res = await api.post(`/api/v1/dashboard/simulate-storm?active=${targetState}`, { active: targetState });
-        if (res.data?.storm_simulation_active !== undefined) {
-          setStormSimulationActive(res.data.storm_simulation_active);
+        const resPayload = res.data?.data || res.data;
+        if (resPayload?.storm_simulation_active !== undefined) {
+          setStormSimulationActive(Boolean(resPayload.storm_simulation_active));
         }
-        if (res.data?.storm_simulation) {
+        if (resPayload?.storm_simulation) {
           setSimulationMeta({
-            scenario: res.data.storm_simulation.scenario || DEFAULT_SIM_META.scenario,
-            category: res.data.storm_simulation.category || DEFAULT_SIM_META.category,
-            startedAt: res.data.storm_simulation.started_at || DEFAULT_SIM_META.startedAt,
-            durationMinutes: res.data.storm_simulation.duration_minutes || 30,
-            simulationId: res.data.storm_simulation.simulation_id || DEFAULT_SIM_META.simulationId,
-            predictionSource: res.data.storm_simulation.prediction_source || DEFAULT_SIM_META.predictionSource,
+            scenario: resPayload.storm_simulation.scenario || DEFAULT_SIM_META.scenario,
+            category: resPayload.storm_simulation.category || DEFAULT_SIM_META.category,
+            startedAt: resPayload.storm_simulation.started_at || DEFAULT_SIM_META.startedAt,
+            durationMinutes: resPayload.storm_simulation.duration_minutes || 30,
+            simulationId: resPayload.storm_simulation.simulation_id || DEFAULT_SIM_META.simulationId,
+            predictionSource: resPayload.storm_simulation.prediction_source || DEFAULT_SIM_META.predictionSource,
           });
         }
         sendDashboard({ action: "get_snapshot" });

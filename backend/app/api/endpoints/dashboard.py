@@ -555,10 +555,10 @@ def simulate_storm_event(
         pass
     orchestrator = RealtimeOrchestrator(db)
     summary = orchestrator.run_pipeline(simulate_storm=new_state)
-    sim_meta = get_storm_simulation_meta()
-
     return {
         "success": True,
+        "storm_simulation_active": new_state,
+        "storm_simulation": sim_meta,
         "data": {
             "status": "success",
             "storm_simulation_active": new_state,
@@ -686,9 +686,9 @@ def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
         else:
             overflow_pct = None
 
-        if overflow_pct is not None and overflow_pct >= 95:
+        if overflow_pct is not None and overflow_pct >= 85:
             status = "Critical"
-        elif overflow_pct is not None and overflow_pct >= 80:
+        elif overflow_pct is not None and overflow_pct >= 70:
             status = "Warning"
         else:
             status = "Normal"
