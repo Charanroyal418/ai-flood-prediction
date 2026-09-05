@@ -6,10 +6,12 @@
  * System administration dashboard for FloodSense AI.
  * Requires Admin role.
  */
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import {
   Brain, RefreshCw, Database, Activity, Users, Shield,
   ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock,
@@ -103,42 +105,81 @@ function SectionCard({ title, icon: Icon, children, className = "" }: {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function AdminPanel() {
+  const router = useRouter();
   const qc = useQueryClient();
+  const { accessToken, isAdmin, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [gnnSnapshots, setGnnSnapshots] = useState(150);
   const [logsOpen, setLogsOpen] = useState(false);
 
+  // Execute admin endpoints ONLY when user is an admin with a valid token
+  const canQueryAdmin = Boolean(!authLoading && isAuthenticated && isAdmin && accessToken);
+
+  const handle401 = useCallback(() => {
+    logout();
+    if (typeof window !== "undefined") {
+      router.replace("/login");
+    }
+  }, [logout, router]);
+
+  // If auth has loaded and user is not admin or unauthenticated, redirect to login
+  useEffect(() => {
+    if (!authLoading && (!isAuthenticated || !isAdmin || !accessToken)) {
+      router.replace("/login");
+    }
+  }, [authLoading, isAuthenticated, isAdmin, accessToken, router]);
+
   // Fetch pipeline status
-  const { data: status, isLoading: statusLoading } = useQuery<PipelineStatus>({
+  const { data: status, isLoading: statusLoading, error: statusError } = useQuery<PipelineStatus>({
     queryKey: ["adminPipelineStatus"],
     queryFn: async () => (await api.get("/api/v1/admin/pipeline/status")).data,
-    refetchInterval: 5000,
+    enabled: canQueryAdmin,
+    retry: false,
+    refetchInterval: (query) => (canQueryAdmin && !query.state.error ? 5000 : false),
   });
 
   // Fetch model metrics
-  const { data: metrics } = useQuery<ModelMetrics>({
+  const { data: metrics, error: metricsError } = useQuery<ModelMetrics>({
     queryKey: ["adminModelMetrics"],
     queryFn: async () => (await api.get("/api/v1/admin/ml/metrics")).data,
+    enabled: canQueryAdmin,
     retry: false,
   });
 
   // Fetch logs
-  const { data: logsData } = useQuery({
+  const { data: logsData, error: logsError } = useQuery({
     queryKey: ["adminLogs"],
     queryFn: async () => (await api.get("/api/v1/admin/logs?limit=30")).data,
-    enabled: logsOpen,
+    enabled: Boolean(canQueryAdmin && logsOpen),
+    retry: false,
   });
 
   // GNN training status poll
-  const { data: gnnStatus } = useQuery({
+  const { data: gnnStatus, error: gnnError } = useQuery({
     queryKey: ["gnnTrainStatus"],
     queryFn: async () => (await api.get("/api/v1/admin/ml/retrain-gnn/status")).data,
-    refetchInterval: 3000,
+    enabled: canQueryAdmin,
+    retry: false,
+    refetchInterval: (query) => (canQueryAdmin && !query.state.error ? 3000 : false),
   });
+
+  // Intercept any 401 error response and redirect to login instead of retrying
+  useEffect(() => {
+    const errors = [statusError, metricsError, logsError, gnnError];
+    for (const err of errors) {
+      if ((err as any)?.response?.status === 401) {
+        handle401();
+        break;
+      }
+    }
+  }, [statusError, metricsError, logsError, gnnError, handle401]);
 
   // Mutations
   const triggerETL = useMutation({
     mutationFn: () => api.post("/api/v1/admin/etl/run"),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["adminPipelineStatus"] }),
+    onError: (err: any) => {
+      if (err?.response?.status === 401) handle401();
+    },
   });
 
   const triggerGNN = useMutation({
@@ -147,15 +188,54 @@ export default function AdminPanel() {
       qc.invalidateQueries({ queryKey: ["gnnTrainStatus"] });
       qc.invalidateQueries({ queryKey: ["adminModelMetrics"] });
     },
+    onError: (err: any) => {
+      if (err?.response?.status === 401) handle401();
+    },
   });
 
   const resetCaches = useMutation({
     mutationFn: () => api.post("/api/v1/admin/pipeline/reset"),
     onSuccess: () => qc.invalidateQueries(),
+    onError: (err: any) => {
+      if (err?.response?.status === 401) handle401();
+    },
   });
 
   const isTraining = gnnStatus?.running || gnnStatus?.progress?.stage === "training";
   const trainingPct = gnnStatus?.progress?.pct ?? 0;
+
+  if (authLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="w-8 h-8 animate-spin text-violet-500" />
+          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Verifying admin credentials...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !isAdmin || !accessToken) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="glass-card max-w-md p-8 text-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+            <Shield className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-heading font-bold text-slate-900 dark:text-white">Admin Access Required</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            You must be logged in with an administrator account to access this panel. Redirecting to login...
+          </p>
+          <button
+            onClick={() => router.replace("/login")}
+            className="btn-primary text-xs py-2 px-4 mx-auto inline-flex items-center gap-2"
+          >
+            <LogIn className="w-4 h-4" /> Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-7xl">

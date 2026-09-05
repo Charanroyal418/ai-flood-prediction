@@ -43,7 +43,9 @@ api.interceptors.request.use(
 
     if (typeof window !== 'undefined') {
       const token =
+        localStorage.getItem('floodsense_access_token') ||
         localStorage.getItem('floodsense_token') ||
+        sessionStorage.getItem('floodsense_access_token') ||
         sessionStorage.getItem('floodsense_token');
       if (token) {
         config.headers['Authorization'] = `Bearer ${token}`;
@@ -66,6 +68,28 @@ api.interceptors.response.use(
   async (error) => {
     const config = error.config;
     if (!config) return Promise.reject(error);
+
+    // On 401 Unauthorized for admin endpoints or on admin page:
+    if (error.response?.status === 401) {
+      const isUrlAdmin = typeof config.url === 'string' && config.url.includes('/admin/');
+      const isPathAdmin = typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard/admin');
+
+      if (isUrlAdmin || isPathAdmin) {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem('floodsense_access_token');
+            localStorage.removeItem('floodsense_refresh_token');
+            localStorage.removeItem('floodsense_user');
+            delete api.defaults.headers.common['Authorization'];
+          } catch {}
+
+          if (window.location.pathname !== '/login') {
+            window.location.replace('/login');
+          }
+        }
+      }
+      return Promise.reject(error);
+    }
 
     const isRetryable = !error.response || error.response.status >= 500;
     const isGet = config.method?.toLowerCase() === 'get';
