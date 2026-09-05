@@ -44,5 +44,5 @@ httpx
 # Optional: SHAP explainability
 # shap  # Uncomment when needed (large install)
 
-# Optional: System monitoring
-# psutil  # Uncomment for /admin/system/stats
+# System monitoring
+psutil>=5.9.0

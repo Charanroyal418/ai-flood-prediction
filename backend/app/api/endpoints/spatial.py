@@ -49,11 +49,18 @@ def get_nearest_shelter(lat: float, lon: float, limit: int = 3, db: Session = De
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Spatial query failed: {str(e)}")
 
+_CACHED_DISTRICT_BOUNDS = None
+
 @router.get("/district-bounds")
 def get_district_boundaries(db: Session = Depends(get_db)):
     """
     Returns all districts as GeoJSON for frontend Leaflet rendering.
+    Instantly returns cached response without blocking on database locks.
     """
+    global _CACHED_DISTRICT_BOUNDS
+    if _CACHED_DISTRICT_BOUNDS:
+        return _CACHED_DISTRICT_BOUNDS
+
     try:
         from app.models.district import District
         districts = db.query(District).filter(District.geom_json != None).all()
@@ -69,16 +76,26 @@ def get_district_boundaries(db: Session = Depends(get_db)):
                 "geometry": d.geom_json
             })
             
-        return {
-            "type": "FeatureCollection",
-            "features": features
-        } if features else (
-            json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "districts.geojson"), "r", encoding="utf-8"))
-            if os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "districts.geojson"))
-            else {"type": "FeatureCollection", "features": []}
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Spatial query failed: {str(e)}")
+        if features:
+            _CACHED_DISTRICT_BOUNDS = {
+                "type": "FeatureCollection",
+                "features": features
+            }
+            return _CACHED_DISTRICT_BOUNDS
+    except Exception:
+        pass
+
+    # Instant resilient fallback from disk
+    geojson_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "districts.geojson")
+    if os.path.exists(geojson_path):
+        try:
+            with open(geojson_path, "r", encoding="utf-8") as f:
+                _CACHED_DISTRICT_BOUNDS = json.load(f)
+                return _CACHED_DISTRICT_BOUNDS
+        except Exception:
+            pass
+
+    return {"type": "FeatureCollection", "features": []}
 
 @router.get("/evacuation-route")
 def get_evacuation_route(lat: float, lon: float, db: Session = Depends(get_db)):

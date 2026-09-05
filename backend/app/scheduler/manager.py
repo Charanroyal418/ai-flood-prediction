@@ -2,11 +2,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 import logging
+import gc
 
 import app.db.base
 from app.db.session import SessionLocal
 from app.models.logs import SchedulerLog
-from app.services.orchestrator import RealtimeOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +22,17 @@ def job_run_orchestrator():
         logger.error(f"Pipeline background execution error: {e}")
     finally:
         db.close()
+        gc.collect()
 
 def init_scheduler():
     if not scheduler.running:
-        logger.info("Initializing APScheduler for Real-Time Pipeline (20s interval)...")
+        # On 512MB free tier containers, 5-minute ticks prevent continuous memory churn and OOM kills
+        interval_secs = 300
+        logger.info(f"Initializing APScheduler for Real-Time Pipeline ({interval_secs}s interval)...")
         
-        # Add Jobs (Tick every 20 seconds)
         scheduler.add_job(
             job_run_orchestrator,
-            trigger=IntervalTrigger(seconds=20),
+            trigger=IntervalTrigger(seconds=interval_secs),
             id="realtime_pipeline",
             name="End-to-End Flood Intelligence Pipeline",
             replace_existing=True
@@ -41,7 +43,7 @@ def init_scheduler():
         # Log to DB
         db = SessionLocal()
         try:
-            log = SchedulerLog(event="STARTED", message="Real-time pipeline initialized (15m tick).")
+            log = SchedulerLog(event="STARTED", message=f"Real-time pipeline initialized ({interval_secs}s tick).")
             db.add(log)
             db.commit()
         except Exception as e:
