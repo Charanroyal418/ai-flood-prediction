@@ -81,22 +81,6 @@ async def lifespan(app: FastAPI):
         finally:
             db.close()
             
-        logger.info("[FloodSense] Running Alembic Migrations safely...")
-        try:
-            import os
-            import alembic.config
-            import alembic.command
-            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            ini_path = os.path.join(backend_dir, "alembic.ini")
-            script_path = os.path.join(backend_dir, "alembic")
-            if os.path.exists(ini_path) and os.path.exists(script_path):
-                cfg = alembic.config.Config(ini_path)
-                cfg.set_main_option("script_location", script_path)
-                alembic.command.upgrade(cfg, "head")
-                logger.info("[FloodSense] Alembic migrations successfully applied.")
-        except BaseException as e:
-            logger.warning(f"[FloodSense] Alembic migration bypassed safely: {e}")
-        
         db = SessionLocal()
         try:
             if db.query(District).count() == 0:
