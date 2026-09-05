@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { motion, useSpring, useTransform } from "framer-motion";
 import api from "@/lib/api";
 import { useFloodData } from "@/context/FloodDataContext";
 import {

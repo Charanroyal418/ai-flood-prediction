@@ -61,13 +61,6 @@ export const navSections = [
   },
 ];
 
-function isItemActive(pathname: string, href: string) {
-  if (href === "/dashboard") {
-    return pathname === "/dashboard";
-  }
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
 export default function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -154,7 +147,7 @@ export default function Sidebar() {
 
               <div className="space-y-0.5">
                 {section.items.map((item) => {
-                  const active = isItemActive(pathname, item.href);
+                  const active = pathname === item.href;
                   return (
                     <Link
                       key={item.href}
@@ -251,7 +244,7 @@ export default function Sidebar() {
                   </p>
                   <div className="space-y-0.5">
                     {section.items.map((item) => {
-                      const active = isItemActive(pathname, item.href);
+                      const active = pathname === item.href;
                       return (
                         <Link
                           key={item.href}
