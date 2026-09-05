@@ -1,11 +1,10 @@
-import DashboardLayout from '@/components/layout/DashboardLayout';
-import QueryProvider from "@/components/QueryProvider";
+import Sidebar from "@/components/layout/Sidebar";
+import DashboardTopBar from "@/components/layout/DashboardTopBar";
+import GlobalSimulationBanner from "@/components/layout/GlobalSimulationBanner";
 import { FloodDataProvider } from "@/context/FloodDataContext";
 
-// All dashboard pages use React context hooks (useFloodData) which require
-// a browser runtime. Force dynamic rendering for the entire /dashboard tree
-// to prevent build-time static generation failures.
-export const dynamic = 'force-dynamic';
+// Force dynamic rendering for the dashboard tree to prevent static generation issues with hooks
+export const dynamic = "force-dynamic";
 
 export default function DashboardRootLayout({
   children,
@@ -13,12 +12,20 @@ export default function DashboardRootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <QueryProvider>
-      <FloodDataProvider>
-        <DashboardLayout>
-          {children}
-        </DashboardLayout>
-      </FloodDataProvider>
-    </QueryProvider>
+    <FloodDataProvider>
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar />
+        <div
+          className="flex-1 flex flex-col min-w-0 bg-background"
+          style={{ overflow: "hidden", minHeight: 0 }}
+        >
+          <DashboardTopBar />
+          <GlobalSimulationBanner />
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 max-w-[1920px] mx-auto w-full">
+            {children}
+          </main>
+        </div>
+      </div>
+    </FloodDataProvider>
   );
 }
