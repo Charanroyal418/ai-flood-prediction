@@ -57,7 +57,7 @@ class SharedWebSocket {
   private channelListeners = new Map<WsChannel, Set<MessageListener>>();
   private statusListeners = new Set<StatusListener>();
   private retryCount = 0;
-  private maxRetries = 10;
+  private maxRetries = 2;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
