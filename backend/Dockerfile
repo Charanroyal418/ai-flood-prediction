@@ -58,10 +58,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/api/v1/health || exit 1
 
-# Memory optimization for 512MB RAM containers
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONMALLOC=malloc
-
 # Start with Gunicorn + Uvicorn workers for production
 CMD gunicorn app.main:app \
      --worker-class uvicorn.workers.UvicornWorker \
@@ -69,8 +65,6 @@ CMD gunicorn app.main:app \
      --bind 0.0.0.0:${PORT:-8000} \
      --timeout 120 \
      --keep-alive 5 \
-     --max-requests 500 \
-     --max-requests-jitter 50 \
      --access-logfile - \
      --error-logfile - \
      --log-level info

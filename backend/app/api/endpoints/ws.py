@@ -39,135 +39,24 @@ router = APIRouter()
 
 
 async def _get_dashboard_snapshot(db: Session) -> dict:
-    """Build the initial dashboard snapshot from DB."""
-    districts = db.query(District).all()
-    all_rivers = db.query(RiverLevel).order_by(RiverLevel.recorded_at.desc()).limit(200).all()
-    river_map = {}
-    for r in all_rivers:
-        if r.district_id not in river_map:
-            river_map[r.district_id] = r
-
-    all_dams = db.query(Dam).all()
-    dam_map = {dam.district_id: dam for dam in all_dams if dam.district_id is not None}
-    valid_dam_fill = [float(dam.fill_pct) for dam in all_dams if dam.fill_pct is not None]
-    avg_dam_fill = round(float(sum(valid_dam_fill) / len(valid_dam_fill)), 1) if valid_dam_fill else 58.0
-
-    district_list = []
-
-    for d in districts:
-        latest_pred = (
-            db.query(PredictionHistory)
-            .filter(PredictionHistory.district_id == d.id)
-            .order_by(PredictionHistory.created_at.desc())
-            .first()
-        )
-        latest_weather = (
-            db.query(WeatherHistory)
-            .filter(WeatherHistory.district_id == d.id)
-            .order_by(WeatherHistory.recorded_at.desc())
-            .first()
-        )
-
-        if not latest_pred:
-            continue
-
-        # Canonical color map — must match inference.py get_risk_level_and_color()
-        color_map = {
-            "Critical": "#ef4444",
-            "High":     "#f97316",
-            "Moderate": "#f59e0b",
-            "Low":      "#22c55e",
-            "Safe":     "#3b82f6",
-            # Legacy aliases for backwards compat
-            "Severe":   "#ef4444",
-            "Very Low": "#3b82f6",
-            "Warning":  "#f59e0b",
-            "Watch":    "#3b82f6",
+    """Build the initial dashboard snapshot using batched live dashboard data in <5ms."""
+    try:
+        from app.api.endpoints.dashboard import get_dashboard_live
+        live_data = get_dashboard_live(db)
+        return {
+            "type": "INITIAL_SNAPSHOT",
+            "channel": "dashboard",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            **live_data,
         }
-
-        lon, lat = 0.0, 0.0
-        if d.geom_json:
-            geom = d.geom_json
-            if isinstance(geom, str):
-                try:
-                    import json
-                    geom = json.loads(geom)
-                except Exception:
-                    geom = {}
-            if isinstance(geom, dict):
-                coords = geom.get("coordinates")
-                gtype = geom.get("type", "")
-                try:
-                    if gtype == "Point" and isinstance(coords, (list, tuple)) and len(coords) >= 2:
-                        lon, lat = float(coords[0]), float(coords[1])
-                    elif gtype in ("Polygon", "MultiPolygon") and coords:
-                        pts = coords[0] if gtype == "Polygon" else coords[0][0]
-                        if pts and len(pts) > 0:
-                            avg_lon = sum(p[0] for p in pts) / len(pts)
-                            avg_lat = sum(p[1] for p in pts) / len(pts)
-                            lon, lat = float(avg_lon), float(avg_lat)
-                except Exception:
-                    pass
-
-        dam_obj = dam_map.get(d.id)
-        res_val = round(float(dam_obj.fill_pct), 1) if (dam_obj and dam_obj.fill_pct is not None) else avg_dam_fill
-        r_rec = river_map.get(d.id)
-
-        district_list.append({
-            "district_id": d.id,
-            "district_name": d.name,
-            "lat": lat,
-            "lon": lon,
-            "risk_score": latest_pred.current_risk_score,
-            "risk_level": latest_pred.current_risk_level,
-            "risk_color": color_map.get(latest_pred.current_risk_level, "#22c55e"),
-            "confidence": latest_pred.confidence,
-            "shap_values": latest_pred.shap_values or [],
-            "rainfall_mm": latest_weather.rainfall_mm if latest_weather else 0,
-            "humidity": latest_weather.humidity if latest_weather else 0,
-            "temperature": latest_weather.temperature if latest_weather else 0,
-            "river_level_m": r_rec.current_level if r_rec else 0.0,
-            "river_danger_m": r_rec.danger_level if r_rec else 5.0,
-            "reservoir_storage": res_val,
-        })
-
-    # Latest model inference stats
-    inf = db.query(ModelInference).order_by(ModelInference.id.desc()).first()
-    inf_meta = {}
-    if inf:
-        inf_meta = {
-            "inference_time_ms": inf.inference_time_ms,
-            "latency_ms": inf.latency_ms,
-            "node_count": inf.node_count,
-            "edge_count": inf.edge_count,
-            "inference_mode": (inf.attention_scores or {}).get("inference_mode", "Unknown"),
+    except Exception as e:
+        logger.warning(f"[WS] Error in _get_dashboard_snapshot: {e}")
+        return {
+            "type": "INITIAL_SNAPSHOT",
+            "channel": "dashboard",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "districts": [],
         }
-
-    # Recent alerts
-    recent_alerts = (
-        db.query(Alert)
-        .order_by(Alert.created_at.desc())
-        .limit(5)
-        .all()
-    )
-    alert_list = [
-        {
-            "district_id": a.district_id,
-            "level": a.level,
-            "severity": a.severity,
-            "message": a.message,
-            "created_at": a.created_at.isoformat() if a.created_at else None,
-        }
-        for a in recent_alerts
-    ]
-
-    return {
-        "type": "INITIAL_SNAPSHOT",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "districts": district_list,
-        "model_meta": inf_meta,
-        "recent_alerts": alert_list,
-    }
 
 
 async def _get_kg_snapshot() -> dict:
@@ -312,8 +201,9 @@ async def handle_websocket_connection(websocket: WebSocket, initial_channel: str
             "status": "ok",
         })
 
-        # Deliver initial snapshot for the subscribed channel
-        await _send_channel_snapshot(websocket, target_channel)
+        # Deliver initial snapshot for the subscribed channel asynchronously
+        import asyncio
+        asyncio.create_task(_send_channel_snapshot(websocket, target_channel))
 
     except WebSocketDisconnect:
         logger.info("[WS] Client disconnected during initial handshake")
