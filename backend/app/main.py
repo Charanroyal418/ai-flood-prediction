@@ -112,9 +112,12 @@ async def lifespan(app: FastAPI):
         finally:
             db.close()
 
-        init_scheduler()
         app.state.is_ready = True
         logger.info("[FloodSense] Application is fully initialized and ready.")
+        try:
+            init_scheduler()
+        except Exception as e:
+            logger.error(f"[FloodSense] Scheduler initialization warning: {e}")
 
     # Initialize app readiness flag
     app.state.is_ready = False

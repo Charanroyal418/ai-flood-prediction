@@ -51,10 +51,16 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    connect_args = {}
+    if "psycopg" in settings.DATABASE_URL:
+        connect_args["sslmode"] = "require"
+        connect_args["prepare_threshold"] = None
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     with connectable.connect() as connection:
