@@ -34,11 +34,29 @@ def get_district_details(district_id: int, db: Session = Depends(deps.get_db)) -
         return {
             "id": district.id,
             "name": district.name,
-            "population": district.population,
             "risk_score": 0,
             "risk_level": "Safe",
+            "risk_color": "#22c55e",
+            "rainfall_mm": 0.0,
+            "river_level_m": 0.0,
+            "humidity": 65.0,
+            "temperature": 28.0,
+            "pressure": 1012.0,
+            "wind_speed": 10.0,
+            "flood_probability": 0.0,
+            "ai_confidence": 0.85,
+            "shap_values": [],
             "history": [],
-            "forecast": []
+            "forecast": [],
+            "historical_floods": [],
+            "kg_fragment": {"nodes": [], "edges": []},
+            "demographics": {
+                "population": district.population or 1000000,
+                "area_km2": 2500,
+                "density": round((district.population or 1000000) / 2500),
+                "vulnerable_population": round((district.population or 1000000) * 0.25),
+                "shelters_available": 45
+            }
         }
     
     # 1. Prediction History (last 24 hours of actual DB data)
@@ -59,13 +77,14 @@ def get_district_details(district_id: int, db: Session = Depends(deps.get_db)) -
         })
         
     # 2. Forecast (1h, 3h, 6h, 12h, 24h from latest prediction)
-    now = latest_pred.created_at
+    now = latest_pred.created_at or datetime.now(timezone.utc)
+    rain_val = latest_weather.rainfall_mm if latest_weather else 0.0
     forecast = [
-        {"timestamp": (now + timedelta(hours=1)).isoformat(), "risk_score": latest_pred.forecast_1h * 100, "rainfall_mm": latest_weather.rainfall_mm},
-        {"timestamp": (now + timedelta(hours=3)).isoformat(), "risk_score": latest_pred.forecast_3h * 100, "rainfall_mm": latest_weather.rainfall_mm},
-        {"timestamp": (now + timedelta(hours=6)).isoformat(), "risk_score": latest_pred.forecast_6h * 100, "rainfall_mm": latest_weather.rainfall_mm},
-        {"timestamp": (now + timedelta(hours=12)).isoformat(), "risk_score": latest_pred.forecast_12h * 100, "rainfall_mm": latest_weather.rainfall_mm},
-        {"timestamp": (now + timedelta(hours=24)).isoformat(), "risk_score": latest_pred.forecast_24h * 100, "rainfall_mm": latest_weather.rainfall_mm},
+        {"timestamp": (now + timedelta(hours=1)).isoformat(), "risk_score": round((latest_pred.forecast_1h or 0) * 100, 1), "rainfall_mm": rain_val},
+        {"timestamp": (now + timedelta(hours=3)).isoformat(), "risk_score": round((latest_pred.forecast_3h or 0) * 100, 1), "rainfall_mm": rain_val},
+        {"timestamp": (now + timedelta(hours=6)).isoformat(), "risk_score": round((latest_pred.forecast_6h or 0) * 100, 1), "rainfall_mm": rain_val},
+        {"timestamp": (now + timedelta(hours=12)).isoformat(), "risk_score": round((latest_pred.forecast_12h or 0) * 100, 1), "rainfall_mm": rain_val},
+        {"timestamp": (now + timedelta(hours=24)).isoformat(), "risk_score": round((latest_pred.forecast_24h or 0) * 100, 1), "rainfall_mm": rain_val},
     ]
         
     # 3. Localized Historical Floods
@@ -115,6 +134,7 @@ def get_district_details(district_id: int, db: Session = Depends(deps.get_db)) -
         "risk_level": latest_pred.current_risk_level,
         "risk_color": color,
         "rainfall_mm": latest_weather.rainfall_mm,
+        "river_level_m": round(r_lvl_val.current_level, 2) if r_lvl_val else 0.0,
         "humidity": latest_weather.humidity,
         "temperature": latest_weather.temperature,
         "pressure": latest_weather.pressure,

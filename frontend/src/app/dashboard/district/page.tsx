@@ -231,7 +231,11 @@ export default function DistrictAnalyticsPage() {
     queryKey: ["districts"],
     queryFn: async () => {
       const res = await api.get("/api/v1/dashboard/districts");
-      return res.data;
+      // API returns { success: true, data: [...] } — extract the inner array
+      const payload = res.data;
+      if (Array.isArray(payload)) return payload;
+      if (payload?.data && Array.isArray(payload.data)) return payload.data;
+      return payload;
     },
     refetchInterval: 10000,
   });

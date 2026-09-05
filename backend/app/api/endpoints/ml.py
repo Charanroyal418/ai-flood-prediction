@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -53,6 +53,8 @@ class PredictionResponse(BaseModel):
     is_flooded: bool
     probability: float
     risk_level: str
+    success: bool = True
+    data: Optional[Dict[str, Any]] = None
 
 @router.post("/predict", response_model=PredictionResponse)
 def predict_flood_risk(
@@ -95,13 +97,15 @@ def predict_flood_risk(
     if prob > 0.8:
         risk_level = "Severe"
         
+    res_data = {
+        "is_flooded": bool(is_flooded),
+        "probability": float(round(prob * 100, 2)),
+        "risk_level": risk_level
+    }
     return {
+        **res_data,
         "success": True,
-        "data": {
-            "is_flooded": bool(is_flooded),
-            "probability": float(round(prob * 100, 2)),
-            "risk_level": risk_level
-        }
+        "data": res_data
     }
 
 @router.get("/trends")

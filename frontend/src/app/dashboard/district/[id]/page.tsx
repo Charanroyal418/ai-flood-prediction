@@ -165,7 +165,7 @@ export default function DistrictDrilldown() {
         <div className="glass-card p-5">
           <h2 className="text-sm font-heading font-bold text-slate-800 mb-4">Historical Flood Events</h2>
           <div className="space-y-3">
-            {data.historical_floods.map((h: any, i: number) => (
+            {(data.historical_floods || []).map((h: any, i: number) => (
               <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
                 <div>
                   <p className="text-xs font-bold text-slate-800">{h.year} - {h.event}</p>
@@ -183,10 +183,10 @@ export default function DistrictDrilldown() {
           <h2 className="text-sm font-heading font-bold text-slate-800 mb-4">Demographics & Infrastructure</h2>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "Total Population", value: data.demographics.population.toLocaleString() },
-              { label: "Area", value: `${data.demographics.area_km2} km²` },
-              { label: "Density", value: `${data.demographics.density}/km²` },
-              { label: "Active Shelters", value: data.demographics.shelters_available },
+              { label: "Total Population", value: data.demographics?.population?.toLocaleString() ?? "N/A" },
+              { label: "Area", value: `${data.demographics?.area_km2 ?? "N/A"} km²` },
+              { label: "Density", value: `${data.demographics?.density ?? "N/A"}/km²` },
+              { label: "Active Shelters", value: data.demographics?.shelters_available ?? "N/A" },
             ].map((d, i) => (
               <div key={i} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">{d.label}</p>

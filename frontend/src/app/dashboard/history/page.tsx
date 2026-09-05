@@ -113,7 +113,11 @@ export default function HistoricalPage() {
     queryKey: ["history"],
     queryFn: async () => {
       const res = await api.get("/api/v1/dashboard/history");
-      return res.data as any[];
+      // API returns { success: true, data: [...] } — extract the inner array
+      const payload = res.data;
+      if (Array.isArray(payload)) return payload as any[];
+      if (payload?.data && Array.isArray(payload.data)) return payload.data as any[];
+      return [] as any[];
     },
   });
 

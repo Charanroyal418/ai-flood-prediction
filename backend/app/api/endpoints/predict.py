@@ -157,11 +157,44 @@ def get_inference_cycle_route(background_tasks: BackgroundTasks):
 
 @router.get("/active-risks")
 def get_active_risks(db: Session = Depends(get_db)):
-    """Returns active district risk rankings for UI analytics widgets."""
+    """Returns active district risk rankings for UI analytics widgets.
+    
+    Joins PredictionHistory (which holds actual risk scores) with District names,
+    returning the most recent risk score per district sorted highest first.
+    """
     from app.models.district import District
-    districts = db.query(District).order_by(District.risk_score.desc()).limit(10).all()
-    if not districts:
+    from app.models.history import PredictionHistory
+    from sqlalchemy import func
+
+    # Subquery: latest prediction id per district
+    latest_subq = (
+        db.query(
+            PredictionHistory.district_id,
+            func.max(PredictionHistory.id).label("max_id"),
+        )
+        .group_by(PredictionHistory.district_id)
+        .subquery()
+    )
+
+    rows = (
+        db.query(District.name, PredictionHistory.current_risk_score)
+        .join(latest_subq, District.id == latest_subq.c.district_id)
+        .join(
+            PredictionHistory,
+            PredictionHistory.id == latest_subq.c.max_id,
+        )
+        .filter(PredictionHistory.current_risk_score.isnot(None))
+        .order_by(PredictionHistory.current_risk_score.desc())
+        .limit(10)
+        .all()
+    )
+
+    if not rows:
         return []
-    return [{"district": d.name, "score": d.risk_score or 0} for d in districts]
+
+    return [
+        {"district": name, "score": round(float(score), 1)}
+        for name, score in rows
+    ]
 
 

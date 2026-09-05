@@ -8,9 +8,8 @@ export function RainfallTrendChart() {
   const { data: trendData, isLoading } = useQuery({
     queryKey: ['rainfallTrend'],
     queryFn: async () => {
-      // Fetching real trend from the backend
       const res = await api.get('/api/v1/ml/trends');
-      return res.data;
+      return Array.isArray(res.data) ? res.data : (res.data?.data || []);
     },
     refetchInterval: 300000 // 5 minutes
   });
