@@ -242,11 +242,29 @@ class KnowledgeGraphBuilder:
 
             # Coordinates from DB geom_json
             lat, lon = 10.5, 78.5
-            if d.geom_json and "coordinates" in d.geom_json:
-                try:
-                    lon, lat = d.geom_json["coordinates"]
-                except Exception:
-                    pass
+            if d.geom_json:
+                geom = d.geom_json
+                if isinstance(geom, str):
+                    try:
+                        import json
+                        geom = json.loads(geom)
+                    except Exception:
+                        geom = {}
+                if isinstance(geom, dict) and "coordinates" in geom:
+                    coords = geom["coordinates"]
+                    gtype = geom.get("type", "Point")
+                    try:
+                        if gtype == "Point" and isinstance(coords, (list, tuple)) and len(coords) >= 2:
+                            lon, lat = float(coords[0]), float(coords[1])
+                        elif gtype in ("Polygon", "MultiPolygon") and coords:
+                            pts = coords[0] if gtype == "Polygon" else coords[0][0]
+                            if pts and len(pts) > 0:
+                                lons = [float(p[0]) for p in pts if isinstance(p, (list, tuple)) and len(p) >= 2]
+                                lats = [float(p[1]) for p in pts if isinstance(p, (list, tuple)) and len(p) >= 2]
+                                if lons and lats:
+                                    lon, lat = sum(lons) / len(lons), sum(lats) / len(lats)
+                    except Exception:
+                        pass
 
             self.graph.nodes[node_id].update({
                 "label": d.name,

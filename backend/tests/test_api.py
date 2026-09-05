@@ -203,3 +203,73 @@ class TestSpatialEndpoints:
             # Must have at least 2 different risk scores across 38 districts
             assert len(unique_scores) > 1, \
                 f"All {len(districts)} districts have identical risk scores: {unique_scores}"
+
+
+class TestRequiredChecklistEndpoints:
+    """Explicit tests for all endpoints specified in the QA checklist."""
+
+    def test_checklist_health(self, client):
+        resp = client.get("/api/v1/health")
+        assert resp.status_code == 200
+
+    def test_checklist_dashboard_live(self, client):
+        resp = client.get("/api/v1/dashboard/live")
+        assert resp.status_code == 200
+
+    def test_checklist_predict_inference_cycle(self, client):
+        resp = client.get("/api/v1/predict/inference-cycle")
+        assert resp.status_code == 200
+
+    def test_checklist_weather(self, client):
+        resp = client.get("/api/v1/weather")
+        assert resp.status_code == 200
+        assert "data" in resp.json()
+
+    def test_checklist_river(self, client):
+        resp = client.get("/api/v1/river")
+        assert resp.status_code == 200
+
+    def test_checklist_predictions(self, client):
+        resp = client.get("/api/v1/predictions")
+        assert resp.status_code == 200
+
+    def test_checklist_kg_topology(self, client):
+        resp = client.get("/api/v1/kg/topology")
+        assert resp.status_code == 200
+
+    def test_checklist_districts(self, client):
+        resp = client.get("/api/v1/districts")
+        assert resp.status_code == 200
+
+    def test_checklist_history(self, client):
+        resp = client.get("/api/v1/history")
+        assert resp.status_code == 200
+
+    def test_checklist_alerts(self, client):
+        resp = client.get("/api/v1/alerts")
+        assert resp.status_code == 200
+
+
+class TestWebSocketChecklist:
+    """Explicit tests for WebSocket handshakes and channels."""
+
+    def test_ws_unified_handshake_and_ping(self, client):
+        with client.websocket_connect("/api/v1/ws") as ws:
+            ws.send_json({"action": "ping"})
+            resp = ws.receive_json()
+            assert resp.get("type") == "pong"
+
+    def test_ws_dashboard_channel_auto_connect(self, client):
+        with client.websocket_connect("/api/v1/ws/dashboard") as ws:
+            resp = ws.receive_json()
+            assert resp.get("type") in ("subscribed", "INITIAL_SNAPSHOT", "DISTRICT_UPDATE")
+
+    def test_ws_kg_channel_auto_connect(self, client):
+        with client.websocket_connect("/api/v1/ws/kg") as ws:
+            resp = ws.receive_json()
+            assert resp.get("type") in ("subscribed", "KG_INITIAL_SNAPSHOT", "KG_UPDATE")
+
+    def test_ws_alerts_channel_auto_connect(self, client):
+        with client.websocket_connect("/api/v1/ws/alerts") as ws:
+            resp = ws.receive_json()
+            assert resp.get("type") in ("subscribed", "ALERT_HISTORY", "ALERT_DISPATCH")

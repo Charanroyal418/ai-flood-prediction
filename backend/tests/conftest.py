@@ -21,6 +21,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 def create_test_tables():
     """Create all tables in the test DB before any tests run."""
     import app.db.base  # Import all models
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)

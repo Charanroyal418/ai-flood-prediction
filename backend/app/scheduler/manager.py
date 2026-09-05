@@ -50,15 +50,18 @@ def init_scheduler():
             db.close()
 
 def shutdown_scheduler():
-    if scheduler.running:
-        scheduler.shutdown()
-        
-        db = SessionLocal()
-        try:
-            log = SchedulerLog(event="STOPPED", message="APScheduler shutdown gracefully.")
-            db.add(log)
-            db.commit()
-        except:
-            pass
-        finally:
-            db.close()
+    try:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+            
+            db = SessionLocal()
+            try:
+                log = SchedulerLog(event="STOPPED", message="APScheduler shutdown gracefully.")
+                db.add(log)
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to log scheduler shutdown: {e}")
+            finally:
+                db.close()
+    except Exception as e:
+        logger.warning(f"Scheduler shutdown error handled gracefully: {e}")

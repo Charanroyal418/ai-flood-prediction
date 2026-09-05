@@ -52,6 +52,19 @@ def sanitize_numpy(obj):
         return 0.0 if math.isnan(obj) or math.isinf(obj) else obj
     return obj
 
+def _safe_float(val, default=0.0) -> float:
+    if val is None:
+        return float(default)
+    if isinstance(val, (int, float)):
+        return 0.0 if (math.isnan(val) or math.isinf(val)) else float(val)
+    if isinstance(val, (list, tuple)) and len(val) > 0:
+        return _safe_float(val[0], default)
+    try:
+        f = float(val)
+        return 0.0 if (math.isnan(f) or math.isinf(f)) else f
+    except (ValueError, TypeError):
+        return float(default)
+
 router = APIRouter()
 
 # ─── Response Cache ───────────────────────────────────────────────────────────
@@ -289,8 +302,8 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
             "embedding": [float(v) for v in embeddings[idx][:8]] if len(embeddings) > 0 else [0.0] * 8,
             "embedding_norm": round(float(np.linalg.norm(embeddings[idx])), 3) if len(embeddings) > 0 else 0.0,
             "history": history,
-            "lat": float(n.get("lat", 0.0)),
-            "lon": float(n.get("lon", 0.0)),
+            "lat": _safe_float(n.get("lat"), 10.5),
+            "lon": _safe_float(n.get("lon"), 78.5),
             "data": {
                 "rainfall_mm": round(float(n.get("rainfall", 0.0)), 1),
                 "river_level": round(float(n.get("river_level", 0.0)), 2),

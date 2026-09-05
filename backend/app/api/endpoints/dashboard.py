@@ -486,6 +486,7 @@ class StormScenarioRequest(BaseModel):
 
 @router.post("/simulate-storm")
 def simulate_storm_event(
+    active: Optional[bool] = None,
     body: StormScenarioRequest = Body(default=StormScenarioRequest()),
     db: Session = Depends(deps.get_db),
 ) -> Any:
@@ -510,11 +511,12 @@ def simulate_storm_event(
     )
     import app.services.orchestrator as _orch_module
 
-    # Determine new active state
-    if body.active is None:
+    # Determine new active state (accepting both query param and JSON body)
+    resolved_active = active if active is not None else body.active
+    if resolved_active is None:
         new_state = not get_storm_simulation_active(db)
     else:
-        new_state = body.active
+        new_state = bool(resolved_active)
 
     # Inject custom scenario metadata before activation
     if new_state:

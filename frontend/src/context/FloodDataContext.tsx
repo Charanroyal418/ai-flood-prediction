@@ -519,7 +519,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
       const targetState = active !== undefined ? active : !stormSimulationActive;
       setStormSimulationActive(targetState);
       try {
-        const res = await api.post(`/api/v1/dashboard/simulate-storm?active=${targetState}`);
+        const res = await api.post(`/api/v1/dashboard/simulate-storm?active=${targetState}`, { active: targetState });
         if (res.data?.storm_simulation_active !== undefined) {
           setStormSimulationActive(res.data.storm_simulation_active);
         }

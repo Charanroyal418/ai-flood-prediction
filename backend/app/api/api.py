@@ -46,8 +46,8 @@ api_router.include_router(users.router, prefix="/users", tags=["users"])
 # ── WebSocket ────────────────────────────────────────────────────────────────
 api_router.include_router(ws.router, prefix="/ws", tags=["websocket"])
 
-# ── Weather & Rivers Aliases ────────────────────────────────────────────────
-from fastapi import Depends
+# ── Direct Endpoint Aliases for Global API Audit ────────────────────────────
+from fastapi import Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.api import deps
 
@@ -68,6 +68,27 @@ def get_weather(db: Session = Depends(deps.get_db)):
     }
 
 @api_router.get("/rivers", tags=["rivers"])
+@api_router.get("/river", tags=["rivers"])
 def get_rivers(db: Session = Depends(deps.get_db)):
     """Returns real-time river levels across gauging stations."""
     return dashboard.get_river_levels(db)
+
+@api_router.get("/districts", tags=["districts"])
+def get_districts(db: Session = Depends(deps.get_db)):
+    """Returns all districts with telemetry and risk scores."""
+    return dashboard.get_all_districts(db)
+
+@api_router.get("/alerts", tags=["alerts"])
+def get_alerts(db: Session = Depends(deps.get_db)):
+    """Returns active district flood alerts."""
+    return dashboard.get_all_alerts(db)
+
+@api_router.get("/predictions", tags=["predictions"])
+def get_predictions(background_tasks: BackgroundTasks = BackgroundTasks()):
+    """Returns real-time AI prediction telemetry across all districts."""
+    return dashboard.get_dashboard_predictions(background_tasks)
+
+@api_router.get("/history", tags=["history"])
+def get_history():
+    """Returns historical flood event records."""
+    return dashboard.get_historical_flood_events()

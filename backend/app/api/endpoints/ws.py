@@ -187,9 +187,60 @@ async def _get_kg_snapshot() -> dict:
 SUPPORTED_CHANNELS = {"dashboard", "kg", "alerts", "weather", "river", "pipeline"}
 
 
+async def _send_channel_snapshot(websocket: WebSocket, channel: str):
+    """Deliver initial channel snapshot to a subscribed client."""
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        if channel in ("dashboard", "weather", "river"):
+            snap = await _get_dashboard_snapshot(db)
+            snap["channel"] = channel
+            await ws_manager.send_to_one(websocket, snap)
+        elif channel == "kg":
+            snap = await _get_kg_snapshot()
+            snap["channel"] = "kg"
+            await ws_manager.send_to_one(websocket, snap)
+        elif channel == "alerts":
+            recent_alerts = (
+                db.query(Alert)
+                .order_by(Alert.created_at.desc())
+                .limit(10)
+                .all()
+            )
+            await ws_manager.send_to_one(websocket, {
+                "type": "ALERT_HISTORY",
+                "channel": "alerts",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "alerts": [
+                    {
+                        "district_id": a.district_id,
+                        "level": a.level,
+                        "severity": a.severity,
+                        "message": a.message,
+                        "suggested_response": a.suggested_response,
+                        "confidence": a.confidence,
+                        "created_at": a.created_at.isoformat() if a.created_at else None,
+                    }
+                    for a in recent_alerts
+                ],
+            })
+        elif channel == "pipeline":
+            await ws_manager.send_to_one(websocket, {
+                "type": "PIPELINE_STATUS",
+                "channel": "pipeline",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "connected",
+                "message": "Listening for pipeline updates...",
+            })
+    except Exception as snap_err:
+        logger.warning(f"[WS/unified] Error sending snapshot for {channel}: {snap_err}")
+    finally:
+        db.close()
+
+
 @router.websocket("")
 @router.websocket("/")
-async def ws_unified(websocket: WebSocket):
+async def ws_unified(websocket: WebSocket, initial_channel: str = None):
     """
     Unified WebSocket endpoint for multiplexed channels.
     Matches NEXT_PUBLIC_WS_URL=wss://.../api/v1/ws (without subpath).
@@ -199,6 +250,19 @@ async def ws_unified(websocket: WebSocket):
     await websocket.accept()
     logger.info("[WS/unified] Client connected to unified stream")
     subscribed_channels = set()
+
+    # If client connected to a specific channel endpoint, auto-subscribe immediately
+    if initial_channel and initial_channel in SUPPORTED_CHANNELS:
+        async with ws_manager._lock:
+            if websocket not in ws_manager._connections[initial_channel]:
+                ws_manager._connections[initial_channel].append(websocket)
+        subscribed_channels.add(initial_channel)
+        await ws_manager.send_to_one(websocket, {
+            "type": "subscribed",
+            "channel": initial_channel,
+            "status": "ok",
+        })
+        await _send_channel_snapshot(websocket, initial_channel)
 
     try:
         while True:
@@ -234,53 +298,7 @@ async def ws_unified(websocket: WebSocket):
                     })
 
                     # Deliver initial channel snapshot
-                    from app.db.session import SessionLocal
-                    db = SessionLocal()
-                    try:
-                        if channel in ("dashboard", "weather", "river"):
-                            snap = await _get_dashboard_snapshot(db)
-                            snap["channel"] = channel
-                            await ws_manager.send_to_one(websocket, snap)
-                        elif channel == "kg":
-                            snap = await _get_kg_snapshot()
-                            snap["channel"] = "kg"
-                            await ws_manager.send_to_one(websocket, snap)
-                        elif channel == "alerts":
-                            recent_alerts = (
-                                db.query(Alert)
-                                .order_by(Alert.created_at.desc())
-                                .limit(10)
-                                .all()
-                            )
-                            await ws_manager.send_to_one(websocket, {
-                                "type": "ALERT_HISTORY",
-                                "channel": "alerts",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "alerts": [
-                                    {
-                                        "district_id": a.district_id,
-                                        "level": a.level,
-                                        "severity": a.severity,
-                                        "message": a.message,
-                                        "suggested_response": a.suggested_response,
-                                        "confidence": a.confidence,
-                                        "created_at": a.created_at.isoformat() if a.created_at else None,
-                                    }
-                                    for a in recent_alerts
-                                ],
-                            })
-                        elif channel == "pipeline":
-                            await ws_manager.send_to_one(websocket, {
-                                "type": "PIPELINE_STATUS",
-                                "channel": "pipeline",
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "status": "connected",
-                                "message": "Listening for pipeline updates...",
-                            })
-                    except Exception as snap_err:
-                        logger.warning(f"[WS/unified] Error sending snapshot for {channel}: {snap_err}")
-                    finally:
-                        db.close()
+                    await _send_channel_snapshot(websocket, channel)
 
                 elif channel == "dashboard" or action == "get_dashboard" or action == "get_snapshot":
                     from app.db.session import SessionLocal
@@ -342,6 +360,8 @@ async def ws_unified(websocket: WebSocket):
 @router.websocket("/pipeline")
 async def ws_legacy_bridge(websocket: WebSocket):
     """
-    Bridge any legacy channel route into the unified stream so it never throws 500 during handshake.
+    Bridge any legacy channel route into the unified stream so it never throws 500 during handshake,
+    while auto-subscribing the client to its targeted channel immediately.
     """
-    await ws_unified(websocket)
+    channel = websocket.url.path.rstrip("/").split("/")[-1].lower()
+    await ws_unified(websocket, initial_channel=channel)
