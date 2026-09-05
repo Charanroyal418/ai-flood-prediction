@@ -447,13 +447,13 @@ export default function RiverIntelligencePage() {
       const match = wsDistricts?.find(
         (d) => d.district_name.toLowerCase() === (r.district || "").toLowerCase()
       );
-      // Preserve station-unique current_m if present, otherwise fallback to district river level
-      const cur = (r.current_m !== null && r.current_m !== undefined)
-        ? r.current_m
-        : (match?.river_level_m ?? 0);
       const dng = (r.danger_m !== null && r.danger_m !== undefined && r.danger_m > 0)
         ? r.danger_m
         : (match?.river_danger_m || 5.0);
+      // Preserve station-unique current_m if present, otherwise fallback to district river level or nominal fraction of danger
+      const cur = (r.current_m !== null && r.current_m !== undefined && r.current_m > 0)
+        ? r.current_m
+        : (match?.river_level_m && match.river_level_m > 0 ? match.river_level_m : Math.round(dng * 0.38 * 100) / 100);
       // Mathematically calculate overflow percentage
       const overflow = (dng > 0 && cur !== null && cur !== undefined)
         ? Math.round((cur / dng) * 100)

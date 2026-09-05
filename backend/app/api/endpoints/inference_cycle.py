@@ -583,7 +583,7 @@ def _execute_inference_pipeline(db: Session) -> Any:
         river_pct = round(float(r_record.current_level / r_record.danger_level * 100.0 if r_record and r_record.danger_level > 0 else 15.0), 1)
         elev_val = round(float(dem_record.elevation if dem_record else 15.0), 1)
         risk_score = round(float(r.get("risk_score", 0)), 1)
-        res_storage = round(float(dam_obj.fill_pct), 1) if (dam_obj and dam_obj.fill_pct is not None) else avg_dam_fill
+        res_storage = min(100.0, max(0.0, round(float(dam_obj.fill_pct), 1))) if (dam_obj and dam_obj.fill_pct is not None) else min(100.0, max(0.0, avg_dam_fill))
 
         # Dynamic attention score derived from GAT attention weights & risk influence
         att_score = round(float(min(0.99, max(0.45, 0.48 + (risk_score / 190.0)))), 3)

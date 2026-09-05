@@ -37,12 +37,17 @@ logger = logging.getLogger(__name__)
 # River Station Reference Data
 # ---------------------------------------------------------------------------
 # Source: CWC Flood Forecasting — Tamil Nadu River Basin Atlas
+# ---------------------------------------------------------------------------
+# River Station Reference Data
+# ---------------------------------------------------------------------------
+# Source: CWC Flood Forecasting — Tamil Nadu River Basin Atlas & Open-Meteo GloFAS
 # Fields:
 #   danger_m:  CWC danger level in meters (above gauge datum)
 #   base_m:    Typical dry-season base flow level
 #   frl_m:     Full Reservoir Level (for dam-controlled rivers)
 #   catchment_km2: Upstream catchment area (for runoff calculation)
 #   district_name: Primary monitoring district
+#   lat, lon:  Gauge station coordinates for Open-Meteo Flood API (GloFAS)
 # ---------------------------------------------------------------------------
 RIVER_STATIONS: List[Dict[str, Any]] = [
     {
@@ -53,7 +58,9 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": 44.96,
         "catchment_km2": 37243,
         "district_name": "Salem",
-        "wris_station_id": "3N01"
+        "wris_station_id": "3N01",
+        "lat": 11.7967,
+        "lon": 77.8016,
     },
     {
         "name": "Adyar River",
@@ -63,7 +70,9 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": 9.27,
         "catchment_km2": 860,
         "district_name": "Kancheepuram",
-        "wris_station_id": "3N07"
+        "wris_station_id": "3N07",
+        "lat": 13.0117,
+        "lon": 80.0594,
     },
     {
         "name": "Cooum River",
@@ -73,7 +82,9 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": None,
         "catchment_km2": 242,
         "district_name": "Chennai",
-        "wris_station_id": "3N08"
+        "wris_station_id": "3N08",
+        "lat": 13.0674,
+        "lon": 80.2829,
     },
     {
         "name": "Palar River",
@@ -83,7 +94,9 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": None,
         "catchment_km2": 17041,
         "district_name": "Vellore",
-        "wris_station_id": "3N09"
+        "wris_station_id": "3N09",
+        "lat": 12.6825,
+        "lon": 78.6192,
     },
     {
         "name": "Ponnaiyar River",
@@ -93,7 +106,9 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": 38.86,
         "catchment_km2": 8493,
         "district_name": "Tiruvannamalai",
-        "wris_station_id": "3N10"
+        "wris_station_id": "3N10",
+        "lat": 12.1833,
+        "lon": 78.8667,
     },
     {
         "name": "Vellar River",
@@ -103,7 +118,9 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": None,
         "catchment_km2": 7795,
         "district_name": "Cuddalore",
-        "wris_station_id": "3N04"
+        "wris_station_id": "3N04",
+        "lat": 11.4167,
+        "lon": 79.7667,
     },
     {
         "name": "Vaigai River",
@@ -113,7 +130,9 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": 28.04,
         "catchment_km2": 7225,
         "district_name": "Theni",
-        "wris_station_id": "3N14"
+        "wris_station_id": "3N14",
+        "lat": 10.0533,
+        "lon": 77.5878,
     },
     {
         "name": "Thamirabarani River",
@@ -123,7 +142,9 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": 48.77,
         "catchment_km2": 5968,
         "district_name": "Tirunelveli",
-        "wris_station_id": "3N17"
+        "wris_station_id": "3N17",
+        "lat": 8.7078,
+        "lon": 77.3689,
     },
     {
         "name": "Bhavani River",
@@ -133,11 +154,24 @@ RIVER_STATIONS: List[Dict[str, Any]] = [
         "frl_m": 35.05,
         "catchment_km2": 6070,
         "district_name": "Erode",
-        "wris_station_id": "3N02"
+        "wris_station_id": "3N02",
+        "lat": 11.4700,
+        "lon": 77.1200,
     },
 ]
 
-# ---------------------------------------------------------------------------
+# 10-minute cache for Open-Meteo Flood API (GloFAS) telemetry
+_RIVER_CACHE: Dict[str, Any] = {
+    "timestamp": 0.0,
+    "stations": {},  # station_name -> dict
+}
+_RIVER_CACHE_TTL = 600.0  # 10 minutes (600s)
+_OPEN_METEO_FLOOD_URL = "https://flood-api.open-meteo.com/v1/flood"
+
+
+def get_cached_river_data() -> Dict[str, Any]:
+    """Retrieve the latest cached GloFAS river discharge and stress data."""
+    return dict(_RIVER_CACHE.get("stations", {}))
 # Physics-Based River Level Model
 # ---------------------------------------------------------------------------
 
@@ -273,29 +307,91 @@ class RiverETL(BaseETLPipeline):
             logger.debug(f"[RiverETL] Rainfall query failed for {district_name}: {e}")
         return 0.0
 
-    def _try_wris_api(self, station_id: str) -> Optional[float]:
+    def _fetch_open_meteo_flood(self) -> Dict[str, Dict[str, Any]]:
         """
-        Attempt to fetch real gauge level from India-WRIS public API.
-        Returns level in meters if successful, None otherwise.
-        
-        Note: India-WRIS real-time data API requires registration.
-        This stub calls the public station status endpoint.
+        Fetch real river discharge from Open-Meteo Flood API (GloFAS).
+        Derives River Stress (0–100), Flood likelihood, water level, and overflow_pct.
+        Caches results for 10 minutes.
         """
+        import time
+        now_epoch = time.time()
+        if (
+            now_epoch - _RIVER_CACHE["timestamp"] < _RIVER_CACHE_TTL
+            and len(_RIVER_CACHE["stations"]) >= len(RIVER_STATIONS)
+        ):
+            return dict(_RIVER_CACHE["stations"])
+
+        lats = ",".join(str(s["lat"]) for s in RIVER_STATIONS)
+        lons = ",".join(str(s["lon"]) for s in RIVER_STATIONS)
+        params = {
+            "latitude": lats,
+            "longitude": lons,
+            "daily": "river_discharge,river_discharge_mean,river_discharge_max",
+            "past_days": 7,
+            "forecast_days": 7,
+        }
+
         try:
-            url = f"https://indiawris.gov.in/wris/#/RealTimeData"
-            # India-WRIS does not expose a public REST API without auth.
-            # When/if credentials are available, replace with actual endpoint:
-            # url = f"https://cwcweb.cwc.gov.in/api/gauges/{station_id}/current"
-            # resp = self.session.get(url, timeout=8, headers={"Authorization": ...})
-            # return float(resp.json()["gauge_m"])
-            return None  # API not publicly accessible without credentials
-        except Exception:
-            return None
+            resp = self.session.get(_OPEN_METEO_FLOOD_URL, params=params, timeout=8.0)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data if isinstance(data, list) else [data]
+
+            parsed_stations = {}
+            for i, rs in enumerate(RIVER_STATIONS):
+                res = results[i] if i < len(results) else {}
+                daily = res.get("daily", {})
+                discharges = daily.get("river_discharge", [])
+                valid_d = [x for x in discharges if x is not None]
+
+                # Today is at index 7 (since past_days=7)
+                today_q = discharges[7] if len(discharges) > 7 and discharges[7] is not None else (valid_d[-1] if valid_d else 1.0)
+                q_mean = sum(valid_d) / len(valid_d) if valid_d else 1.0
+                q_max = max(valid_d) if valid_d else max(2.0, q_mean * 2.0)
+
+                # Normalized historical ratio:
+                r = float(today_q) / max(0.01, float(q_mean))
+                if r <= 1.0:
+                    stress = 15.0 + 20.0 * r
+                elif r <= 2.5:
+                    stress = 35.0 + 25.0 * ((r - 1.0) / 1.5)
+                elif r <= 5.0:
+                    stress = 60.0 + 20.0 * ((r - 2.5) / 2.5)
+                else:
+                    stress = min(98.0, 80.0 + 18.0 * ((r - 5.0) / 5.0))
+                stress = round(max(5.0, min(99.0, stress)), 1)
+
+                base = float(rs["base_m"])
+                danger = float(rs["danger_m"])
+                # Physically derived water level on CWC gauge datum
+                current_level = round(base + (danger - base) * (stress / 100.0), 2)
+                overflow_pct = round((current_level / danger) * 100)
+                flood_likelihood = round(min(0.98, max(0.05, stress / 100.0)), 3)
+
+                parsed_stations[rs["station"]] = {
+                    "discharge_m3s": round(float(today_q), 2),
+                    "river_stress": stress,
+                    "flood_likelihood": flood_likelihood,
+                    "current_level": current_level,
+                    "overflow_pct": overflow_pct,
+                    "historical_mean_q": round(float(q_mean), 2),
+                    "historical_max_q": round(float(q_max), 2),
+                }
+
+            _RIVER_CACHE["timestamp"] = now_epoch
+            _RIVER_CACHE["stations"] = parsed_stations
+            return parsed_stations
+
+        except Exception as e:
+            logger.warning(f"[RiverETL] Open-Meteo Flood API fetch warning: {e}. Checking cache.")
+            if _RIVER_CACHE["stations"]:
+                return dict(_RIVER_CACHE["stations"])
+            return {}
 
     def extract(self) -> List[Dict[str, Any]]:
         """
         Extract river levels:
-        1. Try India-WRIS API for each station (requires credentials → skipped)
+        1. Try Open-Meteo Flood API (GloFAS) for real river discharge
         2. Fall back to physics-based seasonal + rainfall-driven model
         
         Returns list of dicts with all fields needed for transform().
@@ -305,18 +401,20 @@ class RiverETL(BaseETLPipeline):
         doy = now.timetuple().tm_yday
         raw_data: List[Dict[str, Any]] = []
 
+        flood_data = self._fetch_open_meteo_flood()
+
         for rs in RIVER_STATIONS:
             d_id = districts.get(rs["district_name"])
             if not d_id:
                 logger.debug(f"[RiverETL] District '{rs['district_name']}' not found in DB.")
                 continue
 
-            # 1. Attempt live WRIS API fetch
-            wris_level = self._try_wris_api(rs.get("wris_station_id", ""))
+            # 1. Attempt live GloFAS fetch
+            glofas = flood_data.get(rs["station"])
 
-            if wris_level is not None:
-                current_level = wris_level
-                source = "WRIS_API"
+            if glofas:
+                current_level = glofas["current_level"]
+                source = "OpenMeteo_GloFAS"
             else:
                 # 2. Physics fallback: seasonal + rainfall-driven
                 rainfall_mm = self._get_district_rainfall(rs["district_name"])
@@ -330,11 +428,13 @@ class RiverETL(BaseETLPipeline):
                 "current_level": current_level,
                 "danger_level": rs["danger_m"],
                 "source": source,
+                "river_stress": glofas.get("river_stress") if glofas else round((current_level / rs["danger_m"]) * 100, 1),
+                "discharge_m3s": glofas.get("discharge_m3s") if glofas else None,
             })
 
         logger.info(
             f"[RiverETL] Extracted {len(raw_data)} stations "
-            f"(doy={doy}, monsoon_factor={_monsoon_factor(doy):.3f})"
+            f"(GloFAS active={len(flood_data) > 0}, doy={doy})"
         )
         return raw_data
 

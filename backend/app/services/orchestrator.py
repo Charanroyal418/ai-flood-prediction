@@ -891,7 +891,7 @@ class RealtimeOrchestrator:
                 w = w_map.get(d.id)
                 r_lvl = r_map.get(d.id)
                 dam_obj = dam_map.get(d.id)
-                res_storage = round(float(dam_obj.fill_pct), 1) if (dam_obj and dam_obj.fill_pct is not None) else avg_dam_fill
+                res_storage = min(100.0, max(0.0, round(float(dam_obj.fill_pct), 1))) if (dam_obj and dam_obj.fill_pct is not None) else min(100.0, max(0.0, avg_dam_fill))
                 
                 lon, lat = 0.0, 0.0
                 if d.geom_json and isinstance(d.geom_json, dict) and "coordinates" in d.geom_json:

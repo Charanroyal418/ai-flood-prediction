@@ -72,6 +72,13 @@ TN_DISTRICTS: Dict[str, tuple] = {
 _BATCH_SIZE = 38
 _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
+# 10-minute cache for Open-Meteo Weather API
+_WEATHER_CACHE: Dict[str, Any] = {
+    "timestamp": 0.0,
+    "by_district": {},  # district_id -> dict
+}
+_WEATHER_CACHE_TTL = 600.0  # 10 minutes (600s)
+
 
 def _fetch_batch(
     session: requests.Session,
@@ -94,7 +101,7 @@ def _fetch_batch(
         "longitude": ",".join(lons),
         "current": (
             "temperature_2m,relative_humidity_2m,surface_pressure,"
-            "precipitation,wind_speed_10m,wind_direction_10m,cloud_cover,weather_code"
+            "precipitation,wind_speed_10m,wind_gusts_10m,wind_direction_10m,cloud_cover,weather_code"
         ),
         "hourly": "precipitation_probability",
         "daily": "precipitation_sum,precipitation_hours",
@@ -126,7 +133,6 @@ def _fetch_batch(
                 rain_prob = prec_probs[0]
 
             # ── KEY FIX: use actual daily precipitation_sum for mm_24h ──────
-            # The original code used `rainfall_mm * 24` which is completely wrong.
             # daily.precipitation_sum[0] = today's total rainfall forecast in mm.
             prec_sums = daily.get("precipitation_sum", [])
             mm_24h = float(prec_sums[0]) if prec_sums else current.get("precipitation", 0.0) or 0.0
@@ -149,15 +155,16 @@ def _fetch_batch(
             raw.append({
                 "district_id": d.id,
                 "district_name": d.name,
-                "temperature": current.get("temperature_2m", 28.0),
-                "humidity": current.get("relative_humidity_2m", 70.0),
-                "pressure": current.get("surface_pressure", 1012.0),
-                "rainfall_mm": current.get("precipitation", 0.0) or 0.0,
-                "mm_24h": mm_24h,
-                "wind_speed": current.get("wind_speed_10m", 0.0),
-                "wind_direction": current.get("wind_direction_10m", 0),
-                "cloud_cover": current.get("cloud_cover", 0.0),
-                "weather_code": current.get("weather_code", 0),
+                "temperature": float(current.get("temperature_2m", 28.0)),
+                "humidity": float(current.get("relative_humidity_2m", 70.0)),
+                "pressure": float(current.get("surface_pressure", 1012.0)),
+                "rainfall_mm": float(current.get("precipitation", 0.0) or 0.0),
+                "mm_24h": float(mm_24h),
+                "wind_speed": float(current.get("wind_speed_10m", 0.0)),
+                "wind_gusts": float(current.get("wind_gusts_10m", current.get("wind_speed_10m", 0.0) * 1.25)),
+                "wind_direction": int(current.get("wind_direction_10m", 0)),
+                "cloud_cover": float(current.get("cloud_cover", 0.0)),
+                "weather_code": int(current.get("weather_code", 0)),
                 "rain_probability": rain_prob,
                 "daily_forecast": daily_forecast,
             })
@@ -187,12 +194,26 @@ class WeatherETL(BaseETLPipeline):
         self.valid_districts: List[District] = []
 
     def extract(self) -> List[Dict[str, Any]]:
+        import time
         districts = self.db.query(District).all()
         self.valid_districts = [d for d in districts if d.name in TN_DISTRICTS]
 
         if not self.valid_districts:
             logger.warning("[WeatherETL] No matched districts found.")
             return []
+
+        # 1. Check 10-minute cache
+        now_epoch = time.time()
+        if (
+            now_epoch - _WEATHER_CACHE["timestamp"] < _WEATHER_CACHE_TTL
+            and len(_WEATHER_CACHE["by_district"]) >= len(self.valid_districts)
+        ):
+            logger.info(f"[WeatherETL] Serving {len(self.valid_districts)} districts from 10-minute cache.")
+            return [
+                _WEATHER_CACHE["by_district"][d.id]
+                for d in self.valid_districts
+                if d.id in _WEATHER_CACHE["by_district"]
+            ]
 
         all_raw: List[Dict[str, Any]] = []
 
@@ -206,13 +227,52 @@ class WeatherETL(BaseETLPipeline):
             batch_data = _fetch_batch(self.session, batch, timeout=8.0)
             all_raw.extend(batch_data)
 
+        # 2. Update cache if fetch was successful
+        if all_raw and len(all_raw) >= len(self.valid_districts):
+            _WEATHER_CACHE["timestamp"] = now_epoch
+            for r in all_raw:
+                _WEATHER_CACHE["by_district"][r["district_id"]] = r
+        elif _WEATHER_CACHE["by_district"]:
+            # Fallback to last successful cached values if partial or failed
+            logger.warning("[WeatherETL] Fetch incomplete; using last successful 10-minute cached telemetry.")
+            all_raw = [
+                _WEATHER_CACHE["by_district"][d.id]
+                for d in self.valid_districts
+                if d.id in _WEATHER_CACHE["by_district"]
+            ]
+        elif not all_raw:
+            # Cold start fallback to DB records if API failed on very first run
+            logger.warning("[WeatherETL] Fetch failed and cache empty; loading fallback telemetry from DB.")
+            for d in self.valid_districts:
+                last_w = (
+                    self.db.query(WeatherHistory)
+                    .filter(WeatherHistory.district_id == d.id)
+                    .order_by(WeatherHistory.recorded_at.desc())
+                    .first()
+                )
+                all_raw.append({
+                    "district_id": d.id,
+                    "district_name": d.name,
+                    "temperature": float(last_w.temperature) if last_w and last_w.temperature is not None else 28.5,
+                    "humidity": float(last_w.humidity) if last_w and last_w.humidity is not None else 72.0,
+                    "pressure": float(last_w.pressure) if last_w and last_w.pressure is not None else 1012.0,
+                    "rainfall_mm": float(last_w.rainfall_mm) if last_w and last_w.rainfall_mm is not None else 0.0,
+                    "mm_24h": float(last_w.rainfall_mm) if last_w and last_w.rainfall_mm is not None else 0.0,
+                    "wind_speed": float(last_w.wind_speed) if last_w and last_w.wind_speed is not None else 12.0,
+                    "wind_gusts": float(last_w.wind_speed * 1.3) if last_w and last_w.wind_speed is not None else 16.0,
+                    "wind_direction": int(last_w.wind_direction) if last_w and last_w.wind_direction is not None else 90,
+                    "cloud_cover": float(last_w.cloud_cover) if last_w and last_w.cloud_cover is not None else 30.0,
+                    "weather_code": int(last_w.weather_code) if last_w and last_w.weather_code is not None else 0,
+                    "rain_probability": float(last_w.rain_probability) if last_w and last_w.rain_probability is not None else 15.0,
+                    "daily_forecast": [],
+                })
+
         # Save state-wide 7-day forecast (first district's forecast is representative)
         if all_raw and all_raw[0].get("daily_forecast"):
             data_dir = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"
             )
             os.makedirs(data_dir, exist_ok=True)
-            # Average precipitation across all districts for state forecast
             n = len(all_raw)
             if n > 0 and all_raw[0]["daily_forecast"]:
                 days = len(all_raw[0]["daily_forecast"])

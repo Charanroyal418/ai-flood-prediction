@@ -162,7 +162,7 @@ def _build_dashboard_live(db: Session) -> Any:
 
         # 2. Reservoir storage
         dam_obj = dam_map.get(d.id)
-        reservoir_storage = round(float(dam_obj.fill_pct), 1) if dam_obj and dam_obj.fill_pct is not None else avg_dam_fill
+        reservoir_storage = min(100.0, max(0.0, round(float(dam_obj.fill_pct), 1))) if dam_obj and dam_obj.fill_pct is not None else min(100.0, max(0.0, avg_dam_fill))
 
         # 3. Historical flood events
         hist_events = [h for h in all_historical if h.affected_districts and any(_clean_district_key(x) == d_clean for x in h.affected_districts)]
@@ -224,6 +224,8 @@ def _build_dashboard_live(db: Session) -> Any:
             "wind_speed": wind_speed,
             "riverRisk": river_risk,
             "river_risk": river_risk,
+            "river_stress": river_risk,
+            "riverStress": river_risk,
             "riverLevel": river_level_m,
             "river_level_m": river_level_m,
             "river_danger_m": river_danger_m,
@@ -676,16 +678,28 @@ def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
         (RiverLevel.recorded_at == subquery.c.max_date)
     ).all()
 
+    from app.etl.river import get_cached_river_data
+    cached_glofas = get_cached_river_data()
+
     rivers_data = []
     for r in latest_levels:
         danger_m = r.danger_level
         current_m = r.current_level
 
+        glofas_info = cached_glofas.get(r.station_name, {})
+        discharge_m3s = glofas_info.get("discharge_m3s")
+        river_stress = glofas_info.get("river_stress")
+
         # Only compute overflow when both values are present and danger > 0
         if danger_m is not None and danger_m > 0 and current_m is not None:
             overflow_pct = round((current_m / danger_m) * 100)
+        elif glofas_info.get("overflow_pct") is not None:
+            overflow_pct = glofas_info["overflow_pct"]
         else:
             overflow_pct = None
+
+        if river_stress is None:
+            river_stress = overflow_pct if overflow_pct is not None else 25.0
 
         if overflow_pct is not None and overflow_pct >= 85:
             status = "Critical"
@@ -705,6 +719,8 @@ def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
             "current_m": round(float(current_m), 2) if current_m is not None else None,
             "danger_m": round(float(danger_m), 2) if danger_m is not None else None,
             "overflow_pct": overflow_pct,
+            "river_stress": river_stress,
+            "discharge_m3s": discharge_m3s,
             "status": status,
             "last_update": r.recorded_at.isoformat() if r.recorded_at else None,
         })

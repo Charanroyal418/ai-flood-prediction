@@ -76,7 +76,7 @@ class NasaGPMETL(BaseETLPipeline):
                 f"&forecast_days=2"
                 f"&timezone=Asia%2FKolkata"
             )
-            resp = requests.get(url, timeout=1.5)
+            resp = requests.get(url, timeout=8.0)
             resp.raise_for_status()
             data = resp.json()
             results = data if isinstance(data, list) else [data]
