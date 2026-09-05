@@ -232,6 +232,11 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         const s = res?.data?.status;
         if (s === "online" || s === "ok" || res?.status === 200) {
           setEngineStatus("online");
+          api.get("/api/v1/dashboard/live").then((liveRes) => {
+            if (liveRes?.data?.districts?.length) setDistricts(liveRes.data.districts);
+            if (liveRes?.data?.alerts?.length) setAlerts(liveRes.data.alerts);
+            if (liveRes?.data?.timestamp) setLastUpdated(liveRes.data.timestamp);
+          }).catch(() => {});
           return;
         }
         throw new Error("Unexpected health status");

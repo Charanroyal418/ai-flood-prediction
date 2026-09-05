@@ -129,6 +129,8 @@ export default function CommandCenter() {
     highCount,
     stormSimulationActive,
     toggleStormSimulation,
+    engineStatus,
+    forceRetry,
   } = useFloodData();
 
   const { data, isLoading, refetch, isError } = useQuery({
@@ -207,6 +209,13 @@ export default function CommandCenter() {
     });
   }, [topDistricts]);
 
+  // Automatically refetch when backend engine comes online to remove "Connection Failed" immediately
+  useEffect(() => {
+    if (engineStatus === "online") {
+      refetch();
+    }
+  }, [engineStatus, refetch]);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleSimulate = async () => {
     setSimulating(true);
@@ -273,13 +282,13 @@ export default function CommandCenter() {
           ) : (
             Array.from({length: 7}).map((_, i) => <div key={i} className="h-24 skeleton rounded-[16px]" />)
           )
-        ) : isError && !hasWsData ? (
+        ) : isError && !hasWsData && engineStatus === "offline" ? (
           <div className="col-span-full h-24 flex items-center justify-center bg-red-50/50 border border-red-100 rounded-[16px]">
             <div className="text-center flex flex-col items-center">
               <p className="text-sm font-semibold text-red-600 mb-2 flex items-center gap-1">
                 <AlertTriangle className="w-4 h-4" /> Connection Failed
               </p>
-              <button onClick={() => refetch()} className="text-xs px-4 py-1.5 bg-white border border-red-200 text-red-700 rounded-md shadow-sm hover:bg-red-50 transition-colors">
+              <button onClick={() => { if (forceRetry) forceRetry(); refetch(); }} className="text-xs px-4 py-1.5 bg-white border border-red-200 text-red-700 rounded-md shadow-sm hover:bg-red-50 transition-colors cursor-pointer">
                 Retry Now
               </button>
             </div>

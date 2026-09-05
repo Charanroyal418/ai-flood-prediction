@@ -190,7 +190,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
-# ── Root Redirect ─────────────────────────────────────────────────────────────
+# ── Root Redirect & Health Alias ──────────────────────────────────────────────
 @app.get("/", include_in_schema=False)
 async def root():
     return {
@@ -200,3 +200,9 @@ async def root():
         "docs": f"{settings.API_V1_STR}/docs",
         "health": f"{settings.API_V1_STR}/health",
     }
+
+
+@app.get("/health", include_in_schema=False)
+async def root_health():
+    return {"status": "online", "message": "FloodSense AI API is running seamlessly."}
+

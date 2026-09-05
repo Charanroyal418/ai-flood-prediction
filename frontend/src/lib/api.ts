@@ -14,16 +14,29 @@ const api = axios.create({
 });
 
 // ── Request Interceptor ───────────────────────────────────────────────────────
-// 1. Ensures EVERY relative request URL begins with /api/v1
-// 2. Injects auth token if present
+// 1. Ensures EVERY request URL (relative or absolute) targets /api/v1
+// 2. Prevents double /api/v1/api/v1 concatenation
+// 3. Injects auth token if present
 api.interceptors.request.use(
   (config) => {
-    if (config.url && !config.url.startsWith('http')) {
-      if (!config.url.startsWith('/api/v1') && !config.url.startsWith('api/v1')) {
-        const cleanPath = config.url.startsWith('/') ? config.url : `/${config.url}`;
-        config.url = `/api/v1${cleanPath}`;
+    if (config.url) {
+      // Collapse duplicate /api/v1/api/v1
+      config.url = config.url.replace(/\/api\/v1\/api\/v1/g, '/api/v1');
+
+      // If full URL starts with API but missing /api/v1, insert /api/v1
+      if (config.url.startsWith(API) && !config.url.includes('/api/v1')) {
+        config.url = config.url.replace(API, API_URL);
+      }
+
+      // If relative URL, ensure it starts with /api/v1
+      if (!config.url.startsWith('http://') && !config.url.startsWith('https://')) {
+        if (!config.url.startsWith('/api/v1') && !config.url.startsWith('api/v1')) {
+          const cleanPath = config.url.startsWith('/') ? config.url : `/${config.url}`;
+          config.url = `/api/v1${cleanPath}`;
+        }
       }
     }
+
     if (typeof window !== 'undefined') {
       const token =
         localStorage.getItem('floodsense_token') ||
@@ -64,6 +77,19 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+// ── Canonical API routes & centralized call helpers ───────────────────────────
+export const API_ROUTES = {
+  HEALTH: '/api/v1/health',
+  DASHBOARD_LIVE: '/api/v1/dashboard/live',
+  SPATIAL_DISTRICT_BOUNDS: '/api/v1/spatial/district-bounds',
+  PREDICT_INFERENCE_CYCLE: '/api/v1/predict/inference-cycle',
+} as const;
+
+export const getHealth = (options?: any) => api.get('/api/v1/health', { timeout: 8000, ...options });
+export const getDashboardLive = (options?: any) => api.get('/api/v1/dashboard/live', options);
+export const getDistrictBounds = (options?: any) => api.get('/api/v1/spatial/district-bounds', options);
+export const getInferenceCycle = (options?: any) => api.get('/api/v1/predict/inference-cycle', options);
 
 export { api };
 export default api;
