@@ -157,7 +157,6 @@ export default function CommandCenter() {
 
   // ── All state declarations FIRST (no TDZ in minified output) ─────────────
   const [isSlowLoading, setIsSlowLoading] = useState(false);
-  const [trends, setTrends] = useState<Record<string, 'up'|'down'|'flat'>>({});
   const [simulating, setSimulating] = useState(false);
   // FIX-BUG-006: Show banner when storm auto-expires
   const [simExpiredMsg, setSimExpiredMsg] = useState<string | null>(null);
@@ -178,48 +177,58 @@ export default function CommandCenter() {
   // ── Refs ────────────────────────────────────────────────────────────────────
   const prevScoresRef = useRef<Record<string, number>>({});
 
-  // ── Derived values (no hooks, safe to compute inline) ──────────────────────
+  // ── Derived values (memoized to eliminate infinite re-render loops) ─────────
   const hasWsData = wsDistricts.length > 0;
 
   // Single unified districts array for all calculations, tables, cards, and map
-  const effectiveDistricts = hasWsData
-    ? wsDistricts.map((d: any) => ({
-        ...(data?.districts?.find((x: any) => x.id === d.district_id) || {}),
-        id: d.district_id || d.id,
-        name: d.district_name || d.name,
-        risk_score: d.risk_score,
-        risk_level: d.risk_level,
-        risk_color: d.risk_color,
-        rainfall_mm: d.rainfall_mm,
-        humidity: d.humidity,
-        temperature: d.temperature,
-        river_level_m: d.river_level_m,
-        river_danger_m: d.river_danger_m,
-        population: d.population,
-        flood_probability: d.flood_probability,
-        ai_confidence: d.ai_confidence,
-        lat: d.lat,
-        lon: d.lon,
-      }))
-    : (data?.districts || []);
+  const effectiveDistricts = useMemo(() => {
+    return hasWsData
+      ? wsDistricts.map((d: any) => ({
+          ...(data?.districts?.find((x: any) => x.id === d.district_id) || {}),
+          id: d.district_id || d.id,
+          name: d.district_name || d.name,
+          risk_score: d.risk_score,
+          risk_level: d.risk_level,
+          risk_color: d.risk_color,
+          rainfall_mm: d.rainfall_mm,
+          humidity: d.humidity,
+          temperature: d.temperature,
+          river_level_m: d.river_level_m,
+          river_danger_m: d.river_danger_m,
+          population: d.population,
+          flood_probability: d.flood_probability,
+          ai_confidence: d.ai_confidence,
+          lat: d.lat,
+          lon: d.lon,
+        }))
+      : (data?.districts || []);
+  }, [hasWsData, wsDistricts, data?.districts]);
 
   const isDataLoaded = effectiveDistricts.length > 0;
 
-  const derivedCriticalCount = effectiveDistricts.filter((d: any) =>
-    ["Critical", "Severe"].includes(d.risk_level) || (d.risk_score != null && d.risk_score >= 80)
-  ).length;
+  const derivedCriticalCount = useMemo(() => {
+    return effectiveDistricts.filter((d: any) =>
+      ["Critical", "Severe"].includes(d.risk_level) || (d.risk_score != null && d.risk_score >= 80)
+    ).length;
+  }, [effectiveDistricts]);
 
-  const derivedHighCount = effectiveDistricts.filter((d: any) =>
-    d.risk_level === "High" || (d.risk_score != null && d.risk_score >= 60 && d.risk_score < 80)
-  ).length;
+  const derivedHighCount = useMemo(() => {
+    return effectiveDistricts.filter((d: any) =>
+      d.risk_level === "High" || (d.risk_score != null && d.risk_score >= 60 && d.risk_score < 80)
+    ).length;
+  }, [effectiveDistricts]);
 
-  const avgRiskScore = effectiveDistricts.length > 0
-    ? effectiveDistricts.reduce((s: number, d: any) => s + (d.risk_score || 0), 0) / effectiveDistricts.length
-    : (data?.metrics?.avg_risk_score ?? 0);
+  const avgRiskScore = useMemo(() => {
+    return effectiveDistricts.length > 0
+      ? effectiveDistricts.reduce((s: number, d: any) => s + (d.risk_score || 0), 0) / effectiveDistricts.length
+      : (data?.metrics?.avg_risk_score ?? 0);
+  }, [effectiveDistricts, data?.metrics?.avg_risk_score]);
 
-  const avgRainfall24h = effectiveDistricts.length > 0
-    ? effectiveDistricts.reduce((s: number, d: any) => s + (d.rainfall_mm || 0), 0) / effectiveDistricts.length
-    : (data?.metrics?.avg_rainfall_24h_mm ?? 0);
+  const avgRainfall24h = useMemo(() => {
+    return effectiveDistricts.length > 0
+      ? effectiveDistricts.reduce((s: number, d: any) => s + (d.rainfall_mm || 0), 0) / effectiveDistricts.length
+      : (data?.metrics?.avg_rainfall_24h_mm ?? 0);
+  }, [effectiveDistricts, data?.metrics?.avg_rainfall_24h_mm]);
 
   const gdnnLatencyMs = (
     modelMeta?.latency_ms ||
@@ -228,25 +237,47 @@ export default function CommandCenter() {
     (isDataLoaded ? 481 : undefined)
   );
 
-  const metrics = {
+  const metrics = useMemo(() => ({
     avg_risk_score: avgRiskScore,
     active_alerts_count: hasWsData ? wsAlerts.length : (data?.metrics?.active_alerts_count ?? 0),
     critical_districts: derivedCriticalCount,
     high_risk_districts: derivedHighCount,
     avg_rainfall_24h_mm: avgRainfall24h,
     gdnn_inference_ms: gdnnLatencyMs || 481,
-  };
+  }), [avgRiskScore, hasWsData, wsAlerts.length, data?.metrics?.active_alerts_count, derivedCriticalCount, derivedHighCount, avgRainfall24h, gdnnLatencyMs]);
 
-  const topDistricts = [...effectiveDistricts]
-    .sort((a: any, b: any) => (b.risk_score || 0) - (a.risk_score || 0))
-    .slice(0, 5);
+  const topDistricts = useMemo(() => {
+    return [...effectiveDistricts]
+      .sort((a: any, b: any) => (b.risk_score || 0) - (a.risk_score || 0))
+      .slice(0, 5);
+  }, [effectiveDistricts]);
 
-  const alerts = hasWsData
-    ? wsAlerts.slice(0, 10).map(a => ({
-        ...a,
-        district: (a as any).district || wsDistricts.find(d => d.district_id === a.district_id)?.district_name || `District #${a.district_id}`
-      }))
-    : (data?.alerts || []);
+  // Derived trends without calling setTrends in useEffect (avoids re-render cascade)
+  const trends = useMemo(() => {
+    const next: Record<string, 'up'|'down'|'flat'> = {};
+    topDistricts.forEach((d: any) => {
+      const id = d.id || d.name;
+      const old = prevScoresRef.current[id];
+      if (old !== undefined) {
+        if (d.risk_score > old) next[id] = 'up';
+        else if (d.risk_score < old) next[id] = 'down';
+        else next[id] = 'flat';
+      } else {
+        next[id] = 'flat';
+      }
+      prevScoresRef.current[id] = d.risk_score;
+    });
+    return next;
+  }, [topDistricts]);
+
+  const alerts = useMemo(() => {
+    return hasWsData
+      ? wsAlerts.slice(0, 10).map(a => ({
+          ...a,
+          district: (a as any).district || wsDistricts.find(d => d.district_id === a.district_id)?.district_name || `District #${a.district_id}`
+        }))
+      : (data?.alerts || []);
+  }, [hasWsData, wsAlerts, wsDistricts, data?.alerts]);
 
   const isStormActive = stormSimulationActive || Boolean(data?.metrics?.storm_simulation_active);
   const highestRiskLevel = derivedCriticalCount > 0 ? "Critical" : derivedHighCount > 0 ? "High" : "Moderate";
@@ -262,30 +293,13 @@ export default function CommandCenter() {
     return () => clearTimeout(timer);
   }, [hasWsData, isLoading]);
 
+  // Automatically refetch when backend engine transitions to online
+  const prevEngineStatusRef = useRef(engineStatus);
   useEffect(() => {
-    setTrends(prev => {
-      const next = { ...prev };
-      topDistricts.forEach((d: any) => {
-        const id = d.id || d.name;
-        const old = prevScoresRef.current[id];
-        if (old) {
-          if (d.risk_score > old) next[id] = 'up';
-          else if (d.risk_score < old) next[id] = 'down';
-          else next[id] = 'flat';
-        } else {
-          next[id] = 'flat';
-        }
-        prevScoresRef.current[id] = d.risk_score;
-      });
-      return next;
-    });
-  }, [topDistricts]);
-
-  // Automatically refetch when backend engine comes online to remove "Connection Failed" immediately
-  useEffect(() => {
-    if (engineStatus === "online") {
+    if (prevEngineStatusRef.current !== "online" && engineStatus === "online") {
       refetch();
     }
+    prevEngineStatusRef.current = engineStatus;
   }, [engineStatus, refetch]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ export default function DashboardRootLayout({
   return (
     <FloodDataProvider>
       <div className="flex h-screen overflow-hidden bg-background">
-        <aside className="relative z-50 flex-shrink-0 h-full">
+        <aside className="relative z-50 flex-shrink-0 h-full pointer-events-auto">
           <Sidebar />
         </aside>
         <div className="relative z-10 flex-1 flex flex-col min-w-0 bg-background overflow-hidden">

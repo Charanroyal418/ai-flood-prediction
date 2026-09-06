@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Brain,
@@ -62,6 +62,7 @@ export const navSections = [
 ];
 
 export default function Sidebar() {
+  const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -164,6 +165,12 @@ export default function Sidebar() {
                       href={item.href}
                       prefetch={false}
                       title={collapsed ? item.name : undefined}
+                      onClick={(e) => {
+                        if (!e.defaultPrevented && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                          e.preventDefault();
+                          router.push(item.href);
+                        }
+                      }}
                       className={`sidebar-item ${active ? "active" : ""}`}
                     >
                       <item.icon strokeWidth={1.5} className="w-[18px] h-[18px] flex-shrink-0" />
@@ -261,7 +268,13 @@ export default function Sidebar() {
                           key={item.href}
                           href={item.href}
                           prefetch={false}
-                          onClick={() => setMobileNavOpen(false)}
+                          onClick={(e) => {
+                            setMobileNavOpen(false);
+                            if (!e.defaultPrevented && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                              e.preventDefault();
+                              router.push(item.href);
+                            }
+                          }}
                           className={`sidebar-item ${active ? "active" : ""}`}
                         >
                           <item.icon strokeWidth={1.5} className="w-[18px] h-[18px] flex-shrink-0" />
