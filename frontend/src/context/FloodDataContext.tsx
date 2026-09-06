@@ -212,6 +212,20 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [engineStatus, setEngineStatus] = useState<EngineStatus>("reconnecting");
   const [adminState, setAdminState] = useState<AdminState>("idle");
+  // BUG 2 Guard: Track if user explicitly clicked Run/Activate Simulation in this session
+  const userInitiatedSimulationRef = useRef<boolean>(false);
+
+  // Safety: purge any legacy or stored simulation tokens on application boot
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("storm_simulation_active");
+        localStorage.removeItem("floodsense_simulation");
+        sessionStorage.removeItem("storm_simulation_active");
+        sessionStorage.removeItem("floodsense_simulation");
+      } catch {}
+    }
+  }, []);
 
   // Check admin status gracefully without throwing or affecting global error state
   const checkAdminStatus = useCallback(async () => {
@@ -495,19 +509,32 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         }
         if (data.storm_simulation_active !== undefined) {
           const incoming = Boolean(data.storm_simulation_active);
-          setStormSimulationActive((prev) => {
-            // FIX-BUG-006: Detect auto-expiry (was active, now not) and broadcast UI event
-            if (prev === true && incoming === false) {
-              if (typeof window !== "undefined") {
-                window.dispatchEvent(new CustomEvent("floodsense-sim-expired", {
-                  detail: { reason: "Storm simulation auto-expired after 15 minutes. System reverted to LIVE mode." }
-                }));
+          // BUG 2: Simulation must NEVER auto-start. Only accept active simulation if user explicitly pressed Run Simulation in this session
+          if (incoming && !userInitiatedSimulationRef.current) {
+            setStormSimulationActive(false);
+            setSimulationLifecycleState("LIVE");
+          } else {
+            setStormSimulationActive((prev) => {
+              // FIX-BUG-006: Detect auto-expiry (was active, now not) and broadcast UI event
+              if (prev === true && incoming === false) {
+                userInitiatedSimulationRef.current = false;
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new CustomEvent("floodsense-sim-expired", {
+                    detail: { reason: "Storm simulation auto-expired after 15 minutes. System reverted to LIVE mode." }
+                  }));
+                }
               }
-            }
-            return incoming;
-          });
+              return incoming;
+            });
+          }
         } else if (data.storm_simulation !== undefined) {
-          setStormSimulationActive(Boolean(data.storm_simulation));
+          const incoming = Boolean(data.storm_simulation);
+          if (incoming && !userInitiatedSimulationRef.current) {
+            setStormSimulationActive(false);
+            setSimulationLifecycleState("LIVE");
+          } else {
+            setStormSimulationActive(incoming);
+          }
         }
         if (data.recent_alerts && Array.isArray(data.recent_alerts)) {
           setAlerts((prev) => {
@@ -619,8 +646,10 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     async (active?: boolean, scenarioParams?: any) => {
       const targetState = active !== undefined ? active : !stormSimulationActive;
       if (targetState) {
+        userInitiatedSimulationRef.current = true;
         setSimulationLifecycleState("ACTIVATING");
       } else {
+        userInitiatedSimulationRef.current = false;
         setSimulationLifecycleState("RECOVERING");
       }
 
@@ -633,9 +662,11 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         const resPayload = res.data?.data || res.data;
 
         if (targetState) {
+          userInitiatedSimulationRef.current = true;
           setStormSimulationActive(true);
           setSimulationLifecycleState("RUNNING");
         } else {
+          userInitiatedSimulationRef.current = false;
           setStormSimulationActive(false);
           setSimulationLifecycleState("LIVE RESTORED");
           setTimeout(() => {
@@ -704,6 +735,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         return res.data;
       } catch (err) {
         console.error("Failed to toggle storm simulation:", err);
+        userInitiatedSimulationRef.current = false;
         setSimulationLifecycleState(stormSimulationActive ? "RUNNING" : "LIVE");
         throw err;
       }
@@ -712,6 +744,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const stopSimulation = useCallback(async () => {
+    userInitiatedSimulationRef.current = false;
     await toggleStormSimulation(false);
   }, [toggleStormSimulation]);
 

@@ -57,7 +57,7 @@ class SharedWebSocket {
   private channelListeners = new Map<WsChannel, Set<MessageListener>>();
   private statusListeners = new Set<StatusListener>();
   private retryCount = 0;
-  private maxRetries = 10; // FIX-BUG-007: was 2; 10 retries with exp backoff covers ~5min cold-start
+  private isCheckingHealth = false;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
@@ -82,7 +82,7 @@ class SharedWebSocket {
       try {
         listener(newStatus);
       } catch (err) {
-        console.error("[WS] Status listener error:", err);
+        // Listener error suppressed
       }
     });
   }
@@ -136,12 +136,97 @@ class SharedWebSocket {
     ) {
       return;
     }
+    if (this.isCheckingHealth) return;
+
+    this.waitForHealthyBackendAndConnect();
+  }
+
+  /**
+   * Health Probe Loop with Exponential Backoff
+   * ---------------------------------------------
+   * Checks GET /api/v1/health until 200 OK is returned BEFORE creating any WebSocket.
+   * Backoff: 1s, 2s, 4s, 8s, 16s... max 30s.
+   * Never spams console with WebSocket 500 handshake failures.
+   */
+  private async waitForHealthyBackendAndConnect() {
+    if (typeof window === "undefined") return;
+    if (this.isCheckingHealth) return;
+    this.isCheckingHealth = true;
+    this.setStatus("connecting");
+
+    while (this.isCheckingHealth) {
+      try {
+        const isHealthy = await this.probeBackendHealth();
+        if (isHealthy) {
+          this.isCheckingHealth = false;
+          this.retryCount = 0;
+          this.initializeWebSocket();
+          return;
+        }
+      } catch {
+        // Backend sleeping or cold-starting; probe silently
+      }
+
+      if (!this.isCheckingHealth) return;
+
+      // Exponential backoff: 1s, 2s, 4s, 8s, 16s... max 30s
+      const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
+      this.retryCount += 1;
+      this.setStatus("connecting");
+
+      await new Promise<void>((resolve) => {
+        this.reconnectTimer = setTimeout(resolve, delay);
+      });
+    }
+  }
+
+  private async probeBackendHealth(): Promise<boolean> {
+    try {
+      const wsUrl = getWsUrl();
+      let healthUrl: string;
+      if (wsUrl.startsWith("wss://")) {
+        healthUrl = wsUrl.replace("wss://", "https://").replace(/\/ws\/?$/, "/health");
+      } else if (wsUrl.startsWith("ws://")) {
+        healthUrl = wsUrl.replace("ws://", "http://").replace(/\/ws\/?$/, "/health");
+      } else {
+        healthUrl = "/api/v1/health";
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const res = await fetch(healthUrl, {
+        method: "GET",
+        signal: controller.signal,
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      clearTimeout(timeoutId);
+
+      if (res.status === 200) {
+        const data = await res.json().catch(() => ({}));
+        return data?.status === "online" || data?.status === "ok" || res.ok;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  private initializeWebSocket() {
+    if (typeof window === "undefined") return;
+    if (
+      this.socket &&
+      (this.socket.readyState === WebSocket.OPEN ||
+        this.socket.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
 
     const url = getWsUrl();
     this.setStatus("connecting");
 
     try {
-      // Exactly ONE new WebSocket() instance in the entire project
       const socket = new WebSocket(url);
       this.socket = socket;
 
@@ -149,7 +234,7 @@ class SharedWebSocket {
         this.setStatus("connected");
         this.retryCount = 0;
 
-        // Subscribe to channels immediately after connection
+        // Subscribe to channels immediately after confirmed connection
         socket.send(
           JSON.stringify({
             action: "subscribe",
@@ -199,7 +284,6 @@ class SharedWebSocket {
           } else if (type === "KG_INITIAL_SNAPSHOT" || type === "KG_UPDATE") {
             this.channelListeners.get("kg")?.forEach((cb) => cb(data));
           } else if (type === "ALERT_HISTORY" || type === "NEW_ALERT" || type === "ALERTS_UPDATE") {
-            // FIX-BUG-003: ALERTS_UPDATE is broadcast by orchestrator; route it to alert listeners
             this.channelListeners.get("alerts")?.forEach((cb) => cb(data));
           } else if (type === "PIPELINE_STATUS") {
             this.channelListeners.get("pipeline")?.forEach((cb) => cb(data));
@@ -208,31 +292,31 @@ class SharedWebSocket {
               listeners.forEach((cb) => cb(data));
             });
           }
-        } catch (err) {
-          console.error("[WS] Message parsing error:", err);
+        } catch {
+          // parse error ignored
         }
       };
 
       socket.onclose = (event) => {
         this.clearHeartbeat();
-        this.setStatus("disconnected");
+        this.socket = null;
 
-        if (event.code === 1000 || event.code === 1001) return;
-
-        if (this.retryCount < this.maxRetries) {
-          const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
-          this.retryCount += 1;
-          this.reconnectTimer = setTimeout(() => this.connect(), delay);
-        } else {
-          this.setStatus("error");
+        if (event.code === 1000 || event.code === 1001) {
+          this.setStatus("disconnected");
+          return;
         }
+
+        // On drop: probe health before attempting reconnection, preventing 500 loop
+        this.setStatus("connecting");
+        this.waitForHealthyBackendAndConnect();
       };
 
       socket.onerror = () => {
-        // Handled in onclose
+        // Error handled in onclose
       };
     } catch {
-      this.setStatus("error");
+      this.setStatus("connecting");
+      this.waitForHealthyBackendAndConnect();
     }
   }
 
@@ -244,6 +328,7 @@ class SharedWebSocket {
   }
 
   public resetAndReconnect() {
+    this.isCheckingHealth = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

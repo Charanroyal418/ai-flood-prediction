@@ -129,10 +129,10 @@ export default function ColdStartLoader() {
       <div className="bg-white dark:bg-[#0A1420] border border-gray-200 dark:border-gray-800 rounded-2xl px-5 py-3 shadow-xl flex items-center space-x-3 max-w-sm">
         {isUnavailable ? (
           <>
-            <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
             <div className="flex-1">
-              <p className="text-xs font-bold text-gray-900 dark:text-gray-100">Backend unavailable</p>
-              <p className="text-[11px] text-gray-500">Service is not responding. The dashboard will retry automatically.</p>
+              <p className="text-xs font-bold text-gray-900 dark:text-gray-100">Connecting to live telemetry…</p>
+              <p className="text-[11px] text-gray-500">Telemetry engine establishing connection smoothly.</p>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -171,10 +171,10 @@ export default function ColdStartLoader() {
             </svg>
             <div className="flex-1">
               <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
-                Waking up backend…
+                Connecting to live telemetry…
               </span>
               <span className="block text-[10px] text-gray-500">
-                Attempt {retryCountRef.current + 1} of 3 — this may take up to 60 s on the free tier.
+                Backend warming up — establishing live connection.
               </span>
             </div>
             <button

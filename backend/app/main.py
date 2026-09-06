@@ -98,6 +98,17 @@ async def lifespan(app: FastAPI):
 
         app.state.is_ready = True
         logger.info("[FloodSense] Application is fully initialized and ready.")
+
+        # Ensure application always starts in LIVE TELEMETRY mode (Simulation = OFF)
+        db = SessionLocal()
+        try:
+            from app.services.orchestrator import clear_simulation_state
+            clear_simulation_state(db, reason="Startup: ensure nominal live mode")
+            logger.info("[FloodSense] Initialized in LIVE mode (Simulation OFF).")
+        except Exception as sim_init_err:
+            logger.warning(f"[FloodSense] Startup simulation reset warning: {sim_init_err}")
+        finally:
+            db.close()
         try:
             init_scheduler()
         except Exception as e:

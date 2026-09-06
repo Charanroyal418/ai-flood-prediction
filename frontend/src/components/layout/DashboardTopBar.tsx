@@ -47,6 +47,18 @@ export default function DashboardTopBar() {
             {isStormActive ? "🟠 STORM SIMULATION ACTIVE" : "🟢 LIVE TELEMETRY"}
           </span>
         </div>
+        <div
+          className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full shadow-sm ${
+            isStormActive
+              ? "bg-amber-100 text-amber-800 border border-amber-300/60"
+              : "bg-emerald-50 text-emerald-700 border border-emerald-300/60"
+          }`}
+        >
+          <span className={`w-2 h-2 rounded-full ${isStormActive ? "bg-amber-500" : "bg-emerald-500"} animate-pulse-soft`} />
+          <span className="font-bold font-mono tracking-wider text-[10px] uppercase">
+            {isStormActive ? "SYSTEM: STORM SIMULATION ACTIVE" : "SYSTEM: NOMINAL"}
+          </span>
+        </div>
         <div className="h-4 w-px bg-line hidden sm:block" />
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold shadow-sm">
           <span>LAST SYNC:</span>
