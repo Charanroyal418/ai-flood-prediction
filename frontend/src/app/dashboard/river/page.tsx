@@ -421,6 +421,16 @@ export default function RiverIntelligencePage() {
     return () => clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    const handleSimChange = () => {
+      refetch();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("floodsense-simulation-changed", handleSimChange);
+      return () => window.removeEventListener("floodsense-simulation-changed", handleSimChange);
+    }
+  }, [refetch]);
+
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [basinFilter, setBasinFilter] = useState("All Basins");

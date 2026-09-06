@@ -55,6 +55,16 @@ export default function WeatherCenter() {
     refetchInterval: 10000,
   });
 
+  useEffect(() => {
+    const handleSimChange = () => {
+      queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("floodsense-simulation-changed", handleSimChange);
+      return () => window.removeEventListener("floodsense-simulation-changed", handleSimChange);
+    }
+  }, [queryClient]);
+
   const [simulating, setSimulating] = useState(false);
   const [selectedDistrictId, setSelectedDistrictId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");

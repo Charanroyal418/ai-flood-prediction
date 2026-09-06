@@ -241,6 +241,16 @@ export default function DistrictAnalyticsPage() {
     refetchInterval: 10000,
   });
 
+  useEffect(() => {
+    const handleSimChange = () => {
+      refetch();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("floodsense-simulation-changed", handleSimChange);
+      return () => window.removeEventListener("floodsense-simulation-changed", handleSimChange);
+    }
+  }, [refetch]);
+
   // Real-time WebSocket telemetry context
   const { districts: wsDistricts } = useFloodData();
 

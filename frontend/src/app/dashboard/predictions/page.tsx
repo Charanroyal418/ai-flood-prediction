@@ -293,6 +293,18 @@ export default function PredictionEnginePage() {
     }
   }, []);
 
+  // Immediate refetch on storm simulation activation / restoration
+  useEffect(() => {
+    const handleSimChange = () => {
+      refetchPipeline();
+      queryClient.invalidateQueries({ queryKey: ["dashboardLive"] });
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("floodsense-simulation-changed", handleSimChange);
+      return () => window.removeEventListener("floodsense-simulation-changed", handleSimChange);
+    }
+  }, [refetchPipeline, queryClient]);
+
   useEffect(() => {
     try {
       if (typeof window !== "undefined" && data?.districts && data.districts.length > 0) {

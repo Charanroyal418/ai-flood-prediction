@@ -658,7 +658,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
           active: targetState,
           ...(scenarioParams || {}),
         };
-        const res = await api.post(`/api/v1/dashboard/simulate-storm?active=${targetState}`, payload);
+        const res = await api.post(`/api/v1/dashboard/simulate-storm?active=${targetState}`, payload, { timeout: 45000 });
         const resPayload = res.data?.data || res.data;
 
         if (targetState) {

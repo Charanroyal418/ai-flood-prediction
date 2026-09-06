@@ -537,16 +537,22 @@ class RealtimeOrchestrator:
             })
 
             # ─── NASA GPM Satellite Rainfall ─────────────────────
-            try:
-                gpm_etl = NasaGPMETL(self.db)
-                fpi_records = gpm_etl.get_flood_potential_summary()
+            if not active_storm:
+                try:
+                    gpm_etl = NasaGPMETL(self.db)
+                    fpi_records = gpm_etl.get_flood_potential_summary()
+                    self._gpm_fpi_cache = {
+                        r["district_id"]: r["flood_potential_index"]
+                        for r in fpi_records
+                    }
+                    summary["steps_completed"].append("nasa_gpm_etl")
+                except Exception as e:
+                    self._gpm_fpi_cache = {}
+            else:
                 self._gpm_fpi_cache = {
-                    r["district_id"]: r["flood_potential_index"]
-                    for r in fpi_records
+                    d.id: (0.95 if (d.name in sim_targets or d.name in PRIMARY_CYCLONE_DISTRICTS) else 0.3)
+                    for d in districts
                 }
-                summary["steps_completed"].append("nasa_gpm_etl")
-            except Exception as e:
-                self._gpm_fpi_cache = {}
 
             # ─── STEP 6: Knowledge Graph updated ────────────────────────────
             t6_start = time.perf_counter()
@@ -820,12 +826,11 @@ class RealtimeOrchestrator:
 
             # ─── STEP 10: UPDATE GLOBAL INFERENCE CACHE & INVALIDATE CACHES ──
             try:
-                from app.api.endpoints.inference_cycle import _execute_inference_pipeline, _cycle_cache, sanitize_numpy
-                fresh_payload = _execute_inference_pipeline(self.db)
-                _cycle_cache["payload"] = sanitize_numpy(fresh_payload)
-                _cycle_cache["ts"] = time.time()
+                from app.api.endpoints.inference_cycle import _cycle_cache
+                _cycle_cache["payload"] = None
+                _cycle_cache["ts"] = 0.0
             except Exception as e:
-                logger.warning(f"[Pipeline] Could not refresh inference cycle cache: {e}")
+                logger.warning(f"[Pipeline] Could not reset inference cycle cache: {e}")
 
             try:
                 from app.api.endpoints.kg import _invalidate_cache as _inv_kg
@@ -1053,34 +1058,10 @@ class RealtimeOrchestrator:
                 "alerts": alert_list,
             }
 
-            # Try to get the running event loop
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.ensure_future(
-                        ws_manager.broadcast(dashboard_msg, "dashboard")
-                    )
-                    asyncio.ensure_future(
-                        ws_manager.broadcast(kg_msg, "kg")
-                    )
-                    asyncio.ensure_future(
-                        ws_manager.broadcast(alerts_msg, "alerts")
-                    )
-                else:
-                    loop.run_until_complete(
-                        ws_manager.broadcast(dashboard_msg, "dashboard")
-                    )
-                    loop.run_until_complete(
-                        ws_manager.broadcast(kg_msg, "kg")
-                    )
-                    loop.run_until_complete(
-                        ws_manager.broadcast(alerts_msg, "alerts")
-                    )
-            except RuntimeError:
-                # No event loop - create one
-                asyncio.run(ws_manager.broadcast(dashboard_msg, "dashboard"))
-                asyncio.run(ws_manager.broadcast(kg_msg, "kg"))
-                asyncio.run(ws_manager.broadcast(alerts_msg, "alerts"))
+            # Thread-safe non-blocking broadcast to all active channels
+            ws_manager.broadcast_sync(dashboard_msg, "dashboard")
+            ws_manager.broadcast_sync(kg_msg, "kg")
+            ws_manager.broadcast_sync(alerts_msg, "alerts")
 
         except Exception as e:
             logger.warning(f"[Pipeline] WebSocket broadcast failed (non-critical): {e}")

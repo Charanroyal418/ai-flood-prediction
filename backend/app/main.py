@@ -119,6 +119,8 @@ async def lifespan(app: FastAPI):
     
     # Run the heavy initialization in a background thread so the server binds immediately
     loop = asyncio.get_running_loop()
+    from app.services.ws_manager import ws_manager
+    ws_manager.set_main_loop(loop)
     loop.run_in_executor(None, background_init)
     
     yield
