@@ -411,6 +411,8 @@ export default function RiverIntelligencePage() {
       return [] as River[];
     },
     refetchInterval: 10000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 8000),
   });
 
   const { forceRetry, districts: wsDistricts } = useFloodData();
@@ -561,7 +563,7 @@ export default function RiverIntelligencePage() {
 
   // ── Loading & Empty states ──────────────────────────────────────────────────
   if (rivers.length === 0) {
-    if (showSkeleton) {
+    if (showSkeleton || isLoading || isFetching) {
       return (
         <div className="flex h-64 items-center justify-center">
           <div className="flex flex-col items-center gap-4">

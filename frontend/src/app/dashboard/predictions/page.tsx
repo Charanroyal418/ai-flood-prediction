@@ -179,20 +179,20 @@ function StatCard({ icon: Icon, title, value, subtitle, accent = false, children
   const getColors = (t: string) => {
     if (t === 'Model') return 'bg-purple-100 text-purple-600';
     if (t === 'Engine') return 'bg-blue-100 text-blue-600';
-    if (t === 'Total Latency') return 'bg-amber-100 text-amber-600';
+    if (t === 'Total Latency' || t === 'Latency') return 'bg-amber-100 text-amber-600';
     if (t === 'Graph Config') return 'bg-emerald-100 text-emerald-600';
     return 'bg-indigo-100 text-indigo-600';
   };
   const colorClass = getColors(title);
 
   return (
-    <div className="bg-paper-100 rounded-3xl p-6 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] border border-[rgba(99,102,241,0.1)] flex items-center gap-4 relative overflow-hidden group min-w-0 transition-all duration-300 hover:-translate-y-1">
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${colorClass}`}>
-        <Icon className="w-7 h-7" strokeWidth={2} />
+    <div className="bg-paper-100 rounded-3xl p-4 lg:p-5 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] border border-[rgba(99,102,241,0.1)] flex items-center gap-3 relative overflow-hidden group min-w-0 transition-all duration-300 hover:-translate-y-1">
+      <div className={`w-11 h-11 xl:w-12 xl:h-12 rounded-2xl flex items-center justify-center shrink-0 ${colorClass}`}>
+        <Icon className="w-5 h-5 xl:w-6 xl:h-6" strokeWidth={2} />
       </div>
       <div className="flex-1 min-w-0 flex flex-col justify-center">
         <div className="flex items-center justify-between gap-1 mb-1">
-          <p className="text-[11px] text-text-secondary uppercase tracking-widest font-bold truncate">
+          <p className="text-[10px] xl:text-[11px] text-text-secondary uppercase tracking-wider font-bold whitespace-nowrap" title={title}>
             {title}
           </p>
           {extraIcon}
@@ -200,7 +200,7 @@ function StatCard({ icon: Icon, title, value, subtitle, accent = false, children
         {children ? children : (
           <div className="flex flex-col">
             <p className="text-lg xl:text-xl font-heading font-extrabold text-text-primary leading-tight tracking-wide break-words">{value}</p>
-            <p className="text-xs text-text-secondary truncate mt-1">{subtitle}</p>
+            <p className="text-xs text-text-secondary mt-1 whitespace-nowrap overflow-hidden text-ellipsis" title={subtitle}>{subtitle}</p>
           </div>
         )}
       </div>
@@ -580,15 +580,15 @@ export default function PredictionEnginePage() {
       {/* ── TOP STATUS BAR ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {/* Custom Model StatCard for premium typography */}
-        <div className="bg-paper-100 rounded-3xl p-6 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] border border-[rgba(99,102,241,0.1)] flex items-center justify-center gap-4 relative overflow-hidden group min-w-0 transition-all duration-300 hover:-translate-y-1 h-full">
-          <div className="w-[44px] h-[44px] rounded-2xl flex items-center justify-center shrink-0 bg-[#F3E8FF] text-violet-600">
-            <Brain className="w-[22px] h-[22px]" strokeWidth={2} />
+        <div className="bg-paper-100 rounded-3xl p-4 lg:p-5 shadow-[0_8px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_12px_32px_rgba(99,102,241,0.12)] border border-[rgba(99,102,241,0.1)] flex items-center justify-center gap-3 relative overflow-hidden group min-w-0 transition-all duration-300 hover:-translate-y-1 h-full">
+          <div className="w-[40px] h-[40px] rounded-2xl flex items-center justify-center shrink-0 bg-[#F3E8FF] text-violet-600">
+            <Brain className="w-[20px] h-[20px]" strokeWidth={2} />
           </div>
           <div className="flex flex-col flex-1 min-w-0 justify-center items-center text-center">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500 leading-tight font-medium">Model</div>
-            <div className="text-[30px] font-bold text-slate-900 leading-none tracking-tight my-0.5">GDNN v2</div>
-            <div className="text-[14px] font-medium text-violet-600 leading-tight whitespace-nowrap">GAT + GRU</div>
-            <div className="text-[11px] text-slate-400 leading-tight mt-0.5">Architecture</div>
+            <div className="text-[10px] xl:text-[11px] uppercase tracking-wide text-slate-500 leading-tight font-medium">Model</div>
+            <div className="text-[26px] xl:text-[28px] font-bold text-slate-900 leading-none tracking-tight my-0.5">GDNN v2</div>
+            <div className="text-[13px] font-medium text-violet-600 leading-tight whitespace-nowrap">GAT + GRU</div>
+            <div className="text-[10px] text-slate-400 leading-tight mt-0.5">Architecture</div>
           </div>
         </div>
         <StatCard icon={Cpu} title="Engine" value={s.compute_device || "CPU"} subtitle="Compute Target" />
@@ -607,7 +607,7 @@ export default function PredictionEnginePage() {
                 return <AnimatedCounter value={ms} isFloat={false} suffix=" ms" />;
               })()}
             </p>
-            <p className="text-xs text-text-secondary truncate mt-1">End-to-end processing</p>
+            <p className="text-xs text-text-secondary mt-1 whitespace-nowrap overflow-hidden text-ellipsis" title="End-to-end processing">End-to-end processing</p>
           </div>
         </StatCard>
         <StatCard icon={Network} title="Graph Config" extraIcon={<GitBranch className="w-3 h-3 text-text-secondary/50"/>}>
@@ -631,8 +631,8 @@ export default function PredictionEnginePage() {
             <div className="h-full bg-signal-400 rounded-r-full shadow-[0_0_8px_rgba(99,102,241,0.5)]" style={{ width: `${(countdown / 30) * 100}%`, transition: 'width 1s linear' }} />
           </div>
           <div className="flex flex-col">
-            <p className="text-xl lg:text-2xl font-heading font-extrabold text-text-primary truncate leading-tight tracking-wide tabular-nums">{countdown}s</p>
-            <p className="text-xs text-text-secondary truncate mt-1">Until inference</p>
+            <p className="text-xl lg:text-2xl font-heading font-extrabold text-text-primary leading-tight tracking-wide tabular-nums">{countdown}s</p>
+            <p className="text-xs text-text-secondary mt-1 whitespace-nowrap" title="Until inference">Until inference</p>
           </div>
         </StatCard>
       </div>

@@ -15,16 +15,35 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveCo
 const ReactECharts = dynamicImport(() => import("echarts-for-react"), { ssr: false });
 const WeatherMap = dynamicImport(() => import("@/components/map/WeatherMap"), { ssr: false });
 
+const CANONICAL_DISTRICTS: Record<string, string> = {
+  naaaoattinam: "Nagapattinam",
+  naoattinam: "Nagapattinam",
+  nagapatnam: "Nagapattinam",
+  kanchipuram: "Kancheepuram",
+  viluppuram: "Villupuram",
+  tirupathur: "Tirupattur",
+  tiruvallur: "Thiruvallur",
+  nilgiris: "The Nilgiris",
+};
+
+export const sanitizeDistrictName = (name: string): string => {
+  if (!name) return "";
+  const clean = name.trim();
+  const lower = clean.toLowerCase();
+  return CANONICAL_DISTRICTS[lower] || clean;
+};
+
 const getTopology = (districtName: string) => {
-  const coastal = ["Chennai", "Cuddalore", "Nagapattinam", "Kanyakumari", "Thoothukudi", "Ramanathapuram", "Thiruvallur", "Chengalpattu", "Pudukkottai", "Thanjavur", "Tiruvarur", "Mayiladuthurai"].includes(districtName);
+  const canonical = sanitizeDistrictName(districtName);
+  const coastal = ["Chennai", "Cuddalore", "Nagapattinam", "Kanyakumari", "Thoothukudi", "Ramanathapuram", "Thiruvallur", "Chengalpattu", "Pudukkottai", "Thanjavur", "Tiruvarur", "Mayiladuthurai"].includes(canonical);
   let hash = 0;
-  for (let i = 0; i < districtName.length; i++) { hash = districtName.charCodeAt(i) + ((hash << 5) - hash); }
+  for (let i = 0; i < canonical.length; i++) { hash = canonical.charCodeAt(i) + ((hash << 5) - hash); }
   hash = Math.abs(hash);
   const basins = ["Cauvery River Basin", "Palar Basin", "Ponnaiyar Basin", "Vellar Basin", "Vaigai Basin", "Thamirabarani Basin", "Coastal Drainage System"];
   const basin = coastal ? "Coastal Drainage System" : basins[hash % (basins.length - 1)];
   let elevationVal = 0;
-  if (districtName === "The Nilgiris" || districtName === "Nilgiris") elevationVal = 1800 + (hash % 400);
-  else if (districtName === "Coimbatore" || districtName === "Dindigul" || districtName === "Tenkasi") elevationVal = 300 + (hash % 300);
+  if (canonical === "The Nilgiris" || canonical === "Nilgiris") elevationVal = 1800 + (hash % 400);
+  else if (canonical === "Coimbatore" || canonical === "Dindigul" || canonical === "Tenkasi") elevationVal = 300 + (hash % 300);
   else if (coastal) elevationVal = 2 + (hash % 15);
   else elevationVal = 50 + (hash % 200);
   
@@ -92,14 +111,19 @@ export default function WeatherCenter() {
 
   const queryDistricts = data?.districts || [];
   const districts = useMemo(() => {
-    if (!wsDistricts || wsDistricts.length === 0) return queryDistricts;
-    return queryDistricts.map((qd: any) => {
+    const sanitizedQuery = queryDistricts.map((qd: any) => ({
+      ...qd,
+      name: sanitizeDistrictName(qd.name || qd.district_name),
+    }));
+    if (!wsDistricts || wsDistricts.length === 0) return sanitizedQuery;
+    return sanitizedQuery.map((qd: any) => {
       const match = wsDistricts.find(
-        (w) => w.district_id === qd.id || w.district_name.toLowerCase() === qd.name.toLowerCase()
+        (w) => w.district_id === qd.id || sanitizeDistrictName(w.district_name).toLowerCase() === qd.name.toLowerCase()
       );
       if (match) {
         return {
           ...qd,
+          name: sanitizeDistrictName(qd.name || match.district_name),
           rainfall_mm: match.rainfall_mm ?? qd.rainfall_mm,
           humidity: match.humidity ?? qd.humidity,
           temperature: match.temperature ?? qd.temperature,

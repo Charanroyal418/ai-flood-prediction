@@ -10,6 +10,29 @@ const LEVEL_CONFIG: Record<string, { badge: string; text: string; icon: React.Re
   Watch:    { badge: "risk-badge-low", text: "text-risk-low", icon: <Brain className="w-5 h-5 text-risk-low" /> },
 };
 
+const CANONICAL_DISTRICTS: Record<string, string> = {
+  naaaoattinam: "Nagapattinam",
+  naoattinam: "Nagapattinam",
+  nagapatnam: "Nagapattinam",
+  kanchipuram: "Kancheepuram",
+  viluppuram: "Villupuram",
+  tirupathur: "Tirupattur",
+  tiruvallur: "Thiruvallur",
+  nilgiris: "The Nilgiris",
+};
+
+const sanitizeDistrictName = (name: string): string => {
+  if (!name) return "";
+  const clean = name.trim();
+  return CANONICAL_DISTRICTS[clean.toLowerCase()] || clean;
+};
+
+const sanitizeAlertMessage = (msg: string): string => {
+  if (!msg) return "";
+  return msg.replace(/Naaaoattinam/gi, "Nagapattinam")
+            .replace(/Naoattinam/gi, "Nagapattinam");
+};
+
 function AlertCard({ alert }: { alert: any }) {
   const { mode, stormSimulationActive } = useFloodData();
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
@@ -41,11 +64,11 @@ function AlertCard({ alert }: { alert: any }) {
             <ChevronDown className={`w-4 h-4 text-text-secondary transition-transform ${expanded ? 'rotate-180' : ''}`} />
           </div>
           <p className={`text-sm font-semibold mb-1 ${acknowledged ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
-            {alert.message}
+            {sanitizeAlertMessage(alert.message)}
           </p>
           <div className="flex items-center gap-4">
             <span className="text-[10px] text-text-secondary font-mono flex items-center gap-1">
-              <MapPin className="w-3 h-3" /> {alert.district || "Statewide"}
+              <MapPin className="w-3 h-3" /> {sanitizeDistrictName(alert.district || "Statewide")}
             </span>
             <span className="text-[10px] text-text-secondary font-mono flex items-center gap-1">
               <Brain className="w-3 h-3" /> {(Number(alert?.confidence ?? 0.94) * 100).toFixed(1)}% CONFIDENCE

@@ -60,11 +60,11 @@ export default function ColdStartLoader() {
     }, 1500);
 
     const controller = new AbortController();
-    const abortTimer = addTimer(() => controller.abort(), 10000);
+    const abortTimer = addTimer(() => controller.abort(), 15000);
 
     try {
       const res = await api.get("/api/v1/health", {
-        timeout: 10000,
+        timeout: 15000,
         signal: controller.signal,
       });
 
@@ -92,11 +92,11 @@ export default function ColdStartLoader() {
 
       if (!mountedRef.current) return;
 
-      if (retryCountRef.current < 3) {
+      if (retryCountRef.current < 4) {
         retryCountRef.current += 1;
         addTimer(() => {
           if (mountedRef.current) checkHealth();
-        }, 2000);
+        }, 2500);
       } else {
         // Show unavailable toast, but auto-dismiss after 8 s
         setIsWaking(false);

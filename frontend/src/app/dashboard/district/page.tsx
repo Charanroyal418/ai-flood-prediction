@@ -196,8 +196,8 @@ function DistrictDetailPanel({ district }: { district: any }) {
             <div key={label} className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 hover:border-slate-200 transition-colors">
               <Icon className="w-3.5 h-3.5 text-violet-500 flex-shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-[9px] text-slate-400 font-medium truncate">{label}</p>
-                <p className="text-xs font-bold text-slate-700 truncate">{value}</p>
+                <p className="text-[10px] text-slate-400 font-medium leading-tight break-words" title={label}>{label}</p>
+                <p className="text-xs font-bold text-slate-700 mt-0.5 whitespace-nowrap">{value}</p>
               </div>
             </div>
           ))}

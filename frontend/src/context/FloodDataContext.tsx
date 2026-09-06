@@ -297,7 +297,7 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
     const attempt = async (): Promise<void> => {
       try {
-        const res = await api.get("/api/v1/health", { timeout: 8000 });
+        const res = await api.get("/api/v1/health", { timeout: 15000 });
         const s = res?.data?.status;
         if (s === "online" || s === "ok" || res?.status === 200) {
           setEngineStatus("online");
@@ -312,8 +312,8 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         if (isAbortError(err)) return; // Don't fail on abort
         healthRetryRef.current += 1;
-        if (healthRetryRef.current < 3) {
-          await new Promise((r) => setTimeout(r, 2000));
+        if (healthRetryRef.current < 4) {
+          await new Promise((r) => setTimeout(r, 3000));
           return attempt();
         }
         setEngineStatus("offline");
@@ -323,9 +323,16 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
     await attempt();
   }, []);
 
-  // Run health check once on mount
+  // Run health check once on mount and maintain gentle keep-alive
   useEffect(() => {
     checkEngineHealth();
+    const keepAlive = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        api.get("/api/v1/health", { timeout: 10000 }).catch(() => {});
+      }
+    };
+    const keepAliveInterval = setInterval(keepAlive, 5 * 60 * 1000);
+    return () => clearInterval(keepAliveInterval);
   }, [checkEngineHealth]);
 
   // ── Pipeline Data Fetcher ─────────────────────────────────────────────────

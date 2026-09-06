@@ -89,13 +89,25 @@ api.interceptors.response.use(
       });
     }
 
-    const isRetryable = !error.response || error.response.status >= 500;
-    const isGet = config.method?.toLowerCase() === 'get';
+    const status = error.response?.status;
+    const urlStr = typeof config.url === 'string' ? config.url : '';
+    const isRenderColdStart404 = status === 404 && (
+      typeof error.response?.data === 'string' ||
+      urlStr.includes('/river') ||
+      urlStr.includes('/simulate-storm') ||
+      urlStr.includes('/dashboard') ||
+      urlStr.includes('/predict') ||
+      urlStr.includes('/health')
+    );
+    const isRetryable = !error.response || (status !== undefined && status >= 500) || status === 408 || isRenderColdStart404;
+    const method = config.method?.toLowerCase() || 'get';
+    const isSimulationPost = method === 'post' && urlStr.includes('/simulate-storm');
+    const isSafeMethod = method === 'get' || method === 'head' || method === 'options' || isSimulationPost;
     const retryCount = config.__retryCount ?? 0;
 
-    if (isGet && isRetryable && retryCount < 2) {
+    if (isSafeMethod && isRetryable && retryCount < 3) {
       config.__retryCount = retryCount + 1;
-      const delay = 500 * Math.pow(2, retryCount);
+      const delay = 1000 * Math.pow(2, retryCount); // 1000ms, 2000ms, 4000ms
       await new Promise((res) => setTimeout(res, delay));
       return api(config);
     }
