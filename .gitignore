@@ -36,6 +36,7 @@ Thumbs.db
 
 .vercel
 .env*
+!.env.example
 api_keys.*
 secret*
 credentials*
