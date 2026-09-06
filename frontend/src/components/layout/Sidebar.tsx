@@ -22,8 +22,6 @@ import {
   CloudLightning,
   X,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import api from "@/lib/api";
 import { useFloodData } from "@/context/FloodDataContext";
 
 export const navSections = [
@@ -66,41 +64,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { mode, stormSimulationActive, lastUpdated } = useFloodData();
-
-  // Close mobile nav on route change
-  useEffect(() => {
-    setMobileNavOpen(false);
-  }, [pathname]);
-
-  // Listen for mobile toggle events from header
-  useEffect(() => {
-    const handleToggle = () => setMobileNavOpen((prev) => !prev);
-    window.addEventListener("toggle-mobile-nav", handleToggle);
-    return () => window.removeEventListener("toggle-mobile-nav", handleToggle);
-  }, []);
-
-  const { data: liveData } = useQuery({
-    queryKey: ["dashboardLive"],
-    queryFn: async () => {
-      try {
-        const res = await api.get("/api/v1/dashboard/live");
-        return res?.data ?? null;
-      } catch (err: any) {
-        if (err?.response?.status === 401) return null;
-        return null;
-      }
-    },
-    refetchInterval: 10000,
-    staleTime: 5000,
-    retry: (failureCount, error: any) => {
-      if (error?.response?.status === 401) return false;
-      return failureCount < 2;
-    },
-    throwOnError: false,
-  });
-
-  const alertCount = liveData?.metrics?.active_alerts_count ?? 0;
+  const { mode, stormSimulationActive, lastUpdated, alerts } = useFloodData();
+  const alertCount = alerts?.length ?? 0;
   const isStormActive = stormSimulationActive || mode === "SIMULATION";
 
   return (
@@ -165,12 +130,6 @@ export default function Sidebar() {
                       href={item.href}
                       prefetch={false}
                       title={collapsed ? item.name : undefined}
-                      onClick={(e) => {
-                        if (!e.defaultPrevented && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-                          e.preventDefault();
-                          router.push(item.href);
-                        }
-                      }}
                       className={`sidebar-item ${active ? "active" : ""}`}
                     >
                       <item.icon strokeWidth={1.5} className="w-[18px] h-[18px] flex-shrink-0" />
@@ -268,13 +227,7 @@ export default function Sidebar() {
                           key={item.href}
                           href={item.href}
                           prefetch={false}
-                          onClick={(e) => {
-                            setMobileNavOpen(false);
-                            if (!e.defaultPrevented && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-                              e.preventDefault();
-                              router.push(item.href);
-                            }
-                          }}
+                          onClick={() => setMobileNavOpen(false)}
                           className={`sidebar-item ${active ? "active" : ""}`}
                         >
                           <item.icon strokeWidth={1.5} className="w-[18px] h-[18px] flex-shrink-0" />

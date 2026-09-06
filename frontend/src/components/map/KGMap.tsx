@@ -136,36 +136,39 @@ export default function KGMap({ nodes, edges, showAllEdges, onNodeClick, activeN
           }
         })}
 
-        {mapNodes.map((node: any) => (
-          <CircleMarker
-            key={node.id}
-            center={[node.lat, node.lon]}
-            radius={getRadius(node.risk_score)}
-            pathOptions={{
-              fillColor: node.communityColor || RISK_COLORS[node.status] || "#94a3b8",
-              fillOpacity: node.propActive ? 0.9 : 0.6,
-              color: RISK_COLORS[node.status] || "#94a3b8",
-              weight: node.risk_score >= 75 ? 4 : 2,
-              opacity: 1,
-            }}
-            eventHandlers={{ click: () => onNodeClick(node) }}
-          >
-            <Tooltip
-              className="custom-district-tooltip"
-              sticky
-              direction="top"
-              offset={[0, -8]}
+        {mapNodes.map((node: any) => {
+          const score = Number(node.risk_score ?? 0);
+          const riskColor = node.risk_color || (score >= 80 ? "#ef4444" : score >= 60 ? "#f97316" : score >= 40 ? "#f59e0b" : "#10b981");
+          return (
+            <CircleMarker
+              key={node.id}
+              center={[node.lat, node.lon]}
+              radius={getRadius(score)}
+              pathOptions={{
+                fillColor: riskColor,
+                fillOpacity: node.propActive ? 0.9 : 0.75,
+                color: riskColor,
+                weight: score >= 60 ? 3 : 1.5,
+                opacity: 1,
+              }}
+              eventHandlers={{ click: () => onNodeClick(node) }}
             >
-              <div className="min-w-[140px]">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-bold text-slate-800">{node.label}</span>
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
-                    style={{ background: RISK_COLORS[node.status] || "#94a3b8" }}
-                  >
-                    {node.status}
-                  </span>
-                </div>
+              <Tooltip
+                className="custom-district-tooltip"
+                sticky
+                direction="top"
+                offset={[0, -8]}
+              >
+                <div className="min-w-[140px]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-slate-800">{node.label}</span>
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
+                      style={{ background: riskColor }}
+                    >
+                      {node.status || (score >= 80 ? "Critical" : score >= 60 ? "High" : score >= 40 ? "Moderate" : "Low")}
+                    </span>
+                  </div>
                 <div className="mt-1.5 space-y-0.5">
                   <div className="flex justify-between text-[10px]">
                     <span className="text-slate-500">Risk Score</span>

@@ -46,7 +46,13 @@ from app.models.history import (
 )
 from app.etl.weather import WeatherETL, TN_DISTRICTS
 from app.kg.builder import kg_builder
-from app.ml.inference import gnn_engine, get_risk_level_and_color
+from app.ml.inference import (
+    gnn_engine,
+    get_risk_level_and_color,
+    calculate_flood_probability,
+    calculate_river_overflow_pct,
+    normalize_shap_contributions,
+)
 from app.services.hydrology import HydrologyEngine, GEOM_PARAMS, RESERVOIRS
 
 logger = logging.getLogger(__name__)
@@ -573,6 +579,7 @@ def _execute_inference_pipeline(db: Session) -> Any:
                     val = sv.get("value", contrib)
                     shap_values.append({"label": str(label), "value": float(val), "contribution": float(contrib)})
                     reasoning_chain.append(f"{label} contributes {contrib}%")
+        shap_values = normalize_shap_contributions(shap_values)
 
         w_record = weather_map.get(d.id)
         r_record = river_map.get(d.id)
@@ -597,9 +604,7 @@ def _execute_inference_pipeline(db: Session) -> Any:
                 risk_score = min(98.5, max(risk_score, 88.5))
 
         calc_lvl, calc_color = get_risk_level_and_color(risk_score)
-
-        import math as _math
-        flood_prob = round(1 / (1 + _math.exp(-0.08 * (risk_score - 50))), 3)
+        flood_prob = calculate_flood_probability(risk_score)
 
         district_results.append({
             "district_id": d.id,

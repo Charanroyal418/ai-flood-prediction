@@ -116,10 +116,7 @@ export default function AdminPanel() {
 
   const handle401 = useCallback(() => {
     logout();
-    if (typeof window !== "undefined") {
-      router.replace("/login");
-    }
-  }, [logout, router]);
+  }, [logout]);
 
   // Fetch pipeline status
   const { data: status, isLoading: statusLoading } = useQuery<PipelineStatus | null>({

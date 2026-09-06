@@ -8,6 +8,7 @@ from app.api import deps
 from app.models.district import District
 from app.models.history import PredictionHistory, WeatherHistory
 from app.etl.weather import TN_DISTRICTS
+from app.ml.inference import calculate_flood_probability
 
 router = APIRouter()
 
@@ -139,7 +140,7 @@ def get_district_details(district_id: int, db: Session = Depends(deps.get_db)) -
         "temperature": latest_weather.temperature,
         "pressure": latest_weather.pressure,
         "wind_speed": latest_weather.wind_speed,
-        "flood_probability": latest_pred.current_risk_score / 100.0,
+        "flood_probability": calculate_flood_probability(latest_pred.current_risk_score),
         "ai_confidence": latest_pred.confidence,
         "shap_values": latest_pred.shap_values,
         "history": history,

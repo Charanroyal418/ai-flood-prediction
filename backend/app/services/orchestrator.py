@@ -32,7 +32,13 @@ from app.etl.weather import WeatherETL
 from app.etl.nasa_gpm import NasaGPMETL
 from app.etl.river import RiverETL
 from app.kg.builder import kg_builder
-from app.ml.inference import gnn_engine, get_risk_level_and_color
+from app.ml.inference import (
+    gnn_engine,
+    get_risk_level_and_color,
+    calculate_flood_probability,
+    calculate_river_overflow_pct,
+    normalize_shap_contributions,
+)
 from app.services.alert_engine import AlertEngine
 from app.models.district import District
 from app.models.alert import Alert
@@ -648,7 +654,7 @@ class RealtimeOrchestrator:
                         risk_score = min(98.5, max(risk_score, 88.5))
 
                 risk_level, _ = get_risk_level_and_color(risk_score)
-                base_prob = risk_score / 100.0
+                base_prob = calculate_flood_probability(risk_score)
                 pred = PredictionHistory(
                     district_id=district.id,
                     current_risk_score=round(risk_score, 1),
@@ -659,7 +665,7 @@ class RealtimeOrchestrator:
                     forecast_12h=round(min(1.0, base_prob * 1.20), 3),
                     forecast_24h=round(min(1.0, base_prob * 1.25), 3),
                     confidence=confidence,
-                    shap_values=shap_values,
+                    shap_values=normalize_shap_contributions(shap_values),
                     created_at=datetime.now(timezone.utc),
                 )
                 self.db.add(pred)
@@ -982,11 +988,12 @@ class RealtimeOrchestrator:
                     "wind_speed": w.wind_speed if w else 0.0,
                     "river_level_m": r_lvl.current_level if r_lvl else 0.0,
                     "river_danger_m": r_lvl.danger_level if r_lvl else 5.0,
-                    "reservoir_storage": res_storage,
-                    "flood_probability": score / 100.0,
+                    "river_overflow_pct": calculate_river_overflow_pct(r_lvl.current_level if r_lvl else 0.0, r_lvl.danger_level if r_lvl else 5.0),
+                    "reservoir_storage": min(100.0, max(0.0, round(float(res_storage), 1))),
+                    "flood_probability": calculate_flood_probability(score),
                     "confidence": r.get("confidence", 0.82),
                     "ai_confidence": r.get("confidence", 0.82),
-                    "shap_values": r.get("shap_values", []),
+                    "shap_values": normalize_shap_contributions(r.get("shap_values", [])),
                 })
 
             is_storm = get_storm_simulation_active()

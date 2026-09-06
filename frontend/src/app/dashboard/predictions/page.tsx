@@ -35,6 +35,7 @@ interface DistrictResult {
   risk_score: number;
   risk_level: string;
   risk_color: string;
+  flood_probability?: number;
   confidence: number;
   rainfall_24h: number;
   river_level_m?: number;
@@ -274,25 +275,6 @@ export default function PredictionEnginePage() {
   const isError = data?.status === "error";
   const dataUpdatedAt = contextData?.timestamp || 0;
 
-  // Session storage caching for resilient SSR / offline fallback
-  const [cachedData, setCachedData] = useState<any>(null);
-
-  useEffect(() => {
-    try {
-      if (typeof window !== "undefined") {
-        const saved = sessionStorage.getItem("floodsense_cached_predictions");
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && Array.isArray(parsed.districts) && parsed.districts.length > 0) {
-            setCachedData(parsed);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[Predictions] Error reading cached predictions:", e);
-    }
-  }, []);
-
   // Immediate refetch on storm simulation activation / restoration
   useEffect(() => {
     const handleSimChange = () => {
@@ -305,29 +287,18 @@ export default function PredictionEnginePage() {
     }
   }, [refetchPipeline, queryClient]);
 
-  useEffect(() => {
-    try {
-      if (typeof window !== "undefined" && data?.districts && data.districts.length > 0) {
-        sessionStorage.setItem("floodsense_cached_predictions", JSON.stringify(data));
-      }
-    } catch (e) {
-      // Ignore sessionStorage quota / privacy errors
-    }
-  }, [data]);
-
-  // Compute effectiveData: live data -> WS districts fallback -> cached data
-  const effectiveData = (data?.districts && data.districts.length > 0)
-    ? data
-    : (wsDistricts && wsDistricts.length > 0)
-    ? {
-        status: "ready",
-        model_status: { backend_status: "ready", compute_device: "CPU", node_count: 147, edge_count: 223, attention_heads: 4 },
-        districts: wsDistricts.map((item: any) => ({
+  // Compute effectiveData strictly from live pipeline data and live telemetry context
+  const effectiveData = React.useMemo(() => {
+    const baseDistricts = (data?.districts && data.districts.length > 0)
+      ? data.districts
+      : (wsDistricts && wsDistricts.length > 0)
+      ? wsDistricts.map((item: any) => ({
           district_id: item.district_id || item.id || 1,
           district: item.name || item.district || item.district_name || "Unknown",
           risk_score: item.risk_score ?? item.riskScore ?? 0,
           risk_level: item.risk_level ?? item.floodRisk ?? "Low",
           risk_color: item.risk_color ?? "#10b981",
+          flood_probability: item.flood_probability,
           confidence: item.confidence ?? item.ai_confidence ?? 0.85,
           rainfall_24h: item.rainfall_mm ?? item.rainfall24h ?? 0,
           river_level_m: item.river_level_m ?? item.riverLevel,
@@ -359,11 +330,43 @@ export default function PredictionEnginePage() {
             "12h": Math.min(100, Math.round((item.risk_score ?? 0) * 1.08 * 10) / 10),
             "24h": Math.min(100, Math.round((item.risk_score ?? 0) * 0.95 * 10) / 10),
           },
-        })),
-      }
-    : (cachedData?.districts && cachedData.districts.length > 0)
-    ? cachedData
-    : null;
+        }))
+      : [];
+
+    if (baseDistricts.length === 0) return null;
+
+    // Synchronize latest risk_score, risk_level, risk_color, flood_probability from wsDistricts
+    let syncedDistricts = baseDistricts;
+    if (wsDistricts && wsDistricts.length > 0) {
+      const wsMap = new Map();
+      wsDistricts.forEach((d: any) => {
+        const name = (d.name || d.district || d.district_name || "").toLowerCase().trim();
+        if (name) wsMap.set(name, d);
+      });
+
+      syncedDistricts = baseDistricts.map((d: any) => {
+        const key = (d.district || "").toLowerCase().trim();
+        const wsItem = wsMap.get(key);
+        if (!wsItem) return d;
+        return {
+          ...d,
+          risk_score: wsItem.risk_score ?? wsItem.riskScore ?? d.risk_score,
+          risk_level: wsItem.risk_level ?? wsItem.floodRisk ?? d.risk_level,
+          risk_color: wsItem.risk_color ?? d.risk_color,
+          flood_probability: wsItem.flood_probability ?? d.flood_probability,
+          rainfall_24h: wsItem.rainfall_mm ?? wsItem.rainfall24h ?? d.rainfall_24h,
+          reservoir_storage: wsItem.reservoir_storage ?? wsItem.reservoirStorage ?? d.reservoir_storage,
+        };
+      });
+    }
+
+    return {
+      ...(data || {}),
+      status: "ready",
+      model_status: data?.model_status || { backend_status: "ready", compute_device: "CPU", node_count: 147, edge_count: 223, attention_heads: 4 },
+      districts: syncedDistricts,
+    };
+  }, [data, wsDistricts]);
 
   const [telemetryWaitTime, setTelemetryWaitTime] = useState(0);
 
@@ -814,7 +817,11 @@ export default function PredictionEnginePage() {
                   {/* Circular Gauges: Flood Prob + Confidence */}
                   <div className="flex items-center justify-around py-6 mb-6 border-y border-line/60 bg-paper-50/30 rounded-xl">
                     <CircularGauge
-                      value={Number(d.risk_score ?? 0)}
+                      value={
+                        d.flood_probability !== undefined
+                          ? (d.flood_probability <= 1 ? Math.round(d.flood_probability * 1000) / 10 : Math.round(d.flood_probability * 10) / 10)
+                          : Math.round((1 / (1 + Math.exp(-0.08 * ((d.risk_score ?? 0) - 50)))) * 1000) / 10
+                      }
                       label="Flood Probability"
                       color={riskAccent}
                     />

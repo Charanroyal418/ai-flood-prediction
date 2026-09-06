@@ -282,6 +282,20 @@ export default function CommandCenter() {
   const isStormActive = stormSimulationActive || Boolean(data?.metrics?.storm_simulation_active);
   const highestRiskLevel = derivedCriticalCount > 0 ? "Critical" : derivedHighCount > 0 ? "High" : "Moderate";
 
+  const rainfallSparkline = useMemo(() => {
+    if (!effectiveDistricts.length) return [0, 0, 0, 0, 0, 0];
+    const vals = effectiveDistricts.map(d => Number(d.rainfall_mm || 0));
+    const step = Math.max(1, Math.floor(vals.length / 6));
+    return Array.from({ length: 6 }, (_, i) => vals[Math.min(i * step, vals.length - 1)] || 0);
+  }, [effectiveDistricts]);
+
+  const riskSparkline = useMemo(() => {
+    if (!effectiveDistricts.length) return [0, 0, 0, 0, 0, 0];
+    const vals = effectiveDistricts.map(d => Number(d.risk_score || 0));
+    const step = Math.max(1, Math.floor(vals.length / 6));
+    return Array.from({ length: 6 }, (_, i) => vals[Math.min(i * step, vals.length - 1)] || 0);
+  }, [effectiveDistricts]);
+
   // ── Effects (all state/derived values used in deps are declared above) ──────
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -395,7 +409,7 @@ export default function CommandCenter() {
           </div>
         ) : (
           <>
-            <MetricCard title="Rainfall (24h)" value={isDataLoaded ? safeFormat(metrics.avg_rainfall_24h_mm, 1) : undefined} unit="mm" icon={CloudRain} sparklineData={[12, 14, 25, 45, 30, metrics.avg_rainfall_24h_mm || 0]} bgClass="bg-purple-100" colorClass="text-purple-600" sparklineColor="#9333ea" />
+            <MetricCard title="Rainfall (24h)" value={isDataLoaded ? safeFormat(metrics.avg_rainfall_24h_mm, 1) : undefined} unit="mm" icon={CloudRain} sparklineData={rainfallSparkline} bgClass="bg-purple-100" colorClass="text-purple-600" sparklineColor="#9333ea" />
             <MetricCard title="Critical Nodes" value={isDataLoaded ? derivedCriticalCount : undefined} icon={MapPin} sparklineData={[0, 0, 0, 0, 0, derivedCriticalCount]} bgClass="bg-red-100" colorClass="text-red-600" sparklineColor="#dc2626" />
             <MetricCard title="High Risk Nodes" value={isDataLoaded ? derivedHighCount : undefined} icon={AlertTriangle} sparklineData={[0, 0, 0, 0, 0, derivedHighCount]} bgClass="bg-orange-100" colorClass="text-orange-600" sparklineColor="#ea580c" />
             <MetricCard title="GDNN Latency" value={isDataLoaded ? Math.round(Number(gdnnLatencyMs || 481)) : undefined} unit="ms" icon={Brain} sparklineData={[420, 445, 510, 480, 495, Math.round(Number(gdnnLatencyMs || 481))]} bgClass="bg-indigo-100" colorClass="text-indigo-600" sparklineColor="#4f46e5" />

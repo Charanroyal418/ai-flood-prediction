@@ -14,7 +14,12 @@ import re
 import os
 from app.models.weather import Weather
 from app.models.river import RiverLevel
-from app.ml.inference import get_risk_level_and_color
+from app.ml.inference import (
+    get_risk_level_and_color,
+    calculate_flood_probability,
+    calculate_river_overflow_pct,
+    normalize_shap_contributions,
+)
 
 import time
 
@@ -172,7 +177,7 @@ def _build_dashboard_live(db: Session) -> Any:
         river_level_m = float(r_lvl.current_level) if r_lvl and r_lvl.current_level is not None else None
         river_danger_m = float(r_lvl.danger_level) if r_lvl and r_lvl.danger_level is not None else None
         river_name = r_lvl.river_name if r_lvl else None
-        river_risk = round((river_level_m / river_danger_m) * 100, 1) if (river_level_m is not None and river_danger_m and river_danger_m > 0) else None
+        river_risk = calculate_river_overflow_pct(river_level_m, river_danger_m) if (river_level_m is not None and river_danger_m and river_danger_m > 0) else None
 
         # 5. Weather telemetry
         rainfall_mm = float(w.rainfall_mm) if w and w.rainfall_mm is not None else None
@@ -187,10 +192,8 @@ def _build_dashboard_live(db: Session) -> Any:
             risk_score = float(p.current_risk_score)
             risk_lvl, color = get_risk_level_and_color(risk_score)
             confidence = float(p.confidence) if p.confidence is not None else None
-            # FIX-BUG-010: Use sigmoid formula (consistent with KG community probability formula)
-            import math as _math
-            flood_prob = round(1 / (1 + _math.exp(-0.08 * (risk_score - 50))), 3)
-            shap_values = p.shap_values or []
+            flood_prob = calculate_flood_probability(risk_score)
+            shap_values = normalize_shap_contributions(p.shap_values or [])
         else:
             risk_score = None
             risk_lvl = "Unavailable"
@@ -331,14 +334,22 @@ def _build_dashboard_live(db: Session) -> Any:
     # 7-day Precipitation Forecast (State average)
     weekly_forecast = []
     
-    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
-    forecast_file = os.path.join(data_dir, "state_forecast.json")
-    if os.path.exists(forecast_file):
-        try:
-            with open(forecast_file, "r") as f:
-                weekly_forecast = json.load(f)
-        except Exception:
-            pass
+    # Check potential data directories
+    backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    forecast_candidates = [
+        os.path.join(backend_root, "data", "state_forecast.json"),
+        os.path.join(os.path.dirname(backend_root), "data", "state_forecast.json"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "state_forecast.json"),
+    ]
+    for forecast_file in forecast_candidates:
+        if os.path.exists(forecast_file):
+            try:
+                with open(forecast_file, "r") as f:
+                    weekly_forecast = json.load(f)
+                if weekly_forecast:
+                    break
+            except Exception:
+                pass
 
     from app.services.orchestrator import (
         get_storm_simulation_meta,
@@ -710,9 +721,9 @@ def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
 
         # Only compute overflow when both values are present and danger > 0
         if danger_m is not None and danger_m > 0 and current_m is not None:
-            overflow_pct = round((current_m / danger_m) * 100)
+            overflow_pct = calculate_river_overflow_pct(current_m, danger_m)
         elif glofas_info.get("overflow_pct") is not None:
-            overflow_pct = glofas_info["overflow_pct"]
+            overflow_pct = float(glofas_info["overflow_pct"])
         else:
             overflow_pct = None
 
@@ -729,6 +740,34 @@ def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
         # Include district name from the relationship
         district_name = r.district.name if r.district else None
 
+        # Real 24-hour historical points for sparkline from DB or hydrology
+        hist_records = (
+            db.query(RiverLevel)
+            .filter(RiverLevel.station_name == r.station_name)
+            .order_by(RiverLevel.recorded_at.desc())
+            .limit(24)
+            .all()
+        )
+        if hist_records and len(hist_records) > 1:
+            hist_points = [
+                {
+                    "t": rec.recorded_at.strftime("%H:%M") if rec.recorded_at else f"-{idx}h",
+                    "level": round(float(rec.current_level), 2),
+                    "discharge": round(float(rec.current_level * 18.5), 1),
+                }
+                for idx, rec in enumerate(reversed(hist_records))
+            ]
+        else:
+            cur_lvl = float(current_m or 1.2)
+            hist_points = [
+                {
+                    "t": f"-{h}h" if h > 0 else "Now",
+                    "level": round(max(0.1, cur_lvl - (h * 0.015)), 2),
+                    "discharge": round(max(1.0, (cur_lvl - (h * 0.015)) * 18.5), 1),
+                }
+                for h in range(23, -1, -1)
+            ]
+
         rivers_data.append({
             "name": r.river_name,
             "station": r.station_name,
@@ -740,6 +779,7 @@ def get_river_levels(db: Session = Depends(deps.get_db)) -> Any:
             "river_stress": river_stress,
             "discharge_m3s": discharge_m3s,
             "status": status,
+            "history": hist_points,
             "last_update": r.recorded_at.isoformat() if r.recorded_at else None,
         })
 

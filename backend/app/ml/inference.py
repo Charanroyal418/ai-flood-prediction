@@ -52,6 +52,60 @@ def get_risk_level_and_color(risk_score: float) -> Tuple[str, str]:
         return "Safe", "#3b82f6"
 
 
+def calculate_flood_probability(risk_score: float) -> float:
+    """
+    Sigmoid-based flood probability calculation:
+    p = 1 / (1 + exp(-0.08 * (risk_score - 50)))
+    Standardized across all backend services and endpoints.
+    """
+    import math
+    try:
+        score = float(risk_score)
+        return round(1.0 / (1.0 + math.exp(-0.08 * (score - 50.0))), 3)
+    except Exception:
+        return 0.5
+
+
+def calculate_river_overflow_pct(current_level: float, danger_level: float) -> float:
+    """
+    Overflow % = Current / Danger * 100
+    Standardized formula across all backend services and endpoints.
+    """
+    try:
+        c = float(current_level)
+        d = float(danger_level)
+        if d > 0:
+            return round((c / d) * 100.0, 1)
+    except Exception:
+        pass
+    return 0.0
+
+
+def normalize_shap_contributions(shap_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Normalizes a list of SHAP contribution items so that the sum of
+    contribution_pct mathematically and strictly equals exactly 100.0%.
+    """
+    if not shap_list:
+        return []
+    total = sum(float(item.get("contribution_pct", item.get("contribution", item.get("value", 0) * 100.0))) for item in shap_list)
+    if total <= 0:
+        total = 1.0
+    running = 0.0
+    for idx, item in enumerate(shap_list):
+        if idx == len(shap_list) - 1:
+            pct = round(100.0 - running, 1)
+        else:
+            raw = float(item.get("contribution_pct", item.get("contribution", item.get("value", 0) * 100.0)))
+            pct = round((raw / total) * 100.0, 1)
+            running += pct
+        item["contribution_pct"] = pct
+        item["contribution"] = pct
+        item["value"] = round(pct / 100.0, 3)
+    return shap_list
+
+
+
 # Feature names (must match KG builder feature matrix)
 FEATURE_NAMES = [
     "Rainfall",
@@ -254,6 +308,8 @@ class GNNInferenceEngine:
                                     "contribution": round(weight * 100, 1),
                                     "contribution_pct": round(weight * 100, 1),
                                 })
+                                # Re-normalize entire SHAP attribution list to strictly sum to 100.0%
+                                shap = normalize_shap_contributions(shap)
                                 # Re-sort so highest contribution is first
                                 shap.sort(key=lambda x: -x["contribution_pct"])
 
@@ -420,15 +476,15 @@ class GNNInferenceEngine:
                 break
             val = abs(features[idx])
             base_weight = FEATURE_WEIGHTS.get(name, 0.01)
-            # When rainfall is elevated (storm/cyclone), amplify rainfall attribution
-            if name == "Rainfall" and rain_val > 0.4:
-                base_weight = 0.65
+            # When rainfall is elevated (storm/cyclone) or risk is elevated, amplify rainfall attribution to dominate
+            if name == "Rainfall" and (rain_val > 0.35 or risk_score >= 60.0):
+                base_weight = 0.72
             elif name == "Humidity":
-                base_weight = 0.12
-            elif name == "Urban Drainage":
                 base_weight = 0.10
-            elif name == "Elevation":
+            elif name == "Urban Drainage":
                 base_weight = 0.08
+            elif name == "Elevation":
+                base_weight = 0.06
             contributions[name] = max(0.001, val * base_weight)
 
         top_items = sorted(contributions.items(), key=lambda x: -x[1])[:5]

@@ -171,3 +171,45 @@ class TestKGBuilder:
 
         for edge_type in ["supplies", "influences", "located_in", "upstream_of", "downstream_of"]:
             assert edge_type in EDGE_TYPE_META, f"Missing edge type: {edge_type}"
+
+
+class TestMathematicalStandardization:
+    """Phase 4 Mathematical Validation unit tests."""
+
+    def test_sigmoid_flood_probability(self):
+        from app.ml.inference import calculate_flood_probability
+        # At midpoint 50, sigmoid gives 0.50
+        prob_mid = calculate_flood_probability(50.0)
+        assert prob_mid == 0.5
+
+        # At risk 0, probability is very low
+        prob_zero = calculate_flood_probability(0.0)
+        assert 0.01 <= prob_zero <= 0.05
+
+        # At risk 100, probability is near 1
+        prob_max = calculate_flood_probability(100.0)
+        assert 0.95 <= prob_max <= 1.0
+
+        # Monotonically increasing
+        assert calculate_flood_probability(70.0) > calculate_flood_probability(40.0)
+
+    def test_river_overflow_pct(self):
+        from app.ml.inference import calculate_river_overflow_pct
+        assert calculate_river_overflow_pct(5.0, 10.0) == 50.0
+        assert calculate_river_overflow_pct(10.0, 10.0) == 100.0
+        assert calculate_river_overflow_pct(12.0, 10.0) == 120.0
+        assert calculate_river_overflow_pct(5.0, 0.0) == 0.0
+
+    def test_exact_100_pct_shap_sum(self):
+        from app.ml.inference import normalize_shap_contributions
+        sample_shap = [
+            {"label": "Rainfall", "contribution": 45.3, "contribution_pct": 45.3},
+            {"label": "River Level", "contribution": 22.1, "contribution_pct": 22.1},
+            {"label": "Humidity", "contribution": 14.8, "contribution_pct": 14.8},
+            {"label": "Elevation", "contribution": 9.4, "contribution_pct": 9.4},
+            {"label": "Attention from District 1", "contribution": 18.2, "contribution_pct": 18.2},
+        ]
+        norm = normalize_shap_contributions(sample_shap)
+        total_sum = round(sum(item["contribution_pct"] for item in norm), 1)
+        assert total_sum == 100.0, f"SHAP sum must be exactly 100.0%, got {total_sum}%"
+

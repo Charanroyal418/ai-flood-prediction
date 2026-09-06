@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.api import deps
 from app.kg.builder import kg_builder, EDGE_TYPE_META
-from app.ml.inference import gnn_engine
+from app.ml.inference import gnn_engine, calculate_flood_probability
 import torch
 import time
 
@@ -120,8 +120,8 @@ def _build_community_detail(communities: List[List[str]], G: nx.DiGraph) -> List
         max_risk = float(np.max(risks)) if risks else 0.0
         avg_rain = float(np.mean(rainfalls)) if rainfalls else 0.0
 
-        # Flood probability: sigmoid-like mapping from max risk
-        flood_prob = round(1 / (1 + np.exp(-0.08 * (max_risk - 50))), 3)
+        # Flood probability: canonical sigmoid mapping from max risk
+        flood_prob = calculate_flood_probability(max_risk)
 
         result.append({
             "id": f"community-{idx}",
@@ -204,7 +204,12 @@ def get_knowledge_graph(db: Session = Depends(deps.get_db)) -> Any:
 
     # ── Build Edge Response ───────────────────────────────────────────────────
     edges_response = []
+    seen_edges = set()
     for u, v, data in G.edges(data=True):
+        edge_key = (u, v)
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
         edge_type = data.get("relationship_type", data.get("type", "river_flow"))
         meta = EDGE_TYPE_META.get(edge_type, EDGE_TYPE_META["river_flow"])
         attn = data.get("attention", data.get("weight", 0.5))
