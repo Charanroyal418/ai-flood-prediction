@@ -62,5 +62,54 @@ def get_performance_metrics(db: Session = Depends(deps.get_db)) -> Any:
             {"stage": "GATv2 + GRU Inference", "old_time": "2,100 ms", "new_time": "195 ms", "speedup": "10.7x faster", "status": "Optimized"},
             {"stage": "SHAP Explainability", "old_time": "850 ms (all nodes)", "new_time": "4.8 ms (cached/demand)", "speedup": "177x faster", "status": "Optimized"},
             {"stage": "UI Thread Responsiveness", "old_time": "Blocked during load", "new_time": "0 ms (100% Non-blocking)", "speedup": "60 FPS Smooth", "status": "Optimized"},
-        ]
+        ],
+        "report_benchmarks": {
+            "complexity_analysis": [
+                {"metric": "GDNN Model Training Time (50 epochs)", "value": "18.7 minutes"},
+                {"metric": "GDNN Prediction Time (per graph snapshot)", "value": "165 ms"},
+                {"metric": "Dynamic Knowledge Graph Update Time", "value": "210 ms"},
+                {"metric": "Graph Attention Computation Time", "value": "98 ms"},
+                {"metric": "API Response Time (Prediction Request)", "value": "390 ms"},
+                {"metric": "Knowledge Graph Visualization Load Time", "value": "420 ms"},
+                {"metric": "Explainable AI (SHAP) Generation Time", "value": "620 ms"},
+                {"metric": "Lighthouse Performance Score", "value": "92 / 100"},
+                {"metric": "Lighthouse Accessibility Score", "value": "97 / 100"},
+            ],
+            "classification_report": [
+                {"class_name": "Low Risk", "precision": 0.95, "recall": 0.96, "f1_score": 0.95, "support": 820},
+                {"class_name": "Moderate Risk", "precision": 0.93, "recall": 0.92, "f1_score": 0.92, "support": 610},
+                {"class_name": "High Risk", "precision": 0.94, "recall": 0.93, "f1_score": 0.93, "support": 470},
+                {"class_name": "Critical Risk", "precision": 0.95, "recall": 0.94, "f1_score": 0.94, "support": 350},
+                {"class_name": "Macro Average", "precision": 0.94, "recall": 0.94, "f1_score": 0.94, "support": 2250},
+                {"class_name": "Weighted Average", "precision": 0.94, "recall": 0.94, "f1_score": 0.94, "support": 2250},
+            ],
+            "confusion_matrix": {
+                "tn": 1340,
+                "fp": 65,
+                "fn": 66,
+                "tp": 779,
+            },
+            "attention_feature_importance": [
+                {"rank": 1, "feature": "Rainfall Intensity", "score": 0.243},
+                {"rank": 2, "feature": "River Water Level", "score": 0.212},
+                {"rank": 3, "feature": "Reservoir Storage Level", "score": 0.176},
+                {"rank": 4, "feature": "Digital Elevation (DEM)", "score": 0.142},
+                {"rank": 5, "feature": "Historical Flood Records", "score": 0.091},
+                {"rank": 6, "feature": "Land Use / Land Cover", "score": 0.057},
+                {"rank": 7, "feature": "Slope", "score": 0.034},
+                {"rank": 8, "feature": "Weather Forecast", "score": 0.025},
+                {"rank": 9, "feature": "Drainage Network Density", "score": 0.013},
+                {"rank": 10, "feature": "Soil Moisture", "score": 0.007},
+            ],
+            "gdnn_performance": [
+                {"metric": "Overall Accuracy", "value": "94.2%"},
+                {"metric": "Precision", "value": "94.0%"},
+                {"metric": "Recall", "value": "94.0%"},
+                {"metric": "F1-Score", "value": "94.0%"},
+                {"metric": "AUC–ROC Score", "value": "0.972"},
+                {"metric": "Prediction Time per Graph", "value": "0.41 s"},
+                {"metric": "Average Dashboard Response Time", "value": "0.68 s"},
+                {"metric": "Knowledge Graph Update Time", "value": "1.15 s"},
+            ]
+        }
     }

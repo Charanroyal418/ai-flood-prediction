@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 # Path to saved model weights
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
-MODEL_PATH = os.path.join(MODEL_DIR, "gnn_model.pth")
+_default_path = os.path.join(MODEL_DIR, "gnn_model.pth")
+_report_path = os.path.join(MODEL_DIR, "floodsense_gdnn_model.pth")
+MODEL_PATH = _report_path if os.path.exists(_report_path) else _default_path
 METRICS_PATH = os.path.join(MODEL_DIR, "gnn_metrics.json")
 
 # Risk level thresholds (5-class: Safe, Low, Moderate, High, Critical)
