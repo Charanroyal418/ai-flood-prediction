@@ -106,10 +106,23 @@ export interface SimulationMeta {
 
 export type EngineStatus = "online" | "reconnecting" | "offline";
 export type AdminState = "authorized" | "unauthorized" | "idle";
+export type SimulationLifecycleState =
+  | "LIVE"
+  | "ACTIVATING"
+  | "RUNNING"
+  | "RECOVERING"
+  | "LIVE RESTORED";
 
 export interface FloodDataState {
   // Mode indicator
   mode: "LIVE" | "SIMULATION";
+  // Simulation lifecycle state machine
+  simulationLifecycleState: SimulationLifecycleState;
+  simulationState: SimulationLifecycleState;
+  // Execution timeline steps from backend
+  executionSteps: any[];
+  // Calculated simulation metrics
+  simulationMetrics: any | null;
   // Real-time district risk data
   districts: DistrictRisk[];
   // Knowledge Graph
@@ -146,7 +159,7 @@ export interface FloodDataState {
   totalEdges: number;
   // Actions
   triggerPipeline: (storm?: boolean) => void;
-  toggleStormSimulation: (active?: boolean) => Promise<void>;
+  toggleStormSimulation: (active?: boolean, scenarioParams?: any) => Promise<any>;
   stopSimulation: () => Promise<void>;
   requestSnapshot: () => void;
   refetchPipeline: () => Promise<void>;
@@ -188,6 +201,9 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [modelMeta, setModelMeta] = useState<ModelMeta | null>(null);
   const [stormSimulationActive, setStormSimulationActive] = useState<boolean>(false);
+  const [simulationLifecycleState, setSimulationLifecycleState] = useState<SimulationLifecycleState>("LIVE");
+  const [executionSteps, setExecutionSteps] = useState<any[]>([]);
+  const [simulationMetrics, setSimulationMetrics] = useState<any | null>(null);
   const [simulationMeta, setSimulationMeta] = useState<SimulationMeta>(DEFAULT_SIM_META);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [relativeSyncTime, setRelativeSyncTime] = useState<string>("Just now");
@@ -365,9 +381,25 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
         // 1. Process Dashboard Live Data
         if (dashboardRes.status === "fulfilled" && dashboardRes.value?.data) {
           const data = dashboardRes.value.data;
-          if (data.metrics?.storm_simulation_active !== undefined) {
-            setStormSimulationActive(Boolean(data.metrics.storm_simulation_active));
+          const isServerSimActive = Boolean(data.metrics?.storm_simulation_active || data.storm_simulation_active);
+
+          // Simulation must never auto-start: website always opens in LIVE TELEMETRY
+          if (isServerSimActive) {
+            api.post("/api/v1/dashboard/simulate-storm?active=false", { active: false }).catch(() => {});
+            setStormSimulationActive(false);
+            setSimulationLifecycleState("LIVE");
+          } else {
+            setStormSimulationActive(false);
+            setSimulationLifecycleState("LIVE");
           }
+
+          if (data.execution_steps && Array.isArray(data.execution_steps)) {
+            setExecutionSteps(data.execution_steps);
+          }
+          if (data.simulation_metrics) {
+            setSimulationMetrics(data.simulation_metrics);
+          }
+
           if (data.storm_simulation) {
             setSimulationMeta({
               scenario: data.storm_simulation.scenario || DEFAULT_SIM_META.scenario,
@@ -584,12 +616,33 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toggleStormSimulation = useCallback(
-    async (active?: boolean) => {
+    async (active?: boolean, scenarioParams?: any) => {
       const targetState = active !== undefined ? active : !stormSimulationActive;
-      setStormSimulationActive(targetState);
+      if (targetState) {
+        setSimulationLifecycleState("ACTIVATING");
+      } else {
+        setSimulationLifecycleState("RECOVERING");
+      }
+
       try {
-        const res = await api.post(`/api/v1/dashboard/simulate-storm?active=${targetState}`, { active: targetState });
+        const payload = {
+          active: targetState,
+          ...(scenarioParams || {}),
+        };
+        const res = await api.post(`/api/v1/dashboard/simulate-storm?active=${targetState}`, payload);
         const resPayload = res.data?.data || res.data;
+
+        if (targetState) {
+          setStormSimulationActive(true);
+          setSimulationLifecycleState("RUNNING");
+        } else {
+          setStormSimulationActive(false);
+          setSimulationLifecycleState("LIVE RESTORED");
+          setTimeout(() => {
+            setSimulationLifecycleState((curr) => curr === "LIVE RESTORED" ? "LIVE" : curr);
+          }, 3000);
+        }
+
         if (resPayload?.storm_simulation_active !== undefined) {
           setStormSimulationActive(Boolean(resPayload.storm_simulation_active));
         }
@@ -603,14 +656,59 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
             predictionSource: resPayload.storm_simulation.prediction_source || DEFAULT_SIM_META.predictionSource,
           });
         }
+        if (resPayload?.execution_steps && Array.isArray(resPayload.execution_steps)) {
+          setExecutionSteps(resPayload.execution_steps);
+        } else if (resPayload?.summary?.execution_steps && Array.isArray(resPayload.summary.execution_steps)) {
+          setExecutionSteps(resPayload.summary.execution_steps);
+        }
+        if (resPayload?.simulation_metrics) {
+          setSimulationMetrics(resPayload.simulation_metrics);
+        } else if (resPayload?.summary?.simulation_metrics) {
+          setSimulationMetrics(resPayload.summary.simulation_metrics);
+        }
+
+        // Platform-wide immediate refetch and propagation:
+        try {
+          const liveRes = await api.get("/api/v1/dashboard/live");
+          if (liveRes?.data?.districts && Array.isArray(liveRes.data.districts)) {
+            setDistricts(liveRes.data.districts);
+          }
+          if (liveRes?.data?.alerts && Array.isArray(liveRes.data.alerts)) {
+            setAlerts(liveRes.data.alerts);
+          }
+          if (liveRes?.data?.timestamp) {
+            setLastUpdated(liveRes.data.timestamp);
+          }
+          if (liveRes?.data?.execution_steps && Array.isArray(liveRes.data.execution_steps)) {
+            setExecutionSteps(liveRes.data.execution_steps);
+          }
+          if (liveRes?.data?.simulation_metrics) {
+            setSimulationMetrics(liveRes.data.simulation_metrics);
+          }
+        } catch {}
+
+        // Invalidate and refresh inference cycle and KG
+        await Promise.allSettled([
+          refetchPipelineRef.current(),
+          refetchKg(),
+        ]);
+
         sendDashboard({ action: "get_snapshot" });
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("floodsense-simulation-changed", {
+            detail: { state: targetState ? "RUNNING" : "LIVE RESTORED", active: targetState }
+          }));
+        }
+
         return res.data;
       } catch (err) {
         console.error("Failed to toggle storm simulation:", err);
+        setSimulationLifecycleState(stormSimulationActive ? "RUNNING" : "LIVE");
         throw err;
       }
     },
-    [stormSimulationActive, sendDashboard]
+    [stormSimulationActive, sendDashboard, refetchKg]
   );
 
   const stopSimulation = useCallback(async () => {
@@ -671,6 +769,10 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 
   const value: FloodDataState = {
     mode,
+    simulationLifecycleState,
+    simulationState: simulationLifecycleState,
+    executionSteps,
+    simulationMetrics,
     districts,
     kgNodes,
     kgEdges,
@@ -715,6 +817,10 @@ export function FloodDataProvider({ children }: { children: React.ReactNode }) {
 /** Safe defaults returned when hook is called outside a FloodDataProvider (e.g. SSR) */
 const SAFE_DEFAULT: FloodDataState = {
   mode: "LIVE",
+  simulationLifecycleState: "LIVE",
+  simulationState: "LIVE",
+  executionSteps: [],
+  simulationMetrics: null,
   districts: [],
   kgNodes: [],
   kgEdges: [],

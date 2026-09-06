@@ -44,7 +44,7 @@ export default function DashboardTopBar() {
             }`}
           />
           <span className="font-bold font-sans">
-            {isStormActive ? "SYSTEM: SIMULATED" : "SYSTEM: NOMINAL"}
+            {isStormActive ? "🟠 STORM SIMULATION ACTIVE" : "🟢 LIVE TELEMETRY"}
           </span>
         </div>
         <div className="h-4 w-px bg-line hidden sm:block" />

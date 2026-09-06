@@ -340,8 +340,14 @@ def _build_dashboard_live(db: Session) -> Any:
         except Exception:
             pass
 
-    from app.services.orchestrator import get_storm_simulation_meta
+    from app.services.orchestrator import (
+        get_storm_simulation_meta,
+        get_last_simulation_steps,
+        get_last_simulation_metrics,
+    )
     sim_meta = get_storm_simulation_meta()
+    exec_steps = get_last_simulation_steps()
+    sim_metrics = get_last_simulation_metrics()
 
     all_confidences = [d["ai_confidence"] for d in districts_with_risk if d.get("ai_confidence")]
     avg_confidence = round(sum(all_confidences) / len(all_confidences), 3) if all_confidences else 0.0
@@ -367,8 +373,14 @@ def _build_dashboard_live(db: Session) -> Any:
             "kg_edges": kg_edges,
             "attention_heads": attention_heads,
             "storm_simulation_active": bool(sim_meta.get("active", False)),
+            "reservoir_stress": sim_metrics.get("reservoir_stress_pct", avg_dam_fill),
+            "reservoir_stress_pct": sim_metrics.get("reservoir_stress_pct", avg_dam_fill),
+            "avg_river_overflow": sim_metrics.get("avg_river_overflow_pct", 42.0),
+            "avg_river_overflow_pct": sim_metrics.get("avg_river_overflow_pct", 42.0),
         },
         "storm_simulation": sim_meta,
+        "execution_steps": exec_steps,
+        "simulation_metrics": sim_metrics,
         "districts": districts_with_risk,
         "top_risk_districts": districts_with_risk[:5],
         "alerts": alerts_data,
@@ -558,14 +570,20 @@ def simulate_storm_event(
     orchestrator = RealtimeOrchestrator(db)
     summary = orchestrator.run_pipeline(simulate_storm=new_state)
     sim_meta = get_storm_simulation_meta()
+    exec_steps = summary.get("execution_steps", [])
+    sim_metrics = summary.get("simulation_metrics", {})
     return {
         "success": True,
         "storm_simulation_active": new_state,
         "storm_simulation": sim_meta,
+        "execution_steps": exec_steps,
+        "simulation_metrics": sim_metrics,
         "data": {
             "status": "success",
             "storm_simulation_active": new_state,
             "storm_simulation": sim_meta,
+            "execution_steps": exec_steps,
+            "simulation_metrics": sim_metrics,
             "message": f"Storm simulation '{body.scenario}' is now {'active' if new_state else 'inactive'}.",
             "summary": summary,
             "parameters_applied": {

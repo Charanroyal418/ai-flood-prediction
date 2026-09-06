@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, ZoomControl, LayersControl, LayerGroup, GeoJSON, useMap } from "react-leaflet";
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import "leaflet/dist/leaflet.css";
@@ -49,6 +49,9 @@ interface District {
   flood_probability: number;
   ai_confidence: number;
   coastal?: boolean;
+  reservoir_storage?: number;
+  last_updated?: string;
+  lastUpdated?: string;
 }
 
 interface FloodMapProps {
@@ -130,6 +133,10 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
   const [geoJsonData, setGeoJsonData] = useState<any>(null);
   const router = useRouter();
 
+  // Track districts whose risk changed for animation
+  const prevRiskRef = useRef<Map<number, number>>(new Map());
+  const [changedDistrictIds, setChangedDistrictIds] = useState<Set<number>>(new Set());
+
   // Pre-process districts to ensure they have valid coordinates (or use fallback)
   const validDistricts = useMemo(() => {
     return (districts || [])
@@ -151,6 +158,25 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
       // Filter out any that still don't have valid coordinates to prevent Leaflet crash
       .filter((d) => typeof d.lat === "number" && typeof d.lon === "number" && !isNaN(d.lat) && !isNaN(d.lon));
   }, [districts]);
+
+  useEffect(() => {
+    const changed = new Set<number>();
+    validDistricts.forEach((d) => {
+      const prev = prevRiskRef.current.get(d.id);
+      if (prev !== undefined && prev !== d.risk_score) {
+        changed.add(d.id);
+      }
+      prevRiskRef.current.set(d.id, d.risk_score);
+    });
+
+    if (changed.size > 0) {
+      setChangedDistrictIds(changed);
+      const timer = setTimeout(() => {
+        setChangedDistrictIds(new Set());
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [validDistricts]);
 
   useEffect(() => {
     if (selectedDistrictId && validDistricts.length > 0) {
@@ -307,12 +333,12 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
                         }}
                       />
                     )}
-                    {/* Animated pulse ring for critical and high districts */}
-                    {isCriticalOrHigh && (
+                    {/* Animated pulse ring ONLY if risk changes */}
+                    {changedDistrictIds.has(district.id) && (
                       <CircleMarker
-                        key={district.id}
+                        key={`pulse-${district.id}`}
                         center={[district.lat, district.lon]}
-                        radius={getRadius(district.risk_score) + 4}
+                        radius={getRadius(district.risk_score) + 5}
                         eventHandlers={{
                           click: () => {
                             setSelected(district);
@@ -323,10 +349,10 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
                         }}
                         pathOptions={{
                           fillColor: markerColor,
-                          fillOpacity: 0.15,
+                          fillOpacity: 0.3,
                           color: markerColor,
-                          weight: 1,
-                          opacity: 0.5,
+                          weight: 2,
+                          opacity: 0.8,
                           className: "animate-ping"
                         }}
                       />
@@ -384,7 +410,7 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
                         </div>
                       </Tooltip>
 
-                      <Popup className="premium-popup" maxWidth={280}>
+                      <Popup className="premium-popup" maxWidth={300}>
                         <div className="p-1 font-sans">
                           <div className="flex items-center justify-between mb-3">
                             <span className="font-heading font-bold text-slate-800 text-base">{district.name}</span>
@@ -398,16 +424,16 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
 
                           <div className="grid grid-cols-2 gap-2 mb-3">
                             {[
+                              { label: "District", value: district.name },
                               { label: "Risk Score", value: `${district.risk_score}/100` },
-                              { label: "AI Confidence", value: `${safeFormat(district?.ai_confidence, 1, "0.0")}%` },
-                              { label: "Rainfall 24h", value: `${district.rainfall_mm}mm` },
-                              { label: "Humidity", value: `${district.humidity}%` },
-                              { label: "River Level", value: `${district.river_level_m}m` },
-                              { label: "Temperature", value: `${district.temperature}°C` },
+                              { label: "Rainfall", value: `${district.rainfall_mm} mm` },
+                              { label: "River Level", value: district.river_level_m != null ? `${district.river_level_m} m` : "Normal" },
+                              { label: "Reservoir", value: `${district.reservoir_storage ?? 58.0}%` },
+                              { label: "Last Updated", value: district.last_updated ? new Date(district.last_updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Live Telemetry" },
                             ].map(({ label, value }) => (
                               <div key={label} className="bg-slate-50 rounded-lg p-2">
                                 <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wide">{label}</p>
-                                <p className="text-xs font-bold text-slate-700 mt-0.5">{value}</p>
+                                <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{value}</p>
                               </div>
                             ))}
                           </div>
@@ -416,13 +442,21 @@ export default function FloodMap({ districts = [], onMarkerClick, selectedDistri
                           <div className="mb-2">
                             <div className="flex justify-between text-[10px] text-slate-500 mb-1">
                               <span>Flood Probability</span>
-                              <span className="font-semibold">{safeFormat(district?.flood_probability, 1, "0.0")}%</span>
+                              <span className="font-semibold">
+                                {safeFormat(
+                                  district?.flood_probability != null 
+                                    ? (district.flood_probability <= 1 ? district.flood_probability * 100 : district.flood_probability) 
+                                    : 0, 
+                                  1, 
+                                  "0.0"
+                                )}%
+                              </span>
                             </div>
                             <div className="w-full bg-slate-100 rounded-full h-1.5">
                               <div
                                 className="h-1.5 rounded-full transition-all"
                                 style={{
-                                  width: `${district.flood_probability * 100}%`,
+                                  width: `${Math.min(100, Math.max(0, district.flood_probability != null ? (district.flood_probability <= 1 ? district.flood_probability * 100 : district.flood_probability) : 0))}%`,
                                   background: markerColor,
                                 }}
                               />

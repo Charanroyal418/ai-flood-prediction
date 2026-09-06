@@ -130,17 +130,17 @@ export default function Sidebar() {
             <div
               className={`px-2 py-1.5 rounded flex items-center gap-2 border font-mono text-xs ${
                 isStormActive
-                  ? "bg-[rgba(248,113,113,0.1)] border-[rgba(248,113,113,0.3)] text-risk-severe"
-                  : "bg-[rgba(52,211,153,0.1)] border-[rgba(52,211,153,0.3)] text-risk-low"
+                  ? "bg-orange-500/10 border-orange-500/30 text-orange-500"
+                  : "bg-emerald-500/10 border-emerald-500/30 text-emerald-500"
               }`}
             >
               <div
                 className={`w-2 h-2 rounded-full ${
-                  isStormActive ? "bg-risk-severe" : "bg-risk-low"
+                  isStormActive ? "bg-orange-500 animate-pulse" : "bg-emerald-500"
                 }`}
               />
-              <span className="font-semibold tracking-tight">
-                {isStormActive ? "SIMULATION" : "LIVE TELEMETRY"}
+              <span className="font-semibold tracking-tight text-[11px]">
+                {isStormActive ? "🟠 STORM SIMULATION ACTIVE" : "🟢 LIVE TELEMETRY"}
               </span>
             </div>
           </div>
